@@ -755,7 +755,7 @@ Return ONLY a JSON object (no markdown fences) with exactly this structure:
 }}"""
 
     chat = make_chat(editor_system)
-    response = await chat.send_message(UserMessage(
+    response = await send_message_async(chat, UserMessage(
         text=f"Reader annotations:\n{reactions_text[:8000]}\n\nGenerate the editorial report."
     ))
 
