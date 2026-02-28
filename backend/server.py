@@ -660,12 +660,28 @@ async def generate_editor_report(manuscript_id: str):
     if not manuscript:
         raise HTTPException(404, "Manuscript not found")
 
+    total_sections = manuscript.get("total_sections", 0)
+    readers = await db.reader_personas.find({"manuscript_id": manuscript_id}, {"_id": 0}).to_list(10)
+    total_readers = len(readers)
+
     reactions = await db.reader_reactions.find(
         {"manuscript_id": manuscript_id}, {"_id": 0}
     ).sort("section_number", 1).to_list(500)
 
     if not reactions:
         raise HTTPException(400, "No reader reactions found. Read the manuscript first.")
+
+    # Verify all sections have been read by all readers
+    if total_sections > 0 and total_readers > 0:
+        sections_covered = set(r.get("section_number") for r in reactions)
+        expected_sections = set(range(1, total_sections + 1))
+        missing_sections = expected_sections - sections_covered
+        if missing_sections:
+            raise HTTPException(400, f"Reading is not complete. Sections {sorted(missing_sections)} have not been read yet.")
+        expected_total = total_sections * total_readers
+        if len(reactions) < expected_total:
+            raise HTTPException(400, f"Reading is not complete. {len(reactions)} of {expected_total} reader-section combinations finished.")
+
 
     # Build reactions summary from inline comments
     reactions_text = ""
