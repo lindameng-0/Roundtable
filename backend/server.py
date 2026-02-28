@@ -70,6 +70,18 @@ class ReaderPersonaResponse(BaseModel):
     reading_priority: Optional[str] = ""
     created_at: str
 
+    @classmethod
+    def model_validate(cls, obj, *args, **kwargs):
+        # Coerce list fields to string if LLM returned a list
+        if isinstance(obj, dict):
+            for field in ("favorite_genres", "genre_preferences", "reading_priority",
+                          "personality_specific_instructions", "reading_habits", "voice_style", "quote"):
+                if isinstance(obj.get(field), list):
+                    obj[field] = ", ".join(str(x) for x in obj[field])
+                elif obj.get(field) is None:
+                    obj[field] = ""
+        return super().model_validate(obj, *args, **kwargs)
+
 class RegenerateRequest(BaseModel):
     reader_id: Optional[str] = None
 
