@@ -88,12 +88,16 @@ export default function SetupPage() {
     setLoading(true);
     try {
       await axios.patch(`${API}/manuscripts/${manuscript.id}/genre`, genre);
-      // Generate personas
-      const res = await axios.get(`${API}/manuscripts/${manuscript.id}/personas`);
+      // Generate personas — can take 20-40s for 5 parallel LLM calls
+      const res = await axios.get(`${API}/manuscripts/${manuscript.id}/personas`, { timeout: 90000 });
+      if (!res.data || res.data.length === 0) {
+        throw new Error("No personas returned");
+      }
       setPersonas(res.data);
       setStep("readers");
     } catch (err) {
-      toast.error("Failed to generate readers");
+      toast.error("Reader generation timed out or failed. Please try again.");
+      setLoading(false);
     } finally {
       setLoading(false);
     }
