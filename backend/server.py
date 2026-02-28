@@ -11,7 +11,7 @@ import re
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import List, Optional, Dict, Any
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 
