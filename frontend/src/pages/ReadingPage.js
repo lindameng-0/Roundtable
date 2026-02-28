@@ -633,9 +633,10 @@ export default function ReadingPage() {
 
             <button
               data-testid="generate-report-btn"
-              onClick={generateReport}
-              disabled={loadingReport || totalCommentCount === 0}
-              className="flex items-center gap-2 text-xs border border-ink-900/12 hover:border-clay text-ink-600 hover:text-clay px-3 py-2 transition-all disabled:opacity-40"
+              onClick={readingDone ? generateReport : undefined}
+              disabled={loadingReport || !readingDone}
+              title={!readingDone ? "Readers are still reading — please wait until all sections are complete" : "Generate Editor Report"}
+              className="flex items-center gap-2 text-xs border border-ink-900/12 hover:border-clay text-ink-600 hover:text-clay px-3 py-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-ink-900/12 disabled:hover:text-ink-600"
               style={{ borderRadius: "2px" }}
             >
               {loadingReport ? (
