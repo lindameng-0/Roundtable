@@ -644,6 +644,32 @@ async def get_all_reactions(manuscript_id: str):
     ).sort("section_number", 1).to_list(1000)
     return reactions
 
+@api_router.get("/manuscripts/{manuscript_id}/reading-status")
+async def get_reading_status(manuscript_id: str):
+    """Return whether all sections have been fully read by all readers."""
+    manuscript = await db.manuscripts.find_one({"id": manuscript_id}, {"_id": 0})
+    if not manuscript:
+        raise HTTPException(404, "Manuscript not found")
+    total_sections = manuscript.get("total_sections", 0)
+    readers = await db.reader_personas.find({"manuscript_id": manuscript_id}, {"_id": 0}).to_list(10)
+    total_readers = len(readers)
+    reactions = await db.reader_reactions.find({"manuscript_id": manuscript_id}, {"_id": 0}).to_list(1000)
+    sections_covered = set(r.get("section_number") for r in reactions)
+    complete = (
+        total_sections > 0 and
+        total_readers > 0 and
+        len(sections_covered) >= total_sections and
+        len(reactions) >= total_sections * total_readers
+    )
+    return {
+        "complete": complete,
+        "total_sections": total_sections,
+        "total_readers": total_readers,
+        "reactions_count": len(reactions),
+        "expected_reactions": total_sections * total_readers,
+        "sections_covered": sorted(sections_covered)
+    }
+
 # Legacy endpoint for compatibility
 @api_router.get("/manuscripts/{manuscript_id}/reactions/{section_number}")
 async def get_reactions(manuscript_id: str, section_number: int):
