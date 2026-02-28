@@ -101,11 +101,6 @@ def make_chat(system_prompt: str, session_id: str = None) -> LlmChat:
         system_message=system_prompt
     ).with_model(LLM_PROVIDER, LLM_MODEL)
 
-async def send_message_async(chat: LlmChat, message: UserMessage) -> str:
-    """Run blocking send_message in a thread pool so asyncio.gather truly parallelizes."""
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, chat.send_message, message)
-
 def split_manuscript(raw_text: str) -> List[Dict]:
     """Split manuscript into chapters or ~2000-word chunks. Assign global line numbers to paragraphs."""
     chapter_pattern = re.compile(
