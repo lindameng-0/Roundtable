@@ -46,7 +46,16 @@ Build a collaborative AI beta reader tool for fiction writers. The app simulates
 6. Editor AI report with engagement chart + recommendations
 7. Model selector (gpt-4o, claude, gemini, etc.)
 
-## What's Been Implemented (Jan 2026)
+## What's Been Implemented (Jan 2026 — v2 update)
+- **Auto-reading**: clicking Start Reading triggers full automatic read of all sections via `/read-all` SSE endpoint. No manual section navigation.
+- **Inline annotations**: reader output is JSON `{inline_comments: [{line, type, comment}], section_reflection, memory_update}`. Line numbers are global across the full manuscript.
+- **Continuous manuscript view**: full manuscript rendered as scrollable document with all sections. Each paragraph has a `data-line` attribute.
+- **Margin dots**: colored dots in left margin per paragraph with comments. Multiple readers stack. Click to open popover.
+- **Comment popover**: shows all reader comments for that line with reader avatar, name, type badge (color-coded), and comment text. Closes on Escape or click-away.
+- **Reader sidebar panels**: per-reader collapsible panels showing status (Reading section N / Done), section reflections, comment count, and "show all comments" toggle.
+- **Type filter**: 7 comment types (reaction, prediction, confusion, critique, praise, theory, comparison) filterable via chips.
+- **Persona generation**: now includes `personality_specific_instructions` for each reader's unique analytical lens.
+- **Editor report**: adapted to read from inline_comments format.
 - Full setup flow: manuscript → genre detection → reader panel
 - 5 reader archetypes: analytical (0.5 temp), emotional (0.9), casual (0.9), skeptical (0.7), genre_savvy (0.7)
 - SSE streaming via asyncio.as_completed() — reactions appear as they complete
