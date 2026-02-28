@@ -249,7 +249,7 @@ async def create_manuscript(manuscript: ManuscriptCreate):
 
     chat = make_chat(genre_prompt)
     sample = raw_text[:3000]
-    response = await send_message_async(chat, UserMessage(text=f"Analyze:\n\n{sample}"))
+    response = await chat.send_message(UserMessage(text=f"Analyze:\n\n{sample}"))
     genre_data = {}
     try:
         clean = re.sub(r'```[a-z]*\n?', '', response).strip().rstrip('`')
