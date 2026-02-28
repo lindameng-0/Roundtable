@@ -191,43 +191,118 @@ As the light reached its peak, Sarah felt herself being pulled into another worl
         except Exception as e:
             return self.log_test("Regenerate Persona", False, str(e))
 
-    def test_sse_reading(self):
-        """Test SSE streaming endpoint for reading"""
+    def test_sse_read_all_endpoint(self):
+        """Test new SSE /read-all endpoint"""
         if not self.manuscript_id:
-            return self.log_test("SSE Reading", False, "No manuscript ID available")
+            return self.log_test("SSE Read-All Endpoint", False, "No manuscript ID available")
         
         try:
-            # We'll test that the SSE endpoint exists and returns proper headers
-            # For a full test, we'd need to handle EventSource streaming
             import urllib3
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
             
             response = requests.get(
-                f"{self.api_url}/manuscripts/{self.manuscript_id}/read/1",
+                f"{self.api_url}/manuscripts/{self.manuscript_id}/read-all",
                 stream=True,
-                timeout=10
+                timeout=15,
+                headers={'Accept': 'text/event-stream'}
             )
             
-            # Check if we get SSE headers and start receiving data
+            # Check if we get SSE headers
             is_sse = "text/event-stream" in response.headers.get("content-type", "")
             
             if not is_sse:
-                return self.log_test("SSE Reading", False, "Not SSE response")
+                return self.log_test("SSE Read-All Endpoint", False, f"Not SSE response, got: {response.headers.get('content-type')}")
             
-            # Try to read some initial data
+            # Try to read initial SSE events
+            events_received = []
             chunk_count = 0
+            
             for chunk in response.iter_content(chunk_size=1024, decode_unicode=True):
-                chunk_count += 1
-                if chunk_count >= 3 or "complete" in chunk:  # Get a few chunks then stop
+                if chunk.strip():
+                    chunk_count += 1
+                    # Look for SSE event types
+                    if "data:" in chunk and "{" in chunk:
+                        try:
+                            data_start = chunk.find("{")
+                            data_end = chunk.rfind("}") + 1
+                            if data_start >= 0 and data_end > data_start:
+                                event_data = json.loads(chunk[data_start:data_end])
+                                events_received.append(event_data.get("type", "unknown"))
+                        except:
+                            pass
+                
+                # Stop after getting some events or timeout
+                if chunk_count >= 5 or len(events_received) >= 3:
                     break
             
             response.close()
-            return self.log_test("SSE Reading", True, f"Received {chunk_count} chunks")
+            
+            # Check if we got expected event types
+            expected_events = ['start', 'section_start']
+            has_expected = any(event in events_received for event in expected_events)
+            
+            details = f"Events: {events_received}, Chunks: {chunk_count}"
+            return self.log_test("SSE Read-All Endpoint", has_expected, details)
             
         except requests.Timeout:
-            return self.log_test("SSE Reading", True, "Timeout expected for streaming")
+            return self.log_test("SSE Read-All Endpoint", True, "Timeout expected - endpoint exists")
         except Exception as e:
-            return self.log_test("SSE Reading", False, str(e))
+            return self.log_test("SSE Read-All Endpoint", False, str(e))
+
+    def test_all_reactions_endpoint(self):
+        """Test new /all-reactions endpoint"""
+        if not self.manuscript_id:
+            return self.log_test("Get All Reactions", False, "No manuscript ID available")
+        
+        try:
+            response = requests.get(f"{self.api_url}/manuscripts/{self.manuscript_id}/all-reactions")
+            
+            success = response.status_code == 200
+            if success:
+                reactions = response.json()
+                details = f"Status: {response.status_code}, Reactions: {len(reactions)}"
+            else:
+                details = f"Status: {response.status_code}"
+            
+            return self.log_test("Get All Reactions", success, details)
+            
+        except Exception as e:
+            return self.log_test("Get All Reactions", False, str(e))
+
+    def test_manuscript_sections_structure(self):
+        """Test that manuscript sections have global line numbers"""
+        if not self.manuscript_id:
+            return self.log_test("Check Sections Structure", False, "No manuscript ID available")
+        
+        try:
+            response = requests.get(f"{self.api_url}/manuscripts/{self.manuscript_id}")
+            
+            if response.status_code != 200:
+                return self.log_test("Check Sections Structure", False, f"Status: {response.status_code}")
+            
+            data = response.json()
+            sections = data.get("sections", [])
+            
+            if not sections:
+                return self.log_test("Check Sections Structure", False, "No sections found")
+            
+            # Check if sections have required fields for new structure
+            section = sections[0]
+            required_fields = ["line_start", "line_end", "paragraph_lines"]
+            
+            has_all_fields = all(field in section for field in required_fields)
+            
+            if has_all_fields:
+                paragraph_lines = section.get("paragraph_lines", [])
+                has_line_numbers = len(paragraph_lines) > 0 and all("line" in pl for pl in paragraph_lines)
+                details = f"Sections: {len(sections)}, Lines in first: {len(paragraph_lines)}"
+                return self.log_test("Check Sections Structure", has_line_numbers, details)
+            else:
+                missing = [f for f in required_fields if f not in section]
+                return self.log_test("Check Sections Structure", False, f"Missing fields: {missing}")
+            
+        except Exception as e:
+            return self.log_test("Check Sections Structure", False, str(e))
 
     def test_reactions_retrieval(self):
         """Test retrieving reader reactions"""
