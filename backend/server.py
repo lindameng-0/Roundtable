@@ -65,22 +65,21 @@ class ReaderPersonaResponse(BaseModel):
     quote: str
     avatar_index: int
     personality_specific_instructions: Optional[str] = ""
-    favorite_genres: Optional[str] = ""
-    genre_preferences: Optional[str] = ""
-    reading_priority: Optional[str] = ""
+    favorite_genres: Optional[Any] = ""
+    genre_preferences: Optional[Any] = ""
+    reading_priority: Optional[Any] = ""
     created_at: str
 
+    @field_validator("favorite_genres", "genre_preferences", "reading_priority",
+                     "personality_specific_instructions", "reading_habits", "voice_style",
+                     "quote", "occupation", mode="before")
     @classmethod
-    def model_validate(cls, obj, *args, **kwargs):
-        # Coerce list fields to string if LLM returned a list
-        if isinstance(obj, dict):
-            for field in ("favorite_genres", "genre_preferences", "reading_priority",
-                          "personality_specific_instructions", "reading_habits", "voice_style", "quote"):
-                if isinstance(obj.get(field), list):
-                    obj[field] = ", ".join(str(x) for x in obj[field])
-                elif obj.get(field) is None:
-                    obj[field] = ""
-        return super().model_validate(obj, *args, **kwargs)
+    def coerce_to_str(cls, v):
+        if isinstance(v, list):
+            return ", ".join(str(x) for x in v)
+        if v is None:
+            return ""
+        return v
 
 class RegenerateRequest(BaseModel):
     reader_id: Optional[str] = None
