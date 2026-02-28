@@ -351,7 +351,7 @@ Return ONLY a valid JSON object (no markdown):
 }}"""
 
     chat = make_chat(system)
-    response = await send_message_async(chat, UserMessage(
+    response = await chat.send_message(UserMessage(
         text=f"Create a {archetype_info['archetype']} reader persona for a {genre} novel targeting {audience}. Make them feel like a real, specific person with a distinct reading lens."
     ))
 
