@@ -607,24 +607,33 @@ async def read_all_sections_stream(manuscript_id: str):
             sn = section["section_number"]
             yield f"data: {json.dumps({'type': 'section_start', 'section_number': sn, 'total_sections': total_sections})}\n\n"
 
+            # Use a queue so all 5 readers truly run in parallel and results stream as they arrive
+            queue = asyncio.Queue()
+
             async def process_reader(reader, sec=section):
                 try:
                     result = await get_reader_inline_reaction(reader, sec, genre, manuscript_id)
-                    return {"type": "reader_complete", **result}
+                    await queue.put({"type": "reader_complete", **result})
                 except Exception as e:
                     logger.error(f"Error: reader {reader.get('name')} on section {sec['section_number']}: {e}")
-                    return {
+                    await queue.put({
                         "type": "reader_error",
                         "reader_id": reader["id"],
                         "reader_name": reader.get("name", "Unknown"),
                         "section_number": sec["section_number"],
                         "error": str(e)
-                    }
+                    })
 
-            tasks = [process_reader(reader) for reader in readers]
-            for coro in asyncio.as_completed(tasks):
-                result = await coro
+            # Launch all 5 readers at once
+            reader_tasks = [asyncio.create_task(process_reader(r)) for r in readers]
+
+            # Stream results as each reader finishes
+            for _ in range(len(readers)):
+                result = await queue.get()
                 yield f"data: {json.dumps(result)}\n\n"
+
+            # Ensure all tasks are done before moving to next section
+            await asyncio.gather(*reader_tasks, return_exceptions=True)
 
             yield f"data: {json.dumps({'type': 'section_complete', 'section_number': sn})}\n\n"
 
