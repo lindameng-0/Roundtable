@@ -1,0 +1,185 @@
+{
+  "design_system": {
+    "brand_identity": {
+      "name": "Roundtable",
+      "metaphor": "The Writers' Room",
+      "core_values": ["Intimacy", "Constructive Criticism", "Focus", "Warmth"],
+      "aesthetic": "Literary Minimalist",
+      "theme_mode": "light-only"
+    },
+    "typography": {
+      "font_strategy": "The 'Old Money Tech' Pairing",
+      "primary_font": {
+        "family": "Cormorant Garamond",
+        "usage": "Headings, Manuscript Text, Pull Quotes",
+        "weights": ["400", "500", "600", "700"],
+        "cdn_import": "@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap');"
+      },
+      "secondary_font": {
+        "family": "Manrope",
+        "usage": "UI Elements, Navigation, Sidebar text, Buttons, Tooltips",
+        "weights": ["400", "500", "600"],
+        "cdn_import": "@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@200..800&display=swap');"
+      },
+      "scale": {
+        "h1": "text-5xl md:text-6xl font-serif tracking-tight leading-[1.1]",
+        "h2": "text-3xl md:text-4xl font-serif tracking-tight text-ink-900",
+        "h3": "text-2xl font-serif font-medium text-ink-800",
+        "body_manuscript": "text-lg md:text-xl font-serif leading-relaxed text-ink-900 tracking-wide",
+        "body_ui": "text-sm md:text-base font-sans text-ink-600",
+        "caption": "text-xs font-sans text-ink-400 uppercase tracking-widest"
+      }
+    },
+    "colors": {
+      "palette": {
+        "background": {
+          "main": "#FDFBF7",
+          "secondary": "#F5F2EB",
+          "surface": "#FFFFFF",
+          "surface_hover": "#FAF9F6"
+        },
+        "text": {
+          "ink": "#2D2A26",
+          "ink_light": "#5C5855",
+          "ink_lighter": "#8C8885"
+        },
+        "brand": {
+          "primary": "#C86B56",
+          "primary_hover": "#B05540",
+          "secondary": "#8da399",
+          "accent": "#D4Af37"
+        },
+        "feedback_sentiment": {
+          "positive": "#8da399",
+          "neutral": "#D4Af37",
+          "constructive": "#C86B56"
+        }
+      },
+      "tailwind_extension": {
+        "colors": {
+          "paper": "#FDFBF7",
+          "paper-dark": "#F5F2EB",
+          "ink": {
+            "900": "#2D2A26",
+            "600": "#5C5855",
+            "400": "#8C8885"
+          },
+          "clay": {
+            "DEFAULT": "#C86B56",
+            "hover": "#B05540"
+          },
+          "sage": "#8da399",
+          "gold": "#D4Af37"
+        }
+      }
+    },
+    "layout_and_spacing": {
+      "container_width": "max-w-7xl mx-auto",
+      "spacing_scale": "Generous (2x standard)",
+      "border_radius": {
+        "card": "0px",
+        "button": "2px",
+        "input": "2px"
+      },
+      "grid_modes": {
+        "reading_view": "grid grid-cols-1 lg:grid-cols-12 h-screen overflow-hidden",
+        "dashboard": "grid grid-cols-1 md:grid-cols-3 gap-8"
+      }
+    },
+    "component_styles": {
+      "buttons": {
+        "primary": "bg-clay hover:bg-clay-hover text-white font-sans font-medium px-6 py-3 rounded-[2px] shadow-sm transition-all duration-300 ease-out",
+        "secondary": "bg-transparent border border-ink-900/10 hover:border-ink-900/30 text-ink-900 font-sans px-6 py-3 rounded-[2px] transition-all",
+        "ghost": "text-ink-600 hover:text-ink-900 hover:bg-paper-dark/50"
+      },
+      "cards": {
+        "reader_persona": "bg-white border border-ink-900/5 shadow-sm hover:shadow-md transition-all p-6 relative overflow-hidden group",
+        "reaction_card": "bg-white border-l-4 border-l-clay p-4 shadow-sm mb-4"
+      },
+      "inputs": {
+        "manuscript_area": "w-full h-full bg-transparent border-none focus:ring-0 text-xl font-serif leading-loose resize-none placeholder:text-ink-400/50"
+      }
+    }
+  },
+  "assets": {
+    "images": {
+      "hero_background": "https://images.unsplash.com/photo-1724776771696-30e576a61a0f?crop=entropy&cs=srgb&fm=jpg&q=85",
+      "textures": {
+        "paper_grain": "https://images.unsplash.com/photo-1700004060514-7aec5a9f7f73?crop=entropy&cs=srgb&fm=jpg&q=85"
+      },
+      "reader_avatars": [
+        {
+          "id": "reader_1_academic",
+          "url": "https://images.unsplash.com/photo-1581883556531-e5f8027f557f?crop=entropy&cs=srgb&fm=jpg&q=85",
+          "alt": "The Academic Reader"
+        },
+        {
+          "id": "reader_2_market",
+          "url": "https://images.unsplash.com/photo-1658909835269-e76abd3ffb5d?crop=entropy&cs=srgb&fm=jpg&q=85",
+          "alt": "The Market Specialist"
+        },
+        {
+          "id": "reader_3_emotional",
+          "url": "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=256",
+          "alt": "The Emotional Reader"
+        },
+        {
+          "id": "reader_4_critic",
+          "url": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=256",
+          "alt": "The Harsh Critic"
+        },
+        {
+          "id": "reader_5_plot",
+          "url": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=256",
+          "alt": "The Plot Architect"
+        }
+      ]
+    },
+    "icons": "Use 'lucide-react' with thin strokes (stroke-width={1.5}) to match the elegant aesthetic."
+  },
+  "functionality_specs": {
+    "animations": {
+      "library": "framer-motion",
+      "transitions": {
+        "sidebar_entry": {
+          "initial": { "x": 100, "opacity": 0 },
+          "animate": { "x": 0, "opacity": 1 },
+          "transition": { "duration": 0.5, "ease": [0.32, 0.72, 0, 1] }
+        },
+        "fade_in": {
+          "initial": { "opacity": 0 },
+          "animate": { "opacity": 1 },
+          "transition": { "duration": 0.4 }
+        }
+      }
+    },
+    "charts": {
+      "library": "recharts",
+      "theme_override": {
+        "grid": "stroke-ink-900/5",
+        "axis": "stroke-ink-900/20 text-xs font-sans",
+        "tooltip": "bg-white border border-ink-900/10 shadow-lg font-serif"
+      }
+    }
+  },
+  "instructions_to_main_agent": [
+    "INSTALL framer-motion and @tailwindcss/typography if not present.",
+    "UPDATE tailwind.config.js to include the custom colors (paper, ink, clay, sage) immediately.",
+    "IMPORT the fonts (Cormorant Garamond and Manrope) in index.css.",
+    "CREATE a 'Layout' component that enforces the background color #FDFBF7 globally.",
+    "USE 'lucide-react' for all icons.",
+    "FOR READERS: Use the specific avatars provided in the assets section.",
+    "FOR SPLIT VIEW: The left side (Manuscript) should look like a clean document editor (padding-64). The right side (Feedback) should feel like a comment stream.",
+    "NEVER use gradients. Use solid colors and 1px borders.",
+    "ENSURE all charts use the brand palette (Clay, Sage, Gold) - do not use default blue/green.",
+    "DATA-TESTID: Add data-testid to all buttons, inputs, and reader cards."
+  ],
+  "universal_guidelines": [
+    "Don't make generic centered layouts. Use asymmetry.",
+    "Use 2-3x more spacing than typical designs.",
+    "Every interaction needs micro-animations.",
+    "Use glass-morphism effects with caution (only for sticky headers).",
+    "NEVER use default blue for links or buttons. Use 'Clay' (#C86B56).",
+    "Components MUST use named exports."
+  ]
+}
