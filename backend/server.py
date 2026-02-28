@@ -362,24 +362,28 @@ Return ONLY a valid JSON object (no markdown):
     except Exception:
         data = {}
 
+    def _coerce(val, default=""):
+        if isinstance(val, list): return ", ".join(str(x) for x in val)
+        return val if isinstance(val, str) else default
+
     return {
         "id": str(uuid.uuid4()),
         "manuscript_id": manuscript_id,
         "name": data.get("name", f"Reader {avatar_index + 1}"),
-        "age": data.get("age", 35),
-        "occupation": data.get("occupation", "Reader"),
+        "age": data.get("age", 35) if isinstance(data.get("age"), int) else 35,
+        "occupation": _coerce(data.get("occupation"), "Reader"),
         "personality": archetype_info["archetype"],
-        "reading_habits": data.get("reading_habits", "Reads widely across genres"),
-        "favorite_genres": data.get("favorite_genres", genre),
-        "genre_preferences": data.get("genre_preferences", ""),
-        "reading_priority": data.get("reading_priority", "A compelling story"),
-        "liked_tropes": data.get("liked_tropes", []),
-        "disliked_tropes": data.get("disliked_tropes", []),
-        "voice_style": data.get("voice_style", "thoughtful and measured"),
+        "reading_habits": _coerce(data.get("reading_habits"), "Reads widely across genres"),
+        "favorite_genres": _coerce(data.get("favorite_genres"), genre),
+        "genre_preferences": _coerce(data.get("genre_preferences"), ""),
+        "reading_priority": _coerce(data.get("reading_priority"), "A compelling story"),
+        "liked_tropes": data.get("liked_tropes", []) if isinstance(data.get("liked_tropes"), list) else [],
+        "disliked_tropes": data.get("disliked_tropes", []) if isinstance(data.get("disliked_tropes"), list) else [],
+        "voice_style": _coerce(data.get("voice_style"), "thoughtful and measured"),
         "temperature": archetype_info["temperature"],
-        "quote": data.get("quote", "A good story makes me forget the world."),
+        "quote": _coerce(data.get("quote"), "A good story makes me forget the world."),
         "avatar_index": avatar_index,
-        "personality_specific_instructions": data.get("personality_specific_instructions", archetype_info["default_instructions"]),
+        "personality_specific_instructions": _coerce(data.get("personality_specific_instructions"), archetype_info["default_instructions"]),
         "created_at": now_iso()
     }
 
