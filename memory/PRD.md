@@ -6,11 +6,11 @@ Build a collaborative AI beta reader tool for fiction writers. The app simulates
 ## Architecture
 
 ### Tech Stack
-- **Backend:** FastAPI (Python) + Motor/MongoDB async, modular services/routers
+- **Backend:** FastAPI (Python) + Supabase (Postgres), modular services/routers
 - **Frontend:** React + Tailwind CSS (Cormorant Garamond + Manrope fonts)
 - **LLM:** OpenAI / Claude / Gemini via LiteLLM (set OPENAI_API_KEY, ANTHROPIC_API_KEY, or GEMINI_API_KEY in backend/.env; model switchable)
 - **Auth:** Emergent-managed Google OAuth
-- **DB:** MongoDB
+- **DB:** Supabase (Postgres)
 
 ### Code Structure
 ```
@@ -74,6 +74,8 @@ Build a collaborative AI beta reader tool for fiction writers. The app simulates
 - `reader_memories` — per-reader memory JSON per section
 - `reader_reactions` — inline_comments + section_reflection per reader per section
 - `editor_reports` — synthesized editorial JSON report
+
+*(Schema migrated to Supabase/Postgres; see backend/supabase_schema.sql.)*
 
 ## User Personas
 - Fiction writers (novel/short story) seeking beta reader feedback

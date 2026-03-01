@@ -1,14 +1,15 @@
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-from motor.motor_asyncio import AsyncIOMotorClient
+
+from db import get_db
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+SUPABASE_URL = os.environ['SUPABASE_URL']
+SUPABASE_SERVICE_ROLE_KEY = os.environ['SUPABASE_SERVICE_ROLE_KEY']
+db = get_db(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
 # Provider API keys — set the ones you use; LiteLLM reads these from env for the active provider
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')

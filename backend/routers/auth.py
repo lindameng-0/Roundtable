@@ -84,7 +84,7 @@ async def create_session(request: Request, response: Response):
     await db.user_sessions.insert_one({
         "user_id": user_id,
         "session_token": session_token,
-        "expires_at": expires_at,
+        "expires_at": expires_at.isoformat(),
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
 

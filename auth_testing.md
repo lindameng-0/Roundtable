@@ -2,29 +2,33 @@
 
 ## Step 1: Create Test User & Session
 
-```bash
-DB_NAME=$(grep DB_NAME /app/backend/.env | cut -d '=' -f2)
-mongosh --eval "
-use('${DB_NAME}');
-var userId = 'test-user-' + Date.now();
-var sessionToken = 'test_session_' + Date.now();
-db.users.insertOne({
-  user_id: userId,
-  email: 'test.user.' + Date.now() + '@example.com',
-  name: 'Test User',
-  picture: 'https://via.placeholder.com/150',
-  created_at: new Date()
-});
-db.user_sessions.insertOne({
-  user_id: userId,
-  session_token: sessionToken,
-  expires_at: new Date(Date.now() + 7*24*60*60*1000),
-  created_at: new Date()
-});
-print('Session token: ' + sessionToken);
-print('User ID: ' + userId);
-"
+**Option A: Supabase (current backend)**  
+In Supabase SQL Editor or via API, insert a test user and session:
+
+```sql
+INSERT INTO users (user_id, email, name, picture, created_at)
+VALUES (
+  'test-user-' || extract(epoch from now())::bigint,
+  'test.user.' || extract(epoch from now())::bigint || '@example.com',
+  'Test User',
+  'https://via.placeholder.com/150',
+  now()
+)
+RETURNING user_id;
+
+-- Use the returned user_id in the next insert; set session_token for auth header.
+INSERT INTO user_sessions (user_id, session_token, expires_at, created_at)
+VALUES (
+  '<user_id from above>',
+  'test_session_' || extract(epoch from now())::bigint,
+  now() + interval '7 days',
+  now()
+);
+-- Use the session_token value as Bearer token.
 ```
+
+**Option B: MongoDB (legacy)**  
+If using MongoDB, use mongosh with DB_NAME from .env to insert into `users` and `user_sessions` and copy the session_token.
 
 ## Step 2: Test Backend API
 
@@ -61,7 +65,4 @@ await page.goto("https://ai-roundtable-test.preview.emergentagent.com/dashboard"
 
 ## Quick Debug
 
-```bash
-DB_NAME=$(grep DB_NAME /app/backend/.env | cut -d '=' -f2)
-mongosh --eval "use('${DB_NAME}'); db.users.find().limit(2).pretty(); db.user_sessions.find().limit(2).pretty();"
-```
+**Supabase:** In SQL Editor: `SELECT * FROM users LIMIT 2; SELECT * FROM user_sessions LIMIT 2;`

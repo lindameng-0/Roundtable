@@ -1,4 +1,5 @@
 import json
+import re
 import uuid
 import asyncio
 import logging
@@ -18,6 +19,10 @@ from models import (
 )
 from utils import now_iso, make_chat, UserMessage
 
+from services.manuscript import split_manuscript
+from services.personas import READER_ARCHETYPES, generate_single_persona, generate_all_personas
+from services.readers import reader_pipeline
+from services.editor import generate_editor_report as _build_editor_report
 from routers.auth import _get_session_user
 
 api_router = APIRouter(prefix="/api")
@@ -64,8 +69,12 @@ async def list_manuscripts(request: Request):
     user = await _get_session_user(request)
     docs = await db.manuscripts.find(
         {"user_id": user["user_id"]},
-        {"_id": 0, "raw_text": 0, "sections": 0}  # exclude heavy fields
+        None,
     ).sort("created_at", -1).to_list(100)
+    # Strip heavy fields for list response (Supabase returns full row)
+    for d in docs:
+        d.pop("raw_text", None)
+        d.pop("sections", None)
     return docs
 
 

@@ -3,7 +3,7 @@ import logging
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
-from config import client
+from config import db
 from routers.api import api_router
 from routers.auth import auth_router
 
@@ -22,8 +22,3 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()
