@@ -536,6 +536,9 @@ export default function ReadingPage() {
     esRef.current = { close: () => { cancelled = true; controller.abort(); } };
 
     const handleEvent = (data) => {
+      // Reset stall timer on every event
+      lastEventTimeRef.current = Date.now();
+      setIsStalled(false);
 
       if (data.type === "start") {
         setTotalSections(data.total_sections);
