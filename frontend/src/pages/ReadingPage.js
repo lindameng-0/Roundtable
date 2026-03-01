@@ -532,6 +532,7 @@ export default function ReadingPage() {
       } else if (data.type === "all_complete") {
         setReadingDone(true);
         setProcessingSection(null);
+        setThinkingReaders(new Map());
         setReaderStatus((prev) => {
           const next = { ...prev };
           Object.keys(next).forEach((id) => { next[id] = { ...next[id], done: true, currentSection: null }; });
