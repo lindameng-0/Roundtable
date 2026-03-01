@@ -225,11 +225,13 @@ def split_manuscript(raw_text: str) -> tuple:
     return sections, global_line - 1  # sections, total_lines
 
 def compress_memory(memories: List[Dict], personality: str) -> Dict:
+    """Compress reader memories with hard token-budget limits (max ~200 tokens in output)."""
     if not memories:
         return {}
     combined = {
         "plot_events": [], "character_notes": {}, "predictions": [],
-        "questions": [], "emotional_state": "", "memorable_quotes": []
+        "questions": [], "emotional_state": ""
+        # memorable_quotes deliberately excluded from recap to save tokens
     }
     for m in memories:
         mj = m.get("memory_json", {})
@@ -239,15 +241,19 @@ def compress_memory(memories: List[Dict], personality: str) -> Dict:
         combined["questions"].extend(mj.get("questions", []))
         if mj.get("emotional_state"):
             combined["emotional_state"] = mj["emotional_state"]
-        combined["memorable_quotes"].extend(mj.get("memorable_quotes", []))
 
-    is_analytical = "analytical" in personality.lower()
-    is_casual = "casual" in personality.lower() or "vibes" in personality.lower()
-    keep_events = 8 if is_analytical else 3 if is_casual else 5
-    combined["plot_events"] = combined["plot_events"][-keep_events:]
-    combined["predictions"] = combined["predictions"][-10:]
-    combined["questions"] = list(dict.fromkeys(combined["questions"]))[-8:]
-    combined["memorable_quotes"] = combined["memorable_quotes"][-5:]
+    # Hard limits per spec
+    combined["plot_events"] = combined["plot_events"][-3:]          # 3 most recent
+    combined["predictions"] = combined["predictions"][-3:]          # 3 active predictions
+    combined["questions"] = list(dict.fromkeys(combined["questions"]))[-2:]   # 2 questions
+    # 3 characters max, truncate long notes to one sentence
+    char_notes = combined["character_notes"]
+    if len(char_notes) > 3:
+        combined["character_notes"] = dict(list(char_notes.items())[-3:])
+    combined["character_notes"] = {
+        k: v.split(".")[0] + "." if isinstance(v, str) and "." in v else v
+        for k, v in combined["character_notes"].items()
+    }
     return combined
 
 def validate_inline_comments(comments: List[Dict], line_start: int, line_end: int) -> List[Dict]:
