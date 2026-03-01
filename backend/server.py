@@ -101,57 +101,125 @@ def make_chat(system_prompt: str, session_id: str = None) -> LlmChat:
         system_message=system_prompt
     ).with_model(LLM_PROVIDER, LLM_MODEL)
 
-def split_manuscript(raw_text: str) -> List[Dict]:
-    """Split manuscript into chapters or ~2000-word chunks. Assign global line numbers to paragraphs."""
+TARGET_WORDS_PER_SECTION = 500  # Target max words per section
+
+def split_manuscript(raw_text: str) -> tuple:
+    """
+    Split manuscript into small readable sections (target ~500 words each).
+    Strategy:
+    1. Detect chapter headings (broad pattern)
+    2. Within each chapter, detect scene breaks (***  /  ---  / 3+ blank lines)
+    3. Sub-split any segment > 600 words into ~500-word chunks at paragraph boundaries
+    4. Assign continuous global line numbers (paragraph = 1 line)
+    """
+
+    # ── Step 1: Detect chapter boundaries ────────────────────────────────────
     chapter_pattern = re.compile(
-        r'(?:^|\n\n+)((?:chapter|prologue|epilogue|part)\s+[\w\d]+[^\n]*)',
+        r'(?:^|\n)[ \t]*((?:chapter|prologue|epilogue|part|act|scene|section|interlude|coda|preface|introduction|afterword|appendix)'
+        r'[\s\.\-:]*[\w\d\s\.\-:\'\"]*?)'
+        r'(?:\n|$)',
         re.IGNORECASE
     )
-    matches = list(chapter_pattern.finditer(raw_text))
+    chapter_matches = list(chapter_pattern.finditer(raw_text))
 
-    raw_sections = []
-    if len(matches) >= 2:
-        for i, match in enumerate(matches):
-            start = match.start()
-            end = matches[i + 1].start() if i + 1 < len(matches) else len(raw_text)
-            title = match.group(1).strip()
-            text = raw_text[start:end].strip()
-            if len(text) > 100:
-                raw_sections.append({"title": title, "text": text, "start_char": start, "end_char": end})
+    def extract_raw_chapters():
+        if len(chapter_matches) >= 2:
+            chapters = []
+            for i, match in enumerate(chapter_matches):
+                start = match.start()
+                end = chapter_matches[i + 1].start() if i + 1 < len(chapter_matches) else len(raw_text)
+                title = match.group(1).strip()
+                text = raw_text[start:end].strip()
+                if len(text.split()) > 30:  # Skip near-empty headings
+                    chapters.append({"title": title, "text": text})
+            return chapters
+        return []
 
-    if not raw_sections:
-        words = raw_text.split()
-        chunk_size = 2000
-        for i in range(0, len(words), chunk_size):
-            chunk_words = words[i:i + chunk_size]
-            text = " ".join(chunk_words)
-            raw_sections.append({
-                "title": f"Section {len(raw_sections) + 1}",
-                "text": text,
-                "start_char": 0,
-                "end_char": 0
-            })
+    raw_chapters = extract_raw_chapters()
+    if not raw_chapters:
+        # No chapter markers — treat entire text as one chapter
+        raw_chapters = [{"title": "Manuscript", "text": raw_text.strip()}]
 
-    # Assign global line numbers: each non-empty paragraph = 1 line
+    # ── Step 2: Within each chapter, split on scene breaks ───────────────────
+    scene_break_pattern = re.compile(
+        r'\n[ \t]*(?:\*{2,}|\-{2,}|#{2,}|~{2,}|_{2,}|\.{3,})[ \t]*\n'  # ***, ---, ###, ~~~
+        r'|\n{3,}',  # 3+ consecutive blank lines
+        re.MULTILINE
+    )
+
+    def split_on_scenes(chapter_title: str, chapter_text: str) -> List[Dict]:
+        parts = scene_break_pattern.split(chapter_text)
+        result = []
+        for i, part in enumerate(parts):
+            part = part.strip()
+            if not part or len(part.split()) < 20:
+                continue
+            title = chapter_title if i == 0 else f"{chapter_title} (scene {i + 1})"
+            result.append({"title": title, "text": part})
+        return result if result else [{"title": chapter_title, "text": chapter_text}]
+
+    scene_segments = []
+    for ch in raw_chapters:
+        scene_segments.extend(split_on_scenes(ch["title"], ch["text"]))
+
+    # ── Step 3: Sub-split long segments at paragraph boundaries ──────────────
+    def sub_split(title: str, text: str, max_words: int = 600) -> List[Dict]:
+        words = text.split()
+        if len(words) <= max_words:
+            return [{"title": title, "text": text}]
+
+        # Split into paragraphs, then greedily pack into ~500-word chunks
+        paragraphs = [p.strip() for p in text.split("\n") if p.strip()]
+        chunks = []
+        current_paras = []
+        current_words = 0
+        part_num = 0
+
+        for para in paragraphs:
+            para_words = len(para.split())
+            if current_words + para_words > TARGET_WORDS_PER_SECTION and current_paras:
+                part_num += 1
+                chunk_title = title if part_num == 1 else f"{title}, part {part_num}"
+                chunks.append({"title": chunk_title, "text": "\n\n".join(current_paras)})
+                current_paras = [para]
+                current_words = para_words
+            else:
+                current_paras.append(para)
+                current_words += para_words
+
+        if current_paras:
+            part_num += 1
+            chunk_title = title if part_num == 1 else f"{title}, part {part_num}"
+            chunks.append({"title": chunk_title, "text": "\n\n".join(current_paras)})
+
+        return chunks
+
+    final_segments = []
+    for seg in scene_segments:
+        final_segments.extend(sub_split(seg["title"], seg["text"]))
+
+    # ── Step 4: Assign global line numbers ───────────────────────────────────
     sections = []
     global_line = 1
-    for idx, rs in enumerate(raw_sections):
-        paragraphs = [p.strip() for p in rs["text"].split("\n") if p.strip()]
+    for idx, seg in enumerate(final_segments):
+        paragraphs = [p.strip() for p in seg["text"].split("\n") if p.strip()]
         line_start = global_line
         paragraph_lines = []
         for p in paragraphs:
             paragraph_lines.append({"line": global_line, "text": p})
             global_line += 1
         line_end = global_line - 1
+        word_count = len(seg["text"].split())
         sections.append({
             "section_number": idx + 1,
-            "title": rs["title"],
-            "text": rs["text"],
-            "start_char": rs.get("start_char", 0),
-            "end_char": rs.get("end_char", 0),
+            "title": seg["title"],
+            "text": seg["text"],
+            "start_char": 0,
+            "end_char": 0,
             "line_start": line_start,
             "line_end": line_end,
-            "paragraph_lines": paragraph_lines
+            "paragraph_lines": paragraph_lines,
+            "word_count": word_count,
         })
 
     return sections, global_line - 1  # sections, total_lines
