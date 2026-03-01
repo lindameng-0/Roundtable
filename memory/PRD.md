@@ -6,30 +6,73 @@ Build a collaborative AI beta reader tool for fiction writers. The app simulates
 ## Architecture
 
 ### Tech Stack
-- **Backend:** FastAPI (Python) + Motor/MongoDB async
+- **Backend:** FastAPI (Python) + Motor/MongoDB async, modular services/routers
 - **Frontend:** React + Tailwind CSS (Cormorant Garamond + Manrope fonts)
-- **LLM:** Emergent Universal Key via `emergentintegrations` (gpt-4o default, switchable)
-- **DB:** MongoDB (test_database)
+- **LLM:** Emergent Universal Key via `emergentintegrations` (gpt-4o-mini default, switchable)
+- **Auth:** Emergent-managed Google OAuth
+- **DB:** MongoDB
+
+### Code Structure
+```
+/app/
+├── backend/
+│   ├── main.py             # FastAPI app entry point
+│   ├── config.py           # Config, DB and OpenAI clients
+│   ├── models.py           # Pydantic and DB models
+│   ├── utils.py            # Shared helper functions
+│   ├── routers/
+│   │   ├── api.py          # Manuscript and reading routes
+│   │   └── auth.py         # Auth routes
+│   └── services/
+│       ├── editor.py       # Editor report logic
+│       ├── manuscript.py   # Manuscript processing logic
+│       ├── personas.py     # Persona generation logic
+│       └── readers.py      # Core reader pipeline logic
+└── frontend/src/
+    ├── App.js
+    ├── context/AuthContext.js
+    ├── components/
+    │   ├── CommentPopover.jsx
+    │   ├── ManuscriptView.jsx
+    │   ├── ModelSelector.js
+    │   ├── ProgressBar.jsx
+    │   ├── ReaderSidebar.jsx
+    │   ├── StallBanner.jsx
+    │   └── UserMenu.jsx
+    ├── hooks/useReadingStream.js
+    └── pages/
+        ├── AuthCallback.js
+        ├── DashboardPage.js
+        ├── LoginPage.js
+        ├── ReadingPage.js
+        ├── ReportPage.js
+        └── SetupPage.js
+```
 
 ### API Endpoints
-- `POST /api/manuscripts` — Upload text, trigger genre detection
-- `POST /api/manuscripts/upload` — Upload .txt file
+- `POST /api/auth/google` — Initiate Google OAuth
+- `GET /api/auth/me` — Get current user
+- `POST /api/auth/logout` — Logout
+- `POST /api/manuscripts` — Create manuscript from text
+- `POST /api/manuscripts/upload` — Upload .txt or .docx file
+- `GET /api/manuscripts` — List user's manuscripts (auth required)
 - `GET /api/manuscripts/{id}` — Get manuscript
 - `PATCH /api/manuscripts/{id}/genre` — Update genre tags
 - `GET /api/manuscripts/{id}/personas` — Get/generate reader personas
 - `POST /api/manuscripts/{id}/personas/regenerate` — Regen one or all readers
-- `GET /api/manuscripts/{id}/read/{section}` — SSE stream all 5 reader reactions
-- `GET /api/manuscripts/{id}/reactions/{section}` — Get reactions for a section
+- `GET /api/manuscripts/{id}/read-all` — SSE stream all sections
+- `GET /api/manuscripts/{id}/all-reactions` — Get all reactions
+- `GET /api/manuscripts/{id}/reading-status` — Check reading completion
 - `POST /api/manuscripts/{id}/editor-report` — Generate editor report
 - `GET /api/manuscripts/{id}/editor-report` — Get report
 - `GET /api/config/models` — List available models
 - `POST /api/config/model` — Switch active model
 
 ### MongoDB Collections
-- `manuscripts` — raw text, genre, sections
+- `manuscripts` — raw text, genre, sections, user_id
 - `reader_personas` — 5 personas per manuscript
 - `reader_memories` — per-reader memory JSON per section
-- `reader_reactions` — summary + full_thoughts per reader per section
+- `reader_reactions` — inline_comments + section_reflection per reader per section
 - `editor_reports` — synthesized editorial JSON report
 
 ## User Personas
@@ -38,74 +81,82 @@ Build a collaborative AI beta reader tool for fiction writers. The app simulates
 - Writing group members wanting objective feedback
 
 ## Core Requirements (Static)
-1. Manuscript upload (paste or .txt file)
-2. Auto genre + audience detection (editable chips)
-3. 5 distinct reader personas generated per manuscript (regeneratable)
-4. Section-by-section reading with SSE streaming reactions
-5. Per-reader memory compression between sections
-6. Editor AI report with engagement chart + recommendations
-7. Model selector (gpt-4o, claude, gemini, etc.)
+1. Google OAuth authentication (Emergent-managed)
+2. User dashboard — list + access manuscripts
+3. Manuscript upload — paste text OR upload .txt/.docx file
+4. Auto genre + audience detection (editable)
+5. 5 distinct reader personas generated per manuscript (regeneratable)
+6. Section-by-section reading with SSE streaming reactions
+7. Per-reader memory compression between sections
+8. Editor AI report with synthesized feedback
+9. Model selector (gpt-4o-mini, claude, gemini, etc.)
 
-## What's Been Implemented (Feb 2026 — v3 resiliency update)
-- **Backend resiliency (6-point plan, fully tested)**:
-  - `asyncio.wait_for(timeout=45)` on every OpenAI API call in `get_reader_inline_reaction()`
-  - JSON parse failure fallback: returns partial data + `_parse_warning` flag instead of crashing
-  - `process_reader()` emits `reader_warning` (non-terminal) + `reader_complete` (terminal), or `reader_error` on timeout
-  - Queue drain changed from count-based to terminal-event-based with `asyncio.wait_for(timeout=120)` absolute safety net
-  - `return_exceptions=True` on `asyncio.gather` (already existed, confirmed)
-  - Extensive `logger.info/warning/error` logging at every pipeline step
-- **Frontend stall detection**:
-  - `lastEventTimeRef` tracks time of last SSE event
-  - `useEffect` polls every 10 seconds; sets `isStalled=true` if 60s elapsed with no events
-  - Stall banner (`data-testid=stall-warning-banner`) appears with **Retry** and **View partial results** buttons
-  - `handleRetry()` closes old stream and restarts reading (backend skips completed sections)
-  - `handleViewPartial()` marks reading as done and allows report generation with partial data
-- **New SSE event types handled on frontend**:
-  - `reader_warning` → `toast.warning()` (soft, 4s)
-  - `reader_crashed` → `toast.error()` + clears from ThinkingStrip
-  - `reading_complete` → alias for `all_complete` (for forward compatibility)
-  - `reader_error` → also now clears the reader from ThinkingStrip
+## What's Been Implemented (March 2026 — v4)
 
+### Authentication (DONE)
+- Emergent-managed Google OAuth integration
+- Session token stored in localStorage
+- All manuscript endpoints protected with user_id filtering
+- Dashboard, Setup, Reading, Report pages all require auth
+- Login page with Google sign-in button
 
-- **Auto-reading**: clicking Start Reading triggers full automatic read of all sections via `/read-all` SSE endpoint. No manual section navigation.
-- **Inline annotations**: reader output is JSON `{inline_comments: [{line, type, comment}], section_reflection, memory_update}`. Line numbers are global across the full manuscript.
-- **Continuous manuscript view**: full manuscript rendered as scrollable document with all sections. Each paragraph has a `data-line` attribute.
-- **Margin dots**: colored dots in left margin per paragraph with comments. Multiple readers stack. Click to open popover.
-- **Comment popover**: shows all reader comments for that line with reader avatar, name, type badge (color-coded), and comment text. Closes on Escape or click-away.
-- **Reader sidebar panels**: per-reader collapsible panels showing status (Reading section N / Done), section reflections, comment count, and "show all comments" toggle.
-- **Type filter**: 7 comment types (reaction, prediction, confusion, critique, praise, theory, comparison) filterable via chips.
-- **Persona generation**: now includes `personality_specific_instructions` for each reader's unique analytical lens.
-- **Editor report**: adapted to read from inline_comments format.
-- Full setup flow: manuscript → genre detection → reader panel
-- 5 reader archetypes: analytical (0.5 temp), emotional (0.9), casual (0.9), skeptical (0.7), genre_savvy (0.7)
-- SSE streaming via asyncio.as_completed() — reactions appear as they complete
-- Memory compression: analytical keeps 8 events, casual keeps 3, others keep 5
-- Editor report: executive summary, consensus findings, character impressions, prediction accuracy, engagement heatmap, 5-7 recommendations
-- Model switcher (UI + API) supporting OpenAI, Anthropic, Gemini
-- Literary UI: paper #FDFBF7, clay #C86B56, Cormorant Garamond serif
+### .docx File Upload (DONE)
+- Backend: `POST /api/manuscripts/upload` parses .docx via python-docx
+- Frontend: drag-and-drop zone in SetupPage.js
+- File type display (uploadedFileName state)
+- .txt files handled locally; .docx sent to backend
+- Auth headers included in upload requests
+
+### Backend Resiliency (DONE)
+- asyncio.wait_for(timeout=45) on every OpenAI API call
+- JSON parse failure fallback with _parse_warning flag
+- reader_warning / reader_error / reader_complete terminal events
+- Queue drain with asyncio.wait_for(timeout=120) safety net
+- Extensive logging throughout pipeline
+
+### Frontend Resiliency (DONE)
+- 60-second stall detector in useReadingStream.js
+- Stall banner with Retry and View Partial Results
+- reader_warning → toast.warning(), reader_crashed → toast.error()
+- useRef guard preventing double SSE connections (React StrictMode fix)
+
+### Backend Refactor (DONE)
+- Split monolithic server.py into config.py, models.py, utils.py, services/, routers/
+
+### Frontend Refactor (DONE)
+- ReadingPage.js decomposed into ManuscriptView, ReaderSidebar, CommentPopover, ProgressBar, StallBanner, useReadingStream.js hook
+
+### Reading UI (DONE)
+- Continuous scrollable manuscript with margin annotation dots
+- Comment popover with reader details and type badges
+- Reader sidebar with status, reflections, comment count
+- Type filter chips (reaction, prediction, confusion, critique, praise, theory, comparison)
+- Auto-reading with SSE streaming
+- Reading completion detection + Editor Report generation
+
+### Cosmetic Fix (DONE)
+- ManuscriptView.jsx: "1 sections" → "1 section" (proper singular/plural)
+
+## Test Results (Iteration 6 — March 2026)
+- Backend: 100% (34/34 tests pass)
+- Frontend: 100% (all critical flows pass)
+- .docx upload: verified end-to-end
+- Auth protection: verified (401 without token)
+- totalSections banner bug: confirmed fixed
 
 ## Prioritized Backlog
 
-### P0 (Critical — not yet implemented)
-- [ ] User authentication (JWT or Google OAuth)
-- [ ] Manuscript save/resume sessions
-
-### P1 (High value)
-- [ ] Reader "disagreement" highlighting (show where readers diverge)
-- [ ] Downloadable PDF report
-- [ ] Per-section engagement notes on heatmap tooltips
-- [ ] .docx file upload support
-
 ### P2 (Nice to have)
+- [ ] PDF export for editor report
+- [ ] Payment/Billing integration (Stripe)
+- [ ] Landing/marketing page
+- [ ] Reader "disagreement" highlighting (divergence visualization)
+- [ ] Per-section engagement heatmap tooltips
 - [ ] Manuscript version history
-- [ ] Inline annotations view (reactions linked to specific paragraphs)
-- [ ] Reader "favorites" — readers can flag standout passages
-- [ ] Export reader memories as character Bible
+- [ ] Export reader memories as character bible
 
 ## Next Tasks
-1. Add auth (JWT or Emergent Google Auth)
-2. Add PDF download for editor report
-3. .docx upload support
-4. Improve disagreement visualization between readers
-5. Refactor `backend/server.py` (979 lines) into modules: `models.py`, `routers/`, `services/`
-6. Refactor `frontend/src/pages/ReadingPage.js` (1060 lines) into sub-components / custom hooks
+1. PDF download for editor report
+2. Stripe billing integration
+3. Marketing/landing page
+4. Disagreement visualization between readers
