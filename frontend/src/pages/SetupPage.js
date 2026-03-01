@@ -101,10 +101,12 @@ export default function SetupPage() {
     }
     setLoading(true);
     try {
+      const token = localStorage.getItem("session_token");
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
       const res = await axios.post(`${API}/manuscripts`, {
         title: title || "Untitled Manuscript",
         raw_text: text,
-      });
+      }, { headers, withCredentials: true });
       setManuscript(res.data);
       setGenre({
         genre: res.data.genre,
