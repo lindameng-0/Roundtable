@@ -506,7 +506,12 @@ export default function ReadingPage() {
           setReflections((prev) => [...prev, { readerId: reader_id, section_number, reflection: section_reflection }]);
         }
 
-        // Update reader status
+        // Update reader status + clear thinking state
+        setThinkingReaders((prev) => {
+          const next = new Map(prev);
+          next.delete(reader_id);
+          return next;
+        });
         setReaderStatus((prev) => {
           const cur = prev[reader_id] || {};
           return {
