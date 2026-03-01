@@ -37,12 +37,23 @@ def compress_memory(memories: List[Dict], personality: str) -> Dict:
     }
     for m in memories:
         mj = m.get("memory_json", {})
-        combined["plot_events"].extend(mj.get("plot_events", []))
-        combined["character_notes"].update(mj.get("character_notes", {}))
-        combined["predictions"].extend(mj.get("predictions", []))
-        combined["questions"].extend(mj.get("questions", []))
-        if mj.get("emotional_state"):
-            combined["emotional_state"] = mj["emotional_state"]
+        if not isinstance(mj, dict):
+            continue
+        pe = mj.get("plot_events")
+        if isinstance(pe, list):
+            combined["plot_events"].extend(pe)
+        cn = mj.get("character_notes")
+        if isinstance(cn, dict):
+            combined["character_notes"].update(cn)
+        pred = mj.get("predictions")
+        if isinstance(pred, list):
+            combined["predictions"].extend(pred)
+        q = mj.get("questions")
+        if isinstance(q, list):
+            combined["questions"].extend(q)
+        es = mj.get("emotional_state")
+        if isinstance(es, str) and es:
+            combined["emotional_state"] = es
 
     combined["plot_events"] = combined["plot_events"][-3:]
     combined["predictions"] = combined["predictions"][-3:]
@@ -51,7 +62,7 @@ def compress_memory(memories: List[Dict], personality: str) -> Dict:
     if len(char_notes) > 3:
         combined["character_notes"] = dict(list(char_notes.items())[-3:])
     combined["character_notes"] = {
-        k: v.split(".")[0] + "." if isinstance(v, str) and "." in v else v
+        k: (v.split(".")[0] + "." if isinstance(v, str) and "." in v else v)
         for k, v in combined["character_notes"].items()
     }
     return combined
@@ -293,6 +304,8 @@ async def get_reader_inline_reaction(
         parsed.get("inline_comments", []), line_start, prompt_line_end
     )
     section_reflection = parsed.get("section_reflection")
+    if section_reflection is not None and not isinstance(section_reflection, str):
+        section_reflection = str(section_reflection)
     memory_update = parsed.get("memory_update", {})
 
     # ── Save reaction ─────────────────────────────────────────────────────────
@@ -300,7 +313,7 @@ async def get_reader_inline_reaction(
         "id": str(uuid.uuid4()),
         "manuscript_id": manuscript_id,
         "reader_id": reader["id"],
-        "reader_name": reader["name"],
+        "reader_name": reader_name,
         "section_number": section_number,
         "inline_comments": inline_comments,
         "section_reflection": section_reflection,

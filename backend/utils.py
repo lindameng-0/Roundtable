@@ -108,7 +108,7 @@ def now_iso() -> str:
 def validate_inline_comments(
     comments: List[Dict], line_start: int, line_end: int
 ) -> List[Dict]:
-    """Clamp out-of-range line numbers to the nearest valid line."""
+    """Clamp out-of-range line numbers to the nearest valid line. Ensure comment is a string for JSONB."""
     valid = []
     for c in comments:
         if not isinstance(c, dict):
@@ -120,9 +120,14 @@ def validate_inline_comments(
             except (TypeError, ValueError):
                 continue
         line = max(line_start, min(line_end, line))
+        comment_val = c.get("comment")
+        if comment_val is not None and not isinstance(comment_val, str):
+            comment_val = str(comment_val)
+        else:
+            comment_val = comment_val or ""
         valid.append({
             "line": line,
-            "type": c.get("type", "reaction"),
-            "comment": c.get("comment", ""),
+            "type": c.get("type", "reaction") if isinstance(c.get("type"), str) else "reaction",
+            "comment": comment_val,
         })
     return valid
