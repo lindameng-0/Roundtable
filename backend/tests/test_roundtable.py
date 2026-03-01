@@ -147,19 +147,17 @@ class TestPersonaGeneration:
 
     def test_personas_endpoint_returns_200(self, created_manuscript):
         mid = created_manuscript["id"]
-        # Generate personas
-        resp = requests.post(
-            f"{BASE_URL}/api/manuscripts/{mid}/generate-personas",
+        # GET auto-generates if no personas exist
+        resp = requests.get(
+            f"{BASE_URL}/api/manuscripts/{mid}/personas",
             timeout=120
         )
-        assert resp.status_code == 200, f"Generate personas failed: {resp.status_code} {resp.text}"
-        print(f"PASS: POST /api/manuscripts/{mid}/generate-personas returned 200")
+        assert resp.status_code == 200, f"Get/generate personas failed: {resp.status_code} {resp.text}"
+        print(f"PASS: GET /api/manuscripts/{mid}/personas returned 200")
 
     def test_personas_returns_5_personas(self, created_manuscript):
         mid = created_manuscript["id"]
-        # First generate, then fetch
-        requests.post(f"{BASE_URL}/api/manuscripts/{mid}/generate-personas", timeout=120)
-        resp = requests.get(f"{BASE_URL}/api/manuscripts/{mid}/personas", timeout=30)
+        resp = requests.get(f"{BASE_URL}/api/manuscripts/{mid}/personas", timeout=120)
         assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
         data = resp.json()
         assert isinstance(data, list)
