@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 5 — Post-refactor regression testing. Backend server.py split into config.py, models.py, utils.py, services/, routers/; frontend ReadingPage.js split into hook/components. All 22 backend tests pass (100%). All critical frontend flows verified: SetupPage loads, ReadingPage loads, manuscript-panel, reactions-sidebar, thinking-strip, comment-popover, generate-report-btn all working. One minor UI bug found: 'totalSections' shows 0 in the reading-complete-banner when reading was pre-completed (not started from this session). All backend routes, SSE events, and UI components are functionally correct post-refactor.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "ManuscriptView.jsx + useReadingStream.js",
+        "issue": "Reading-complete-banner shows '15 annotations across 0 sections' instead of the correct section count. Root cause: totalSections in useReadingStream.js starts at 0 and is only set when the SSE 'start' event fires. When reading is pre-completed (all reactions exist), loadExistingReactions is called and readingDone is set to true, but totalSections is never updated because startReadingAll (which triggers the SSE start event) is skipped. Fix: export setTotalSections from the hook and call it in ReadingPage.loadData(), or pass manuscript.total_sections to ManuscriptView directly.",
+        "selector": "[data-testid='reading-complete-banner']",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_roundtable.py",
+    "/app/test_reports/pytest/pytest_results_iter5.xml"
+  ],
+  "action_items": [
+    "Fix totalSections showing 0 in reading-complete-banner when reading was pre-completed: export setTotalSections from useReadingStream.js and call it with mRes.data.total_sections in ReadingPage.loadData(), or pass manuscript.total_sections directly to ManuscriptView for display."
+  ],
+  "critical_code_review_comments": [
+    "CommentPopover.jsx exists as a standalone component file but is never imported anywhere — it is dead code from the refactor. The actual popover is defined as an inline function inside ManuscriptView.jsx. The standalone CommentPopover.jsx should either be used (replace the inline one) or removed to avoid confusion.",
+    "useReadingStream.js does not export setTotalSections, so ReadingPage cannot update totalSections when loading pre-completed reading data. This results in the '0 sections' bug in the reading-complete-banner.",
+    "The stall detection interval in useReadingStream.js runs even on the initial page load before SSE starts (lastEventTimeRef = Date.now()). Since it takes ~30-60s for persona generation + SSE to complete, and stall triggers at 60s, there is a risk of a false-positive stall banner appearing during slow persona generation. Currently mitigated because lastEventTimeRef is reset on any SSE event, but worth documenting."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% (22/22 tests passed)",
+    "frontend": "95% (all critical flows pass; 1 minor display bug)"
+  },
+  "seed_data_creation": "Created TEST_IT5_Reading manuscript (id: 9745ee93-765f-47b8-b800-161ae7c45146) for frontend testing. Reading completed with 5 readers, 15 annotations.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Post-refactor iteration 5. All backend routes work correctly via the new routers/api.py structure. All frontend components (ManuscriptView, ReaderSidebar, ProgressBar, CommentPopover inline, StallBanner, ThinkingStrip) render correctly. The one bug to fix: totalSections=0 in reading-complete-banner when returning to an already-read manuscript. CommentPopover.jsx is dead code (the inline one in ManuscriptView.jsx is used). Route for ReadingPage is /read/:manuscriptId (not /reading/:manuscriptId as mentioned in review request). Test manuscript: 9745ee93-765f-47b8-b800-161ae7c45146.",
+  "rca_of_issue": "totalSections bug: useReadingStream.js initializes totalSections=0 and only sets it when SSE 'start' event fires (in the startReadingAll callback). When a manuscript has already been read and the user returns to ReadingPage, the loadData() function calls loadExistingReactions() + setReadingDone(true), bypassing startReadingAll entirely. Therefore the SSE stream never opens, the 'start' event never fires, and totalSections remains 0. Fix: in useReadingStream.js, export setTotalSections; in ReadingPage.loadData(), call setTotalSections(mRes.data.total_sections || 0) before setReadingDone(true)."
+}
