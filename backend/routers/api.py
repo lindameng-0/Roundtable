@@ -269,8 +269,8 @@ async def regenerate_personas(manuscript_id: str, req: RegenerateRequest):
 # ─── Reading: SSE Stream ──────────────────────────────────────────────────────
 
 @api_router.get("/manuscripts/{manuscript_id}/read-all")
-async def read_all_sections_stream(manuscript_id: str):
-    """SSE: auto-reads all sections sequentially, 5 readers in parallel per section."""
+async def read_all_sections_stream(manuscript_id: str, request: Request):
+    """SSE: auto-reads all sections sequentially, 5 readers in parallel per section. Pauses when client disconnects."""
     manuscript = await db.manuscripts.find_one({"id": manuscript_id}, {"_id": 0})
     if not manuscript:
         raise HTTPException(404, "Manuscript not found")
@@ -287,6 +287,10 @@ async def read_all_sections_stream(manuscript_id: str):
         yield f"data: {json.dumps({'type': 'start', 'total_sections': total_sections, 'total_readers': len(readers)})}\n\n"
 
         for section in sorted(sections, key=lambda s: s["section_number"]):
+            if await request.is_disconnected():
+                logger.info("Client disconnected — pausing read-all stream")
+                return
+
             sn = section["section_number"]
 
             # Skip sections where all readers already have reactions (idempotent on reconnect)
@@ -318,6 +322,13 @@ async def read_all_sections_stream(manuscript_id: str):
             terminal_count = 0
             section_deadline = asyncio.get_event_loop().time() + 120
             while terminal_count < len(readers):
+                if await request.is_disconnected():
+                    logger.info("Client disconnected — cancelling reader tasks for section %s", sn)
+                    for t in reader_tasks:
+                        t.cancel()
+                    await asyncio.gather(*reader_tasks, return_exceptions=True)
+                    return
+
                 remaining = section_deadline - asyncio.get_event_loop().time()
                 if remaining <= 0:
                     logger.error(f"Section {sn}: 120s deadline reached — some readers stalled. Moving on.")

@@ -30,7 +30,7 @@ export default function ReadingPage() {
     handleRetry, handleViewPartial,
   } = useReadingStream(manuscriptId);
 
-  // Close stream on unmount
+  // Close stream when user leaves the page so the backend pauses reader pipelines
   useEffect(() => {
     return () => { esRef.current?.close(); };
   }, [esRef]);
