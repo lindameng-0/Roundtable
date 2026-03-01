@@ -10,6 +10,7 @@ class ManuscriptCreate(BaseModel):
 class ManuscriptResponse(BaseModel):
     id: str
     title: str
+    user_id: Optional[str] = None
     genre: Optional[str] = None
     target_audience: Optional[str] = None
     age_range: Optional[str] = None
