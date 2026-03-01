@@ -98,7 +98,10 @@ async def create_session(request: Request, response: Response):
         path="/",
     )
 
-    return {"user": {"user_id": user_id, "email": email, "name": name, "picture": picture}}
+    return {
+        "user": {"user_id": user_id, "email": email, "name": name, "picture": picture},
+        "session_token": session_token,
+    }
 
 
 @auth_router.get("/me")
