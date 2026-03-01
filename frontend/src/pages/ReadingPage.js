@@ -456,15 +456,20 @@ export default function ReadingPage() {
 
       // Load existing reactions (for resumed sessions)
       const rRes = await axios.get(`${API}/manuscripts/${manuscriptId}/all-reactions`);
-      if (rRes.data && rRes.data.length > 0) {
-        loadExistingReactions(rRes.data, pRes.data);
-        // Check if all sections are done
-        const sectionsWithReactions = new Set(rRes.data.map((r) => r.section_number));
-        if (mRes.data.total_sections > 0 && sectionsWithReactions.size >= mRes.data.total_sections) {
-          setReadingDone(true);
-        }
+      const totalSecs = mRes.data.total_sections || 0;
+      const existingReactions = rRes.data || [];
+      const sectionsWithReactions = new Set(existingReactions.map((r) => r.section_number));
+      const allDone = totalSecs > 0 && sectionsWithReactions.size >= totalSecs &&
+        existingReactions.length >= totalSecs * pRes.data.length;
+
+      if (existingReactions.length > 0) {
+        loadExistingReactions(existingReactions, pRes.data);
+      }
+
+      if (allDone) {
+        setReadingDone(true);
       } else {
-        // Auto-start reading
+        // Start (or resume) reading — backend will skip already-completed sections
         startReadingAll(mRes.data, pRes.data);
       }
     } catch (err) {
