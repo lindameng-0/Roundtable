@@ -12,6 +12,20 @@ from config import db
 
 logger = logging.getLogger(__name__)
 
+# Limit concurrent LiteLLM calls to 3.
+# This ensures all 5 readers complete their MongoDB memory fetches BEFORE
+# any LiteLLM call starts blocking the thread pool executor.
+# Without this, LiteLLM fills the thread pool and Motor MongoDB queries
+# queue up for 12+ seconds, eventually hitting asyncio.wait_for timeouts
+# that cancel Motor coroutines mid-flight and corrupt the connection pool.
+_llm_semaphore: asyncio.Semaphore | None = None
+
+def _get_llm_semaphore() -> asyncio.Semaphore:
+    global _llm_semaphore
+    if _llm_semaphore is None:
+        _llm_semaphore = asyncio.Semaphore(3)
+    return _llm_semaphore
+
 FULL_PROMPT_RULES = """RULES FOR INLINE COMMENTS:
 - BE SELECTIVE. A real reader does not react to every paragraph. Most of the text you just read and move on. You only comment when something genuinely provokes a reaction — surprise, confusion, delight, suspicion, frustration, or a strong opinion.
 - For a typical section of 20-40 paragraphs, you should leave 3-6 comments. Not more. If a section is uneventful, 2-3 comments is fine. If a section has a major twist or climax, you might go up to 7-8. Never exceed 8.
