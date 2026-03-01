@@ -223,11 +223,18 @@ async def get_personas(manuscript_id: str):
         manuscript = await db.manuscripts.find_one({"id": manuscript_id}, {"_id": 0})
         if not manuscript:
             raise HTTPException(404, "Manuscript not found")
-        return await generate_all_personas(
-            manuscript_id,
-            manuscript.get("genre", "Fiction"),
-            manuscript.get("target_audience", "General readers"),
-        )
+        try:
+            return await generate_all_personas(
+                manuscript_id,
+                manuscript.get("genre", "Fiction"),
+                manuscript.get("target_audience", "General readers"),
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.exception("Persona generation failed for manuscript %s", manuscript_id)
+            msg = str(e).strip() or "LLM or database error"
+            raise HTTPException(503, f"Reader generation failed: {msg}")
     return [ReaderPersonaResponse(**p) for p in personas]
 
 
