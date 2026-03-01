@@ -724,6 +724,8 @@ async def read_all_sections_stream(manuscript_id: str):
 
             await asyncio.gather(*reader_tasks, return_exceptions=True)
             yield f"data: {json.dumps({'type': 'section_complete', 'section_number': sn})}\n\n"
+            # Keep-alive comment between sections so proxy doesn't timeout
+            yield ": keep-alive\n\n"
 
         yield f"data: {json.dumps({'type': 'all_complete'})}\n\n"
 
