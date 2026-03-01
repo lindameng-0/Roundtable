@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { UserMenu } from "../components/UserMenu";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { Upload, FileText, ChevronRight, RefreshCw, X, Plus, BookOpen } from "lucide-react";
@@ -159,7 +160,10 @@ export default function SetupPage() {
             </h1>
             <p className="text-xs text-ink-400 tracking-widest uppercase mt-0.5">A panel of readers for your story</p>
           </div>
-          <ModelSelector />
+          <div className="flex items-center gap-4">
+            <ModelSelector />
+            <UserMenu />
+          </div>
         </div>
       </header>
 
