@@ -85,10 +85,17 @@ Return ONLY a valid JSON object (no markdown):
             return ", ".join(str(x) for x in val)
         return val if isinstance(val, str) else default
 
+    raw_name = data.get("name")
+    if isinstance(raw_name, str):
+        raw_name = raw_name.strip()
+    if not raw_name:
+        raw_name = f"Reader {avatar_index + 1}"
+    name = raw_name
+
     return {
         "id": str(uuid.uuid4()),
         "manuscript_id": manuscript_id,
-        "name": data.get("name", f"Reader {avatar_index + 1}"),
+        "name": name,
         "age": data.get("age", 35) if isinstance(data.get("age"), int) else 35,
         "occupation": _coerce(data.get("occupation"), "Reader"),
         "personality": archetype_info["archetype"],

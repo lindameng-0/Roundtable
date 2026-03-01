@@ -146,7 +146,7 @@ async def get_reader_inline_reaction(
     line_start = section["line_start"]
     line_end = section["line_end"]
     paragraph_lines = section.get("paragraph_lines", [])
-    reader_name = reader.get("name", "Unknown")
+    reader_name = (reader.get("name") or "").strip() or f"Reader {reader.get('avatar_index', 0) + 1}"
 
     if not paragraph_lines or line_start > line_end:
         logger.warning(f"[{reader_name}] Section {section_number}: no paragraph_lines or invalid range, skipping")
@@ -154,7 +154,7 @@ async def get_reader_inline_reaction(
             "id": str(uuid.uuid4()),
             "manuscript_id": manuscript_id,
             "reader_id": reader["id"],
-            "reader_name": reader["name"],
+            "reader_name": reader_name,
             "section_number": section_number,
             "inline_comments": [],
             "section_reflection": None,
@@ -163,7 +163,7 @@ async def get_reader_inline_reaction(
         await db.reader_reactions.insert_one({**reaction_doc})
         return {
             "reader_id": reader["id"],
-            "reader_name": reader["name"],
+            "reader_name": reader_name,
             "avatar_index": reader.get("avatar_index", 0),
             "personality": reader.get("personality", ""),
             "section_number": section_number,
@@ -326,7 +326,7 @@ async def get_reader_inline_reaction(
 
     return {
         "reader_id": reader["id"],
-        "reader_name": reader["name"],
+        "reader_name": reader_name,
         "avatar_index": reader.get("avatar_index", 0),
         "personality": reader.get("personality", ""),
         "section_number": section_number,
@@ -348,7 +348,7 @@ async def reader_pipeline(
     Top-level pipeline for one reader on one section.
     No exception can escape silently — terminal event always goes into queue.
     """
-    reader_name = reader.get("name", "Unknown")
+    reader_name = (reader.get("name") or "").strip() or f"Reader {reader.get('avatar_index', 0) + 1}"
     logger.info(f"Starting reader pipeline: {reader_name}")
     try:
         # Duplicate guard: if two concurrent SSE connections both try to process

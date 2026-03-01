@@ -276,6 +276,18 @@ async def read_all_sections_stream(manuscript_id: str, request: Request):
         raise HTTPException(404, "Manuscript not found")
 
     sections = manuscript.get("sections", [])
+    raw_text = (manuscript.get("raw_text") or "").strip()
+    # Re-section if any section has no paragraph_lines (e.g. old manuscripts) so readers run on all sections
+    if raw_text and any(not (s.get("paragraph_lines")) or s.get("line_start", 0) > s.get("line_end", -1) for s in sections):
+        logger.info("Manuscript has sections with no paragraph_lines or invalid range — re-sectioning from raw_text")
+        new_sections, total_lines = split_manuscript(raw_text)
+        update = {"sections": new_sections, "total_sections": len(new_sections), "total_lines": total_lines}
+        await db.manuscripts.update_one({"id": manuscript_id}, {"$set": update})
+        manuscript["sections"] = new_sections
+        manuscript["total_sections"] = len(new_sections)
+        manuscript["total_lines"] = total_lines
+        sections = new_sections
+
     readers = await db.reader_personas.find({"manuscript_id": manuscript_id}, {"_id": 0}).to_list(10)
     if not readers:
         raise HTTPException(404, "No readers found. Generate personas first.")
@@ -314,7 +326,8 @@ async def read_all_sections_stream(manuscript_id: str, request: Request):
 
             # Emit thinking events immediately for all readers (before any await)
             for reader in readers:
-                yield f"data: {json.dumps({'type': 'reader_thinking', 'reader_id': reader['id'], 'reader_name': reader.get('name'), 'avatar_index': reader.get('avatar_index', 0), 'personality': reader.get('personality', ''), 'section_number': sn})}\n\n"
+                rname = (reader.get("name") or "").strip() or f"Reader {reader.get('avatar_index', 0) + 1}"
+                yield f"data: {json.dumps({'type': 'reader_thinking', 'reader_id': reader['id'], 'reader_name': rname, 'avatar_index': reader.get('avatar_index', 0), 'personality': reader.get('personality', ''), 'section_number': sn})}\n\n"
 
             # Launch all readers in parallel
             reader_tasks = [

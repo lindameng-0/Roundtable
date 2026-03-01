@@ -52,7 +52,15 @@ class ReaderPersonaResponse(BaseModel):
             return ", ".join(str(x) for x in v)
         if v is None:
             return ""
-        return v
+        return str(v) if str(v).strip() else ""
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def ensure_name(cls, v):
+        if v is None:
+            return "Reader"
+        s = str(v).strip()
+        return s if s else "Reader"
 
 
 class RegenerateRequest(BaseModel):
