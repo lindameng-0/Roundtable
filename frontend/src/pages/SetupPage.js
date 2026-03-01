@@ -9,9 +9,10 @@ import ModelSelector from "../components/ModelSelector";
 
 const API = process.env.REACT_APP_BACKEND_URL + "/api";
 
-// Chunked upload: if request body would exceed this (bytes), send in chunks to avoid 413
-const SAFE_BODY_SIZE = 100 * 1024 * 1024; // 100MB — full-length books (500+ pages)
-const CHUNK_CHARS = 400 * 1024; // 400K chars per chunk
+// Chunked upload: if request body would exceed this (bytes), send in chunks to avoid 413.
+// Use a conservative 90KB so we stay under typical proxy/h11 limits (~1MB or 16KB); backend allows 100MB.
+const SAFE_BODY_SIZE = 90 * 1024; // 90KB
+const CHUNK_CHARS = 80 * 1024; // 80K chars per chunk (~80KB per request)
 
 const STEPS = ["manuscript", "genre", "readers"];
 
