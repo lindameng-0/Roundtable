@@ -19,24 +19,56 @@ import subprocess
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
 
-# 3-section manuscript with clear chapter headings (100-150 words per section)
-THREE_SECTION_MANUSCRIPT = """Chapter 1
+# ---
+# Each chapter must be >= 2000 words to avoid the BATCH_THRESHOLD=2000 batching logic.
+# We build each chapter by repeating a unique paragraph block to hit 2000+ words.
+# ---
 
-Elena wiped down the counter for the third time that morning. The café was empty, the rain outside smearing the windows into impressionist blurs. She had found the letter wedged under the door, unmarked, unsigned, the handwriting unfamiliar but somehow intimate.
+def _make_chapter(title: str, seed: str, target_words: int = 2050) -> str:
+    """Generate a chapter with target_words by repeating paragraph content."""
+    base_para = (
+        f"{seed} "
+        "Elena stood at the edge of the water and listened to the silence. "
+        "There was a coldness to the air that had nothing to do with the season. "
+        "She counted her breaths. Three in, three out. The lake didn't move. "
+        "Marcus had told her once that still water was never really still — "
+        "it was just waiting. She hadn't believed him then. She believed him now. "
+        "The old boathouse groaned against its moorings, the wood swollen with years of rain. "
+        "Inside, she knew, was the piano. Inside was the letter. Inside was the answer "
+        "to a question she hadn't thought to ask for seven years. She stepped forward. "
+        "The gravel shifted under her boots. "
+    )
+    words = base_para.split()
+    # Repeat to get enough words
+    full_words = []
+    while len(full_words) < target_words:
+        full_words.extend(words)
+    # Break into paragraphs of ~60 words
+    paragraphs = []
+    for i in range(0, len(full_words[:target_words]), 60):
+        chunk = full_words[i:i+60]
+        if chunk:
+            paragraphs.append(" ".join(chunk))
+    return f"{title}\n\n" + "\n\n".join(paragraphs)
 
-She unfolded it slowly. It read: "You were there. You saw what happened. Don't pretend you didn't." Her hands were steady but her mind was racing. She hadn't been back to the lake house in seven years.
 
-Chapter 2
-
-Detective Marcus Webb arrived at Harlow Point with a thermos of cold coffee and a fresh theory. The old boathouse had burned twice — once in 1998 and again three weeks ago. Arson, both times. Nobody charged.
-
-He stood at the waterline and looked at the scorched foundation. The groundskeeper said he'd heard music the night of the second fire. Piano music, which was strange because the piano had been removed decades ago.
-
-Chapter 3
-
-The photograph arrived in Elena's mailbox with no postage, no return address. It showed her standing at the boathouse window in the rain, taken from behind. The timestamp on the back read 3:47 AM — the exact time of the second fire.
-
-She called Marcus from a payphone. He didn't answer. When she turned around, there was a figure standing at the end of her street in a yellow rain jacket, facing her, completely still."""
+THREE_SECTION_MANUSCRIPT = "\n\n".join([
+    _make_chapter(
+        "Chapter 1",
+        "Elena wiped down the counter for the third time that morning.",
+        2100
+    ),
+    _make_chapter(
+        "Chapter 2",
+        "Detective Marcus Webb arrived at Harlow Point with cold coffee and a fresh theory.",
+        2100
+    ),
+    _make_chapter(
+        "Chapter 3",
+        "The photograph arrived with no postage, no return address, face down in the mailbox.",
+        2100
+    ),
+])
 
 manuscript_id_store = {}
 reactions_store = {}
