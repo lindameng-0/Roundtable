@@ -59,8 +59,8 @@ function App() {
             <Route path="/report/:manuscriptId" element={<ReportPage />} />
 
             {/* Root: redirect based on auth */}
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/" element={<RootRedirect />} />
+            <Route path="*" element={<Navigate to="/setup" replace />} />
           </Routes>
         </BrowserRouter>
       </AuthProvider>
