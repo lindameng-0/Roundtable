@@ -98,6 +98,7 @@ async def create_manuscript(manuscript: ManuscriptCreate, request: Request):
     doc = {
         "id": doc_id,
         "title": manuscript.title or "Untitled Manuscript",
+        "user_id": user_id,
         "raw_text": raw_text,
         "genre": genre_data.get("genre", "Fiction"),
         "target_audience": genre_data.get("target_audience", "General readers"),
