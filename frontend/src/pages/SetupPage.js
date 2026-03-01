@@ -108,10 +108,12 @@ export default function SetupPage() {
       const token = localStorage.getItem("session_token");
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
       const payload = { title: title || "Untitled Manuscript", raw_text: text };
-      const bodySize = new Blob([JSON.stringify(payload)]).size;
+      const payloadStr = JSON.stringify(payload);
+      // Use byte length (UTF-8), not string length — so we compare bytes to bytes
+      const bodySizeBytes = new TextEncoder().encode(payloadStr).length;
 
       let res;
-      if (bodySize <= SAFE_BODY_SIZE) {
+      if (bodySizeBytes <= SAFE_BODY_SIZE) {
         res = await axios.post(`${API}/manuscripts`, payload, { headers, withCredentials: true });
       } else {
         // Chunked upload to avoid 413 (proxy body limit)
@@ -140,12 +142,17 @@ export default function SetupPage() {
       setStep("genre");
     } catch (err) {
       const status = err.response?.status;
+      const payloadStr = JSON.stringify({ title: title || "Untitled Manuscript", raw_text: text });
+      const bodySizeBytes = new TextEncoder().encode(payloadStr).length;
+      const sizeMB = (bodySizeBytes / (1024 * 1024)).toFixed(2);
       const msg =
         status === 413
-          ? "Manuscript is too large for the server limit (max 100MB)."
+          ? bodySizeBytes <= SAFE_BODY_SIZE
+            ? `Server rejected the request (413). Your manuscript is ${sizeMB} MB, under the 100 MB limit — the server may need a higher upload limit.`
+            : "Manuscript is too large for the server limit (max 100 MB)."
           : (err.response?.data?.detail ?? err.response?.data?.message ?? err.message ?? "Failed to process manuscript. Please try again.");
-      const text = Array.isArray(msg) ? msg.map((m) => m.msg ?? m).join(", ") : msg;
-      toast.error(text);
+      const msgText = Array.isArray(msg) ? msg.map((m) => m.msg ?? m).join(", ") : msg;
+      toast.error(msgText);
     } finally {
       setLoading(false);
     }
