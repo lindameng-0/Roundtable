@@ -2,8 +2,8 @@ import re
 from typing import List, Dict, Tuple
 
 TARGET_WORDS_PER_SECTION = 500   # target chunk size when sub-splitting large chapters
-BATCH_THRESHOLD = 2000           # chapters under this get batched together
-SPLIT_THRESHOLD = 5000           # chapters over this get sub-split
+BATCH_THRESHOLD = 800            # chapters under this get batched together
+SPLIT_THRESHOLD = 2000           # chapters over this get sub-split
 
 _scene_break_pattern = re.compile(
     r'\n[ \t]*(?:\*{2,}|\-{2,}|#{2,}|~{2,}|_{2,}|\.{3,})[ \t]*\n|\n{3,}',
