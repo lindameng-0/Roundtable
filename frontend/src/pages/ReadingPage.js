@@ -9,7 +9,7 @@ import { ProgressBar } from "../components/ProgressBar";
 import { ManuscriptView } from "../components/ManuscriptView";
 import { ReaderSidebar } from "../components/ReaderSidebar";
 
-const API = process.env.REACT_APP_BACKEND_URL + "/api";
+const API = (process.env.REACT_APP_BACKEND_URL || "http://localhost:8000").replace(/\/$/, "") + "/api";
 
 export default function ReadingPage() {
   const { manuscriptId } = useParams();
@@ -47,24 +47,32 @@ export default function ReadingPage() {
         axios.get(`${API}/manuscripts/${manuscriptId}`),
         axios.get(`${API}/manuscripts/${manuscriptId}/personas`),
       ]);
+      const personaList = Array.isArray(pRes.data) ? pRes.data : [];
       setManuscript(mRes.data);
-      setPersonas(pRes.data);
+      setPersonas(personaList);
 
       const rRes = await axios.get(`${API}/manuscripts/${manuscriptId}/all-reactions`);
       const totalSecs = mRes.data.total_sections || 0;
       const existing = rRes.data || [];
       const sectionsWithReactions = new Set(existing.map((r) => r.section_number));
-      const allDone = totalSecs > 0 && sectionsWithReactions.size >= totalSecs && existing.length >= totalSecs * pRes.data.length;
+      const allDone = totalSecs > 0 && personaList.length > 0 && sectionsWithReactions.size >= totalSecs && existing.length >= totalSecs * personaList.length;
 
-      if (existing.length > 0) loadExistingReactions(existing, pRes.data);
+      if (existing.length > 0) loadExistingReactions(existing, personaList);
       if (allDone) {
         setTotalSections(mRes.data.total_sections || 0);
         setReadingDone(true);
       } else {
-        startReadingAll(mRes.data, pRes.data);
+        startReadingAll(mRes.data, personaList);
       }
-    } catch {
-      toast.error("Failed to load manuscript");
+    } catch (err) {
+      const status = err.response?.status;
+      const detail = err.response?.data?.detail ?? err.response?.data?.message;
+      const msg = typeof detail === "string" ? detail : (Array.isArray(detail) ? detail.map((d) => d.msg ?? d).join(", ") : err.message);
+      if (status === 404) {
+        toast.error("Manuscript not found. It may have been deleted or the link is wrong.");
+      } else {
+        toast.error(msg || "Failed to load manuscript");
+      }
     }
   };
 

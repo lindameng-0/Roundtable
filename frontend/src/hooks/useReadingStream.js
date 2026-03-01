@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 
+const API_BASE = (process.env.REACT_APP_BACKEND_URL || "http://localhost:8000").replace(/\/$/, "");
+
 /**
  * Manages the SSE reading stream, all real-time state, and stall detection.
  * State formats are preserved exactly from the original ReadingPage to avoid
@@ -82,7 +84,7 @@ export function useReadingStream(manuscriptId) {
     }
     readingStartedRef.current = true;
 
-    const url = `${process.env.REACT_APP_BACKEND_URL}/api/manuscripts/${ms.id}/read-all`;
+    const url = `${API_BASE}/api/manuscripts/${ms.id}/read-all`;
     let cancelled = false;
     let completedNormally = false; // set true when all_complete arrives
     const controller = new AbortController();
