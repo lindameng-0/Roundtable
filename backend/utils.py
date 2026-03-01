@@ -105,17 +105,33 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+VALID_COMMENT_TYPES = (
+    "reaction", "prediction", "confusion", "critique", "praise", "theory", "comparison", "callback"
+)
+
 def validate_inline_comments(
     comments: List[Dict], line_start: int, line_end: int
 ) -> List[Dict]:
-    """Clamp out-of-range line numbers to the nearest valid line. Ensure comment is a string for JSONB."""
+    """Clamp out-of-range line numbers to the nearest valid line. Ensure comment is a string for JSONB.
+    Accepts "line" or "paragraph" (paragraph is 1-based index; if present we map to line when possible).
+    """
     valid = []
     for c in comments:
         if not isinstance(c, dict):
             continue
         line = c.get("line")
         if line is None:
-            continue
+            # v4 may send "paragraph"; we don't have paragraph→line map here, so skip if no line
+            para = c.get("paragraph")
+            if para is not None:
+                try:
+                    line = int(float(para))
+                    # Treat paragraph as 1-based index; clamp to range (rough mapping)
+                    line = max(line_start, min(line_end, line_start + line - 1))
+                except (TypeError, ValueError):
+                    continue
+            else:
+                continue
         try:
             line = int(float(line))
         except (TypeError, ValueError):
@@ -126,9 +142,11 @@ def validate_inline_comments(
             comment_val = str(comment_val)
         else:
             comment_val = comment_val or ""
+        raw_type = c.get("type", "reaction")
+        comment_type = raw_type if isinstance(raw_type, str) and raw_type in VALID_COMMENT_TYPES else "reaction"
         valid.append({
             "line": line,
-            "type": c.get("type", "reaction") if isinstance(c.get("type"), str) else "reaction",
+            "type": comment_type,
             "comment": comment_val,
         })
     return valid
