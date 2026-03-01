@@ -28,14 +28,14 @@ export function useReadingStream(manuscriptId) {
   // Prevents React StrictMode double-mount from opening two concurrent SSE connections.
   const readingStartedRef = useRef(false);
 
-  // Stall detection: if no SSE event arrives in 60s while reading, show banner
+  // Stall detection: if no SSE event arrives in 120s while reading, show banner
   useEffect(() => {
     if (readingDone) {
       setIsStalled(false);
       return;
     }
     const interval = setInterval(() => {
-      if (Date.now() - lastEventTimeRef.current > 60000) {
+      if (Date.now() - lastEventTimeRef.current > 120000) {
         setIsStalled(true);
       }
     }, 10000);
