@@ -240,7 +240,7 @@ async def get_reader_inline_reaction(
             parse_warning = True
 
     inline_comments = validate_inline_comments(
-        parsed.get("inline_comments", []), line_start, line_end
+        parsed.get("inline_comments", []), line_start, prompt_line_end
     )
     section_reflection = parsed.get("section_reflection")
     memory_update = parsed.get("memory_update", {})
