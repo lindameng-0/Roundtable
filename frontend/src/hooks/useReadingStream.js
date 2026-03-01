@@ -75,7 +75,7 @@ export function useReadingStream(manuscriptId) {
   }, []);
 
   /** Open the SSE read-all stream. Guard ensures only one stream at a time. */
-  const startReadingAll = useCallback((ms, ps) => {
+  const startReadingAll = useCallback((ms, ps, reconnectAttempt = 0) => {
     if (readingStartedRef.current) {
       console.warn("startReadingAll: already in progress, ignoring duplicate call");
       return;
@@ -84,6 +84,7 @@ export function useReadingStream(manuscriptId) {
 
     const url = `${process.env.REACT_APP_BACKEND_URL}/api/manuscripts/${ms.id}/read-all`;
     let cancelled = false;
+    let completedNormally = false; // set true when all_complete arrives
     const controller = new AbortController();
     esRef.current = { close: () => { cancelled = true; controller.abort(); } };
 
