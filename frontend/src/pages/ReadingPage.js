@@ -609,15 +609,41 @@ export default function ReadingPage() {
           Object.keys(next).forEach((id) => { next[id] = { ...next[id], done: true, currentSection: null }; });
           return next;
         });
-        es.close();
         toast.success("Your readers have finished. Generate your Editor Report?");
+        return; // stop processing
       }
     };
 
-    es.onerror = () => {
-      es.close();
-      // Don't show error if reading was already done or just closed
-    };
+    // Stream via fetch — no auto-reconnect unlike EventSource
+    (async () => {
+      try {
+        const resp = await fetch(url, { signal: controller.signal });
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (!cancelled) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop(); // keep incomplete last line
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith("data:")) {
+              try {
+                const data = JSON.parse(trimmed.slice(5).trim());
+                handleEvent(data);
+              } catch (_) {}
+            }
+          }
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error("SSE stream error:", err);
+        }
+      }
+    })();
   }, []);
 
   const generateReport = async () => {
