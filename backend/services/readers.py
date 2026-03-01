@@ -301,6 +301,19 @@ async def get_reader_inline_reaction(
         except Exception as e:
             last_error = e
             err_str = str(e).lower()
+            # Transient socket error on Windows (non-blocking socket would block)
+            is_socket_would_block = (
+                isinstance(e, OSError) and getattr(e, "winerror", None) == 10035
+            ) or "10035" in str(e)
+            if is_socket_would_block:
+                wait_sec = 2.0
+                logger.warning(
+                    f"[{reader_name}] Section {section_number}: transient socket error (WinError 10035), waiting {wait_sec}s then retry (attempt {attempt + 1}/{max_attempts})"
+                )
+                await asyncio.sleep(wait_sec)
+                if attempt < max_attempts - 1:
+                    continue
+                raise
             # Rate limit: wait suggested time (e.g. "try again in 7.044s") then retry
             is_rate_limit = (
                 isinstance(e, getattr(litellm, "RateLimitError", type(None)))
@@ -397,44 +410,62 @@ async def get_reader_inline_reaction(
         section_reflection = str(section_reflection)
     memory_update = parsed.get("memory_update", {})
 
-    # ── Save reaction (with one retry on failure)
-    reaction_doc = {
-        "id": str(uuid.uuid4()),
-        "manuscript_id": manuscript_id,
-        "reader_id": reader["id"],
-        "reader_name": reader_name,
-        "section_number": section_number,
-        "inline_comments": inline_comments,
-        "section_reflection": section_reflection,
-        "created_at": now_iso(),
-    }
+    # ── Save reaction (retry with fresh id on failure to avoid duplicate key on false-negative)
+    reaction_doc = None
     for db_attempt in range(2):
+        reaction_doc = {
+            "id": str(uuid.uuid4()),
+            "manuscript_id": manuscript_id,
+            "reader_id": reader["id"],
+            "reader_name": reader_name,
+            "section_number": section_number,
+            "inline_comments": inline_comments,
+            "section_reflection": section_reflection,
+            "created_at": now_iso(),
+        }
         try:
             await db.reader_reactions.insert_one({**reaction_doc})
             break
         except Exception as db_err:
+            err_str = str(db_err)
+            # Duplicate key usually means first attempt succeeded; reuse existing row
+            if "23505" in err_str or "duplicate key" in err_str.lower():
+                existing = await db.reader_reactions.find_one(
+                    {"manuscript_id": manuscript_id, "reader_id": reader["id"], "section_number": section_number},
+                    {"_id": 0},
+                )
+                if existing:
+                    reaction_doc = existing
+                    logger.info(f"[{reader_name}] Section {section_number}: reaction already present (duplicate key), reusing")
+                    break
             logger.warning(f"[{reader_name}] Section {section_number}: reaction insert attempt {db_attempt + 1} failed: {db_err}")
             if db_attempt == 0:
                 await asyncio.sleep(1)
                 continue
             raise
+    if reaction_doc is None:
+        raise RuntimeError("Failed to save reaction")
     logger.info(f"[{reader_name}] Section {section_number}: stored to DB")
 
-    # ── Save memory update (with one retry on failure)
+    # ── Save memory update (retry with fresh id on failure; on duplicate key, skip to avoid double insert)
     if memory_update and isinstance(memory_update, dict):
-        mem_doc = {
-            "id": str(uuid.uuid4()),
-            "manuscript_id": manuscript_id,
-            "reader_id": reader["id"],
-            "section_number": section_number,
-            "memory_json": memory_update,
-            "created_at": now_iso(),
-        }
         for db_attempt in range(2):
+            mem_doc = {
+                "id": str(uuid.uuid4()),
+                "manuscript_id": manuscript_id,
+                "reader_id": reader["id"],
+                "section_number": section_number,
+                "memory_json": memory_update,
+                "created_at": now_iso(),
+            }
             try:
                 await db.reader_memories.insert_one({**mem_doc})
                 break
             except Exception as db_err:
+                err_str = str(db_err)
+                if "23505" in err_str or "duplicate key" in err_str.lower():
+                    logger.info(f"[{reader_name}] Section {section_number}: memory already present (duplicate key), skipping insert")
+                    break
                 logger.warning(f"[{reader_name}] Section {section_number}: memory insert attempt {db_attempt + 1} failed: {db_err}")
                 if db_attempt == 0:
                     await asyncio.sleep(1)
