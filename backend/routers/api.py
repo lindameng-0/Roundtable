@@ -127,7 +127,9 @@ async def create_manuscript(manuscript: ManuscriptCreate, request: Request):
         "created_at": now_iso(),
     }
     try:
-        await db.manuscripts.insert_one({**doc})
+        inserted = await db.manuscripts.insert_one({**doc})
+        if inserted:
+            doc = inserted  # use DB-returned row so id (and any defaults) match
     except Exception as e:
         logger.exception("Failed to save manuscript to database")
         raise HTTPException(503, f"Database error: {str(e)}")

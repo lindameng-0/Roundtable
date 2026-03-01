@@ -7,7 +7,7 @@ import { Upload, FileText, ChevronRight, RefreshCw, X, Plus, BookOpen } from "lu
 import axios from "axios";
 import ModelSelector from "../components/ModelSelector";
 
-const API = process.env.REACT_APP_BACKEND_URL + "/api";
+const API = (process.env.REACT_APP_BACKEND_URL || "http://localhost:8000").replace(/\/$/, "") + "/api";
 
 // Chunked upload: if request body would exceed this (bytes), send in chunks to avoid 413.
 // Use a conservative 90KB so we stay under typical proxy/h11 limits (~1MB or 16KB); backend allows 100MB.
@@ -123,7 +123,10 @@ export default function SetupPage() {
           title: title || "Untitled Manuscript",
           raw_text: firstChunk,
         }, { headers, withCredentials: true });
-        const manuscriptId = res.data.id;
+        const manuscriptId = res?.data?.id;
+        if (!manuscriptId) {
+          throw new Error("Server did not return a manuscript id. Cannot append remaining text.");
+        }
         for (let start = CHUNK_CHARS; start < text.length; start += CHUNK_CHARS) {
           const chunk = text.slice(start, start + CHUNK_CHARS);
           res = await axios.patch(
@@ -146,12 +149,16 @@ export default function SetupPage() {
       const payloadStr = JSON.stringify({ title: title || "Untitled Manuscript", raw_text: text });
       const bodySizeBytes = new TextEncoder().encode(payloadStr).length;
       const sizeMB = (bodySizeBytes / (1024 * 1024)).toFixed(2);
-      const msg =
-        status === 413
-          ? bodySizeBytes <= SAFE_BODY_SIZE
-            ? `Server rejected the request (413). Your manuscript is ${sizeMB} MB, under the 100 MB limit — the server may need a higher upload limit.`
-            : "Manuscript is too large for the server limit (max 100 MB)."
-          : (err.response?.data?.detail ?? err.response?.data?.message ?? err.message ?? "Failed to process manuscript. Please try again.");
+      let msg;
+      if (status === 404) {
+        msg = "Request not found (404). Ensure the backend is running and REACT_APP_BACKEND_URL points to it (e.g. http://localhost:8000).";
+      } else if (status === 413) {
+        msg = bodySizeBytes <= SAFE_BODY_SIZE
+          ? `Server rejected the request (413). Your manuscript is ${sizeMB} MB, under the 100 MB limit — the server may need a higher upload limit.`
+          : "Manuscript is too large for the server limit (max 100 MB).";
+      } else {
+        msg = err.response?.data?.detail ?? err.response?.data?.message ?? err.message ?? "Failed to process manuscript. Please try again.";
+      }
       const msgText = Array.isArray(msg) ? msg.map((m) => m.msg ?? m).join(", ") : msg;
       toast.error(msgText);
     } finally {

@@ -73,11 +73,16 @@ class _SupabaseTable:
 
         return await asyncio.to_thread(_run)
 
-    async def insert_one(self, doc: Dict) -> None:
-        def _run():
-            self._client.table(self._table).insert(doc).execute()
+    async def insert_one(self, doc: Dict) -> Optional[Dict]:
+        """Insert one document. Returns the inserted row as returned by Supabase (so id matches DB)."""
 
-        await asyncio.to_thread(_run)
+        def _run():
+            resp = self._client.table(self._table).insert(doc).execute()
+            if resp.data and len(resp.data) > 0:
+                return dict(resp.data[0])
+            return None
+
+        return await asyncio.to_thread(_run)
 
     async def insert_many(self, docs: List[Dict]) -> None:
         def _run():
