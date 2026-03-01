@@ -183,7 +183,7 @@ async def get_reader_inline_reaction(
 
     # ── Build prompt ──────────────────────────────────────────────────────────
     system_prompt = build_reader_system_prompt(
-        reader, genre, section_number, memory_str, numbered_text, line_start, line_end
+        reader, genre, section_number, memory_str, numbered_text, line_start, prompt_line_end
     )
 
     if not system_prompt or len(system_prompt) < 50:
@@ -194,7 +194,7 @@ async def get_reader_inline_reaction(
     if prompt_words * 1.3 > 3000:
         logger.warning(f"[{reader_name}] Section {section_number}: prompt exceeds 3000 tokens — memory compression may not be working correctly")
 
-    chat = make_chat(system_prompt).with_params(max_tokens=600)
+    chat = make_chat(system_prompt).with_params(max_tokens=1000)
 
     # ── API call with 45-second timeout ───────────────────────────────────────
     logger.info(f"[{reader_name}] Section {section_number}: OpenAI call started")
