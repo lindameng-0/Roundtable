@@ -230,8 +230,9 @@ async def get_reader_inline_reaction(
     parse_warning = False
     try:
         clean = re.sub(r'```[a-z]*\n?', '', response).strip().rstrip('`')
-        # Repair common LLM formatting mistakes: trailing commas before } or ]
-        clean = re.sub(r',(\s*[}\]])', r'\1', clean)
+        # Repair common LLM formatting mistakes
+        clean = re.sub(r',(\s*[}\]])', r'\1', clean)        # trailing commas
+        clean = re.sub(r'"(\w+)"=', r'"\1":', clean)        # "key"= → "key":
         parsed = json.loads(clean)
         logger.info(f"[{reader_name}] Section {section_number}: JSON parsed")
     except (json.JSONDecodeError, KeyError, TypeError):
@@ -241,6 +242,7 @@ async def get_reader_inline_reaction(
             if start >= 0 and end > start:
                 fragment = response[start:end]
                 fragment = re.sub(r',(\s*[}\]])', r'\1', fragment)
+                fragment = re.sub(r'"(\w+)"=', r'"\1":', fragment)
                 parsed = json.loads(fragment)
                 logger.info(f"[{reader_name}] Section {section_number}: JSON extracted via substring search")
             else:
@@ -249,7 +251,7 @@ async def get_reader_inline_reaction(
             logger.warning(f"[{reader_name}] Section {section_number}: JSON parse FAILED: {e}. Using fallback.")
             parsed = {
                 "inline_comments": [],
-                "section_reflection": response[:500] if response else None,
+                "section_reflection": None,   # never store raw broken JSON in section_reflection
                 "memory_update": {},
             }
             parse_warning = True
