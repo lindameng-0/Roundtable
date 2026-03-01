@@ -95,18 +95,21 @@ async def create_manuscript(manuscript: ManuscriptCreate, request: Request):
     doc_id = str(uuid.uuid4())
     sections, total_lines = split_manuscript(raw_text)
 
-    genre_prompt = """You are a literary analyst. Analyze the manuscript excerpt and return ONLY a JSON object (no markdown) with:
-{"genre":"primary genre","target_audience":"target reader description","age_range":"Adult/YA/Middle Grade/New Adult","comparable_books":["Book by Author","Book by Author","Book by Author"]}"""
-
-    chat = make_chat(genre_prompt)
-    sample = raw_text[:3000]
-    response = await chat.send_message(UserMessage(text=f"Analyze:\n\n{sample}"))
-    genre_data: Dict = {}
+    # Genre detection via LLM — fall back to defaults if key missing or API fails
+    genre_data: Dict = {"genre": "Fiction", "target_audience": "General readers", "age_range": "Adult", "comparable_books": []}
     try:
-        clean = re.sub(r'```[a-z]*\n?', '', response).strip().rstrip('`')
-        genre_data = json.loads(clean)
-    except Exception:
-        genre_data = {"genre": "Fiction", "target_audience": "General readers", "age_range": "Adult", "comparable_books": []}
+        genre_prompt = """You are a literary analyst. Analyze the manuscript excerpt and return ONLY a JSON object (no markdown) with:
+{"genre":"primary genre","target_audience":"target reader description","age_range":"Adult/YA/Middle Grade/New Adult","comparable_books":["Book by Author","Book by Author","Book by Author"]}"""
+        chat = make_chat(genre_prompt)
+        sample = raw_text[:3000]
+        response = await chat.send_message(UserMessage(text=f"Analyze:\n\n{sample}"))
+        try:
+            clean = re.sub(r'```[a-z]*\n?', '', response).strip().rstrip('`')
+            genre_data = json.loads(clean)
+        except Exception:
+            pass  # keep defaults
+    except Exception as e:
+        logger.warning("Genre detection failed, using defaults: %s", e)
 
     doc = {
         "id": doc_id,
@@ -122,7 +125,11 @@ async def create_manuscript(manuscript: ManuscriptCreate, request: Request):
         "total_lines": total_lines,
         "created_at": now_iso(),
     }
-    await db.manuscripts.insert_one({**doc})
+    try:
+        await db.manuscripts.insert_one({**doc})
+    except Exception as e:
+        logger.exception("Failed to save manuscript to database")
+        raise HTTPException(503, f"Database error: {str(e)}")
     return ManuscriptResponse(**doc)
 
 

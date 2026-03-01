@@ -116,7 +116,9 @@ export default function SetupPage() {
       });
       setStep("genre");
     } catch (err) {
-      toast.error("Failed to process manuscript. Please try again.");
+      const msg = err.response?.data?.detail ?? err.response?.data?.message ?? err.message ?? "Failed to process manuscript. Please try again.";
+      const text = Array.isArray(msg) ? msg.map((m) => m.msg ?? m).join(", ") : msg;
+      toast.error(text);
     } finally {
       setLoading(false);
     }
