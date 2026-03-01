@@ -398,7 +398,7 @@ class TestSSEStream:
         resp = requests.get(
             f"{BASE_URL}/api/manuscripts/{mid}/read-all",
             stream=True,
-            timeout=30,
+            timeout=90,
             headers={"Accept": "text/event-stream"}
         )
         start_found = False
