@@ -107,3 +107,5 @@ Build a collaborative AI beta reader tool for fiction writers. The app simulates
 2. Add PDF download for editor report
 3. .docx upload support
 4. Improve disagreement visualization between readers
+5. Refactor `backend/server.py` (979 lines) into modules: `models.py`, `routers/`, `services/`
+6. Refactor `frontend/src/pages/ReadingPage.js` (1060 lines) into sub-components / custom hooks
