@@ -6,23 +6,20 @@ import asyncio
 import logging
 from typing import Dict, List
 
+import litellm
 from utils import make_chat, now_iso, validate_inline_comments, UserMessage
 from config import db
 
 logger = logging.getLogger(__name__)
 
-# Limit concurrent LiteLLM calls to 3.
-# This ensures all 5 readers complete their MongoDB memory fetches BEFORE
-# any LiteLLM call starts blocking the thread pool executor.
-# Without this, LiteLLM fills the thread pool and Motor MongoDB queries
-# queue up for 12+ seconds, eventually hitting asyncio.wait_for timeouts
-# that cancel Motor coroutines mid-flight and corrupt the connection pool.
+# Limit concurrent LiteLLM calls to 2 to avoid bursting past OpenAI TPM (e.g. 30k/min).
+# With 5 readers, only 2 call the API at once so we stay under token-per-minute limits.
 _llm_semaphore: asyncio.Semaphore | None = None
 
 def _get_llm_semaphore() -> asyncio.Semaphore:
     global _llm_semaphore
     if _llm_semaphore is None:
-        _llm_semaphore = asyncio.Semaphore(5)  # allow all 5 readers to call LLM in parallel
+        _llm_semaphore = asyncio.Semaphore(2)
     return _llm_semaphore
 
 
@@ -283,12 +280,13 @@ async def get_reader_inline_reaction(
                 timeout=READER_LLM_TIMEOUT,
             )
 
-    # ── API call with retries for transient failures
+    # ── API call with retries for transient failures and rate limits
     logger.info(f"[{reader_name}] Section {section_number}: LLM call started (temp={temperature})")
     t0 = time.monotonic()
     response = None
     last_error = None
-    for attempt in range(2):  # initial + 1 retry
+    max_attempts = 4  # allow extra retries for rate limit (wait and retry)
+    for attempt in range(max_attempts):
         try:
             response = await _call_llm(use_json_format=True)
             break
@@ -303,6 +301,22 @@ async def get_reader_inline_reaction(
         except Exception as e:
             last_error = e
             err_str = str(e).lower()
+            # Rate limit: wait suggested time (e.g. "try again in 7.044s") then retry
+            is_rate_limit = (
+                isinstance(e, getattr(litellm, "RateLimitError", type(None)))
+                or "rate limit" in err_str
+                or "ratelimit" in err_str
+            )
+            if is_rate_limit:
+                wait_match = re.search(r"try again in (\d+(?:\.\d+)?)\s*s", str(e), re.I)
+                wait_sec = min(float(wait_match.group(1)) if wait_match else 10.0, 60.0)
+                logger.warning(
+                    f"[{reader_name}] Section {section_number}: rate limited, waiting {wait_sec:.1f}s then retry (attempt {attempt + 1}/{max_attempts})"
+                )
+                await asyncio.sleep(wait_sec)
+                if attempt < max_attempts - 1:
+                    continue
+                raise
             if "response_format" in err_str or "json_schema" in err_str:
                 logger.warning(f"[{reader_name}] Section {section_number}: provider may not support json_object, retrying without")
                 try:
