@@ -48,7 +48,7 @@ await page.context.add_cookies([{
     "secure": True,
     "sameSite": "None"
 }])
-await page.goto("https://fiction-sync.preview.emergentagent.com/dashboard")
+await page.goto("https://ai-roundtable-test.preview.emergentagent.com/dashboard")
 ```
 
 ## Checklist
