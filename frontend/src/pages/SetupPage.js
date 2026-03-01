@@ -40,15 +40,50 @@ export default function SetupPage() {
   const [regeneratingId, setRegeneratingId] = useState(null);
   const [dragOver, setDragOver] = useState(false);
 
+  const [uploadedFileName, setUploadedFileName] = useState(null);
+
   const handleFileUpload = async (file) => {
     if (!file) return;
-    if (!file.name.endsWith(".txt")) {
-      toast.error("Only .txt files are supported");
+    const name = file.name || "";
+    if (!name.endsWith(".txt") && !name.endsWith(".docx")) {
+      toast.error("Please upload a .txt or .docx file");
       return;
     }
+    if (name.endsWith(".docx")) {
+      // For .docx, upload to backend for extraction
+      setLoading(true);
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("title", title || name.replace(/\.docx$/, ""));
+        const headers = {};
+        const token = localStorage.getItem("session_token");
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+        const res = await axios.post(`${API}/manuscripts/upload`, formData, { headers, withCredentials: true });
+        // docx upload goes straight to the manuscript — skip text paste step
+        setManuscript(res.data);
+        setGenre({
+          genre: res.data.genre,
+          target_audience: res.data.target_audience,
+          age_range: res.data.age_range,
+          comparable_books: res.data.comparable_books || [],
+        });
+        setUploadedFileName(name);
+        setTitle((t) => t || name.replace(/\.docx$/, ""));
+        setStep("genre");
+        toast.success(`Extracted text from ${name}`);
+      } catch (err) {
+        toast.error("Failed to read .docx file");
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+    // .txt — read locally
     const fileText = await file.text();
     setText(fileText);
-    if (!title) setTitle(file.name.replace(".txt", ""));
+    setUploadedFileName(name);
+    if (!title) setTitle(name.replace(".txt", ""));
     toast.success("File loaded successfully");
   };
 
