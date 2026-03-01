@@ -125,7 +125,28 @@ async def get_reader_inline_reaction(
 
     logger.info(f"[{reader_name}] Section {section_number}: === START ===")
 
-    numbered_text = "\n".join(f"{pl['line']}: {pl['text']}" for pl in paragraph_lines)
+    # Cap section text to 2000 words so prompts stay under ~3000 tokens.
+    # This prevents slow/truncated responses for very large sections.
+    MAX_PROMPT_WORDS = 2000
+    total_words = sum(len(pl["text"].split()) for pl in paragraph_lines)
+    if total_words > MAX_PROMPT_WORDS:
+        running_words = 0
+        capped_lines = []
+        for pl in paragraph_lines:
+            pw = len(pl["text"].split())
+            if running_words + pw > MAX_PROMPT_WORDS:
+                break
+            capped_lines.append(pl)
+            running_words += pw
+        logger.info(
+            f"[{reader_name}] Section {section_number}: truncated {total_words}w → {running_words}w for prompt"
+        )
+    else:
+        capped_lines = paragraph_lines
+
+    # Use capped line_end for prompt so reader only annotates lines they saw
+    prompt_line_end = capped_lines[-1]["line"] if capped_lines else line_end
+    numbered_text = "\n".join(f"{pl['line']}: {pl['text']}" for pl in capped_lines)
 
     # ── Memory retrieval with timeout ─────────────────────────────────────────
     logger.info(f"[{reader_name}] Section {section_number}: memory fetch started")
