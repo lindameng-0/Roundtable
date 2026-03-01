@@ -728,6 +728,7 @@ export default function ReadingPage() {
   const handleRetry = useCallback(() => {
     setIsStalled(false);
     lastEventTimeRef.current = Date.now();
+    readingStartedRef.current = false; // allow the new connection to start
     // Close existing stream if any
     esRef.current?.close();
     if (manuscript && personas.length > 0) {
