@@ -23,7 +23,7 @@ client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
 EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY')
-LLM_MODEL = os.environ.get('LLM_MODEL', 'gpt-4o')
+LLM_MODEL = os.environ.get('LLM_MODEL', 'gpt-4o-mini')
 LLM_PROVIDER = os.environ.get('LLM_PROVIDER', 'openai')
 
 app = FastAPI()
