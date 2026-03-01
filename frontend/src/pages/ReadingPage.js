@@ -979,6 +979,43 @@ export default function ReadingPage() {
               </div>
             )}
 
+            {/* Stall detection banner */}
+            <AnimatePresence>
+              {isStalled && !readingDone && (
+                <motion.div
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.2 }}
+                  className="mb-4 p-4 border border-amber-200 bg-amber-50"
+                  style={{ borderRadius: "2px" }}
+                  data-testid="stall-warning-banner"
+                >
+                  <p className="text-xs text-amber-800 mb-3 leading-relaxed">
+                    Reading appears to be taking longer than expected. This can happen when the AI is processing a complex section.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      data-testid="retry-reading-btn"
+                      onClick={handleRetry}
+                      className="text-xs px-3 py-1.5 bg-amber-700 text-white hover:bg-amber-800 transition-colors"
+                      style={{ borderRadius: "2px" }}
+                    >
+                      Retry
+                    </button>
+                    <button
+                      data-testid="view-partial-results-btn"
+                      onClick={handleViewPartial}
+                      className="text-xs px-3 py-1.5 border border-amber-700 text-amber-700 hover:bg-amber-100 transition-colors"
+                      style={{ borderRadius: "2px" }}
+                    >
+                      View partial results
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {/* Thinking strip — shows while readers are mid-LLM-call */}
             <AnimatePresence>
               {thinkingReaders.size > 0 && (
