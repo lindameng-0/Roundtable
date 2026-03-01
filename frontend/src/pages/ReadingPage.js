@@ -530,6 +530,15 @@ export default function ReadingPage() {
   };
 
   const startReadingAll = useCallback((ms, ps) => {
+    // Guard: only one SSE connection allowed at a time.
+    // React StrictMode mounts components twice in dev, which would otherwise
+    // open two concurrent read-all connections and cause 10 parallel LLM calls.
+    if (readingStartedRef.current) {
+      console.warn("startReadingAll: already in progress, ignoring duplicate call");
+      return;
+    }
+    readingStartedRef.current = true;
+
     const url = `${process.env.REACT_APP_BACKEND_URL}/api/manuscripts/${ms.id}/read-all`;
     let cancelled = false;
 
