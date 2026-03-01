@@ -5,7 +5,7 @@ import asyncio
 import logging
 from typing import Dict, Any, List
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 import config as _cfg
@@ -156,28 +156,36 @@ async def append_manuscript_text(manuscript_id: str, body: AppendTextRequest, re
     return ManuscriptResponse(**updated)
 
 
+# Max request body / form part size (100MB) for full-length manuscripts (500+ pages)
+MAX_BODY_SIZE_BYTES = 100 * 1024 * 1024
+
+
 @api_router.post("/manuscripts/upload")
-async def upload_manuscript(
-    request: Request,
-    file: UploadFile = File(...),
-    title: str = Form("Untitled Manuscript"),
-):
-    filename = file.filename or ""
-    if filename.endswith(".docx"):
-        try:
-            from docx import Document
-            import io
+async def upload_manuscript(request: Request):
+    """Accept .txt or .docx file. Form parsed with max_part_size=100MB for full-length books."""
+    async with request.form(max_part_size=MAX_BODY_SIZE_BYTES) as form:
+        file = form.get("file")
+        if not file or not getattr(file, "filename", None):
+            raise HTTPException(400, "No file provided")
+        title = form.get("title") or "Untitled Manuscript"
+        if isinstance(title, list):
+            title = title[0] if title else "Untitled Manuscript"
+        filename = file.filename or ""
+        if filename.endswith(".docx"):
+            try:
+                from docx import Document
+                import io
+                content = await file.read()
+                doc = Document(io.BytesIO(content))
+                paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+                raw_text = "\n\n".join(paragraphs)
+            except Exception as e:
+                raise HTTPException(400, f"Failed to read .docx file: {e}")
+        elif filename.endswith(".txt"):
             content = await file.read()
-            doc = Document(io.BytesIO(content))
-            paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
-            raw_text = "\n\n".join(paragraphs)
-        except Exception as e:
-            raise HTTPException(400, f"Failed to read .docx file: {e}")
-    elif filename.endswith(".txt"):
-        content = await file.read()
-        raw_text = content.decode("utf-8", errors="replace").strip()
-    else:
-        raise HTTPException(400, "Please upload a .txt or .docx file")
+            raw_text = content.decode("utf-8", errors="replace").strip()
+        else:
+            raise HTTPException(400, "Please upload a .txt or .docx file")
 
     if not raw_text:
         raise HTTPException(400, "File is empty")

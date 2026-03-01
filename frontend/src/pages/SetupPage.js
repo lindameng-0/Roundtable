@@ -10,7 +10,7 @@ import ModelSelector from "../components/ModelSelector";
 const API = process.env.REACT_APP_BACKEND_URL + "/api";
 
 // Chunked upload: if request body would exceed this (bytes), send in chunks to avoid 413
-const SAFE_BODY_SIZE = 800 * 1024; // 800KB
+const SAFE_BODY_SIZE = 100 * 1024 * 1024; // 100MB — full-length books (500+ pages)
 const CHUNK_CHARS = 400 * 1024; // 400K chars per chunk
 
 const STEPS = ["manuscript", "genre", "readers"];
@@ -142,7 +142,7 @@ export default function SetupPage() {
       const status = err.response?.status;
       const msg =
         status === 413
-          ? "Manuscript is too large for the server limit. If you use nginx, set client_max_body_size 50M (see backend/nginx-body-size.conf)."
+          ? "Manuscript is too large for the server limit (max 100MB)."
           : (err.response?.data?.detail ?? err.response?.data?.message ?? err.message ?? "Failed to process manuscript. Please try again.");
       const text = Array.isArray(msg) ? msg.map((m) => m.msg ?? m).join(", ") : msg;
       toast.error(text);
