@@ -202,8 +202,8 @@ class TestSSEReadAll:
     def test_sse_endpoint_exists_and_responds(self, created_manuscript):
         """SSE endpoint should start responding (not 404 or 500)"""
         mid = created_manuscript["id"]
-        # Ensure personas exist first
-        requests.post(f"{BASE_URL}/api/manuscripts/{mid}/generate-personas", timeout=120)
+        # Ensure personas exist first (GET auto-generates)
+        requests.get(f"{BASE_URL}/api/manuscripts/{mid}/personas", timeout=120)
         time.sleep(1)
 
         resp = requests.get(
