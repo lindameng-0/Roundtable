@@ -40,31 +40,40 @@ def split_manuscript(raw_text: str) -> Tuple[List[Dict], int]:
     if not raw_chapters:
         raw_chapters = [{"title": "Manuscript", "text": raw_text.strip()}]
 
-    # Batch consecutive short chapters together
+    # Greedy batching: accumulate consecutive chapters until we reach TARGET_WORDS_PER_SECTION.
+    # Old logic used a size threshold that stopped batching when it hit a "big enough" chapter,
+    # creating many small sections for short-chapter manuscripts (e.g. 20 sections for 50 pages).
     batched: List[Dict] = []
-    i = 0
-    while i < len(raw_chapters):
-        ch = raw_chapters[i]
+    current_parts: List[Dict] = []
+    current_words = 0
+
+    for ch in raw_chapters:
         wc = len(ch["text"].split())
-        if wc < BATCH_THRESHOLD and i + 1 < len(raw_chapters):
-            combined_text = ch["text"]
-            combined_title = ch["title"]
-            j = i + 1
-            while j < len(raw_chapters):
-                next_wc = len(raw_chapters[j]["text"].split())
-                if len(combined_text.split()) + next_wc <= SPLIT_THRESHOLD:
-                    combined_text += "\n\n" + raw_chapters[j]["text"]
-                    combined_title = f"{combined_title} & {raw_chapters[j]['title']}"
-                    j += 1
-                    if next_wc >= BATCH_THRESHOLD:
-                        break
-                else:
-                    break
-            batched.append({"title": combined_title, "text": combined_text})
-            i = j
-        else:
+        if wc >= TARGET_WORDS_PER_SECTION:
+            # This chapter is big enough on its own — flush any pending batch first
+            if current_parts:
+                batched.append({
+                    "title": " & ".join(p["title"] for p in current_parts),
+                    "text": "\n\n".join(p["text"] for p in current_parts),
+                })
+                current_parts, current_words = [], 0
             batched.append(ch)
-            i += 1
+        elif current_words + wc > TARGET_WORDS_PER_SECTION:
+            # Adding this chapter would exceed target — flush and start fresh
+            batched.append({
+                "title": " & ".join(p["title"] for p in current_parts),
+                "text": "\n\n".join(p["text"] for p in current_parts),
+            })
+            current_parts, current_words = [ch], wc
+        else:
+            current_parts.append(ch)
+            current_words += wc
+
+    if current_parts:
+        batched.append({
+            "title": " & ".join(p["title"] for p in current_parts),
+            "text": "\n\n".join(p["text"] for p in current_parts),
+        })
 
     def _split_on_scenes(title: str, text: str) -> List[Dict]:
         parts = _scene_break_pattern.split(text)
