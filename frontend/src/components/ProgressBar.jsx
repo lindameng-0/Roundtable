@@ -1,6 +1,7 @@
 import React from "react";
 import { motion } from "framer-motion";
 import { BarChart2, Loader2 } from "lucide-react";
+import { UserMenu } from "./UserMenu";
 
 /**
  * Top header bar: back link, manuscript title, reading status, and report button.
@@ -65,6 +66,7 @@ export function ProgressBar({
             )}
             Editor Report
           </button>
+          <UserMenu />
         </div>
       </div>
 
