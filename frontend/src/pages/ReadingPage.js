@@ -438,11 +438,28 @@ export default function ReadingPage() {
   const [thinkingReaders, setThinkingReaders] = useState(new Map()); // readerId -> {name, avatarIndex, personality, sectionNumber}
 
   const esRef = useRef(null);
+  const lastEventTimeRef = useRef(Date.now());
+  const [isStalled, setIsStalled] = useState(false);
 
   useEffect(() => {
     loadData();
     return () => { esRef.current?.close(); };
   }, [manuscriptId]);
+
+  // Stall detection: if no SSE event arrives in 60s while reading, show banner
+  useEffect(() => {
+    if (readingDone) {
+      setIsStalled(false);
+      return;
+    }
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - lastEventTimeRef.current;
+      if (elapsed > 60000) {
+        setIsStalled(true);
+      }
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [readingDone]);
 
   const loadData = async () => {
     try {
