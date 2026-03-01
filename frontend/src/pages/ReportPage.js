@@ -95,9 +95,18 @@ export default function ReportPage() {
       setManuscript(mRes.data);
       if (repRes?.data?.report_json) {
         setReport(repRes.data.report_json);
+      } else if (repRes?.data?.report) {
+        setReport(repRes.data.report);
       }
     } catch (err) {
-      toast.error("Failed to load report");
+      const status = err.response?.status;
+      const detail = err.response?.data?.detail ?? err.response?.data?.message;
+      const msg = typeof detail === "string" ? detail : null;
+      if (status === 404) {
+        toast.error(msg || "Manuscript not found");
+      } else {
+        toast.error(msg || "Failed to load report");
+      }
     } finally {
       setLoading(false);
     }
