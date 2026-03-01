@@ -223,6 +223,11 @@ async def get_reader_inline_reaction(
     # Use capped line_end for prompt so reader only annotates lines they saw
     prompt_line_end = capped_lines[-1]["line"] if capped_lines else line_end
     numbered_text = "\n".join(f"{pl['line']}: {pl['text']}" for pl in capped_lines)
+    # Cap user message size to avoid provider limits and timeouts (~4k tokens)
+    MAX_USER_CHARS = 16000
+    if len(numbered_text) > MAX_USER_CHARS:
+        numbered_text = numbered_text[:MAX_USER_CHARS] + "\n[... text truncated ...]"
+        logger.info(f"[{reader_name}] Section {section_number}: user message capped to {MAX_USER_CHARS} chars")
 
     # ── Memory retrieval (no asyncio.wait_for — cancelling Motor mid-flight
     # corrupts the connection pool and silently breaks all subsequent DB writes)
@@ -268,38 +273,50 @@ async def get_reader_inline_reaction(
     )
     chat_plain = make_chat(system_prompt).with_params(max_tokens=1200, temperature=temperature)
 
-    # ── API call — section text goes in the user message (system = instructions)
-    logger.info(f"[{reader_name}] Section {section_number}: OpenAI call started (temp={temperature})")
+    READER_LLM_TIMEOUT = 150  # seconds per attempt
+
+    async def _call_llm(use_json_format: bool):
+        chat = chat_with_json if use_json_format else chat_plain
+        async with _get_llm_semaphore():
+            return await asyncio.wait_for(
+                chat.send_message(UserMessage(text=numbered_text)),
+                timeout=READER_LLM_TIMEOUT,
+            )
+
+    # ── API call with retries for transient failures
+    logger.info(f"[{reader_name}] Section {section_number}: LLM call started (temp={temperature})")
     t0 = time.monotonic()
     response = None
-    try:
-        async with _get_llm_semaphore():
-            response = await asyncio.wait_for(
-                chat_with_json.send_message(UserMessage(text=numbered_text)),
-                timeout=120,
-            )
-    except asyncio.TimeoutError:
-        elapsed = time.monotonic() - t0
-        logger.error(f"[{reader_name}] Section {section_number}: OpenAI call TIMED OUT after {elapsed:.1f}s")
-        raise
-    except Exception as e:
-        err_str = str(e).lower()
-        if "response_format" in err_str or "json_schema" in err_str:
-            logger.warning(f"[{reader_name}] Section {section_number}: provider may not support json_object, retrying without response_format")
-            try:
-                async with _get_llm_semaphore():
-                    response = await asyncio.wait_for(
-                        chat_plain.send_message(UserMessage(text=numbered_text)),
-                        timeout=120,
-                    )
-            except asyncio.TimeoutError:
-                elapsed = time.monotonic() - t0
-                logger.error(f"[{reader_name}] Section {section_number}: OpenAI call TIMED OUT after {elapsed:.1f}s")
-                raise
-        else:
+    last_error = None
+    for attempt in range(2):  # initial + 1 retry
+        try:
+            response = await _call_llm(use_json_format=True)
+            break
+        except asyncio.TimeoutError as e:
+            last_error = e
+            elapsed = time.monotonic() - t0
+            logger.warning(f"[{reader_name}] Section {section_number}: attempt {attempt + 1} TIMED OUT after {elapsed:.1f}s")
+            if attempt == 0:
+                await asyncio.sleep(2)  # brief delay before retry
+                continue
+            raise
+        except Exception as e:
+            last_error = e
+            err_str = str(e).lower()
+            if "response_format" in err_str or "json_schema" in err_str:
+                logger.warning(f"[{reader_name}] Section {section_number}: provider may not support json_object, retrying without")
+                try:
+                    response = await _call_llm(use_json_format=False)
+                    break
+                except Exception:
+                    raise last_error
+            logger.warning(f"[{reader_name}] Section {section_number}: attempt {attempt + 1} failed: {e}")
+            if attempt == 0:
+                await asyncio.sleep(2)
+                continue
             raise
     if response is None:
-        raise RuntimeError("No response from LLM")
+        raise last_error or RuntimeError("No response from LLM")
 
     elapsed = time.monotonic() - t0
     logger.info(f"[{reader_name}] Section {section_number}: OpenAI call complete ({len(response)} chars, {elapsed*1000:.0f}ms)")
@@ -366,7 +383,7 @@ async def get_reader_inline_reaction(
         section_reflection = str(section_reflection)
     memory_update = parsed.get("memory_update", {})
 
-    # ── Save reaction ─────────────────────────────────────────────────────────
+    # ── Save reaction (with one retry on failure)
     reaction_doc = {
         "id": str(uuid.uuid4()),
         "manuscript_id": manuscript_id,
@@ -377,10 +394,19 @@ async def get_reader_inline_reaction(
         "section_reflection": section_reflection,
         "created_at": now_iso(),
     }
-    await db.reader_reactions.insert_one({**reaction_doc})
+    for db_attempt in range(2):
+        try:
+            await db.reader_reactions.insert_one({**reaction_doc})
+            break
+        except Exception as db_err:
+            logger.warning(f"[{reader_name}] Section {section_number}: reaction insert attempt {db_attempt + 1} failed: {db_err}")
+            if db_attempt == 0:
+                await asyncio.sleep(1)
+                continue
+            raise
     logger.info(f"[{reader_name}] Section {section_number}: stored to DB")
 
-    # ── Save memory update ────────────────────────────────────────────────────
+    # ── Save memory update (with one retry on failure)
     if memory_update and isinstance(memory_update, dict):
         mem_doc = {
             "id": str(uuid.uuid4()),
@@ -390,7 +416,16 @@ async def get_reader_inline_reaction(
             "memory_json": memory_update,
             "created_at": now_iso(),
         }
-        await db.reader_memories.insert_one({**mem_doc})
+        for db_attempt in range(2):
+            try:
+                await db.reader_memories.insert_one({**mem_doc})
+                break
+            except Exception as db_err:
+                logger.warning(f"[{reader_name}] Section {section_number}: memory insert attempt {db_attempt + 1} failed: {db_err}")
+                if db_attempt == 0:
+                    await asyncio.sleep(1)
+                    continue
+                raise
 
     logger.info(f"[{reader_name}] Section {section_number}: event sent to frontend")
     logger.info(f"[{reader_name}] Section {section_number}: === DONE ===")
@@ -485,4 +520,5 @@ async def reader_pipeline(
             "reader_name": reader_name,
             "section_number": sec["section_number"],
             "error": str(e),
+            "message": f"{reader_name} had an error on this section, moving on",
         })
