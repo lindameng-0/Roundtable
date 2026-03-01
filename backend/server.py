@@ -348,7 +348,7 @@ def split_manuscript(raw_text: str) -> tuple:
             "word_count": word_count,
         })
 
-    return sections, global_line - 1  # sections, total_lines
+    return sections, global_line - 1
 
 def compress_memory(memories: List[Dict], personality: str) -> Dict:
     """Compress reader memories with hard token-budget limits (max ~200 tokens in output)."""
