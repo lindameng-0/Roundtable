@@ -375,7 +375,8 @@ export default function ReadingPage() {
   // Popover state
   const [openPopoverLine, setOpenPopoverLine] = useState(null);
 
-  const esRef = useRef(null);
+  // thinkingReaders: Set of reader_ids currently mid-LLM-call this section
+  const [thinkingReaders, setThinkingReaders] = useState(new Map()); // readerId -> {name, avatarIndex, personality, sectionNumber}
 
   useEffect(() => {
     loadData();
