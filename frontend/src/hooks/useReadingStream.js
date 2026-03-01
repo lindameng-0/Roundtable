@@ -209,6 +209,15 @@ export function useReadingStream(manuscriptId) {
         }
       } catch (err) {
         if (!cancelled) console.error("SSE stream error:", err);
+      } finally {
+        // Auto-reconnect if the stream dropped before reading was complete
+        if (!cancelled && !completedNormally && reconnectAttempt < 5) {
+          console.warn(`SSE stream dropped (attempt ${reconnectAttempt + 1}), reconnecting in ${(reconnectAttempt + 1) * 1500}ms...`);
+          readingStartedRef.current = false;
+          setTimeout(() => {
+            if (!cancelled) startReadingAll(ms, ps, reconnectAttempt + 1);
+          }, (reconnectAttempt + 1) * 1500);
+        }
       }
     })();
   }, []);
