@@ -26,13 +26,6 @@ def _get_llm_semaphore() -> asyncio.Semaphore:
         _llm_semaphore = asyncio.Semaphore(5)  # allow all 5 readers to call LLM in parallel
     return _llm_semaphore
 
-FULL_PROMPT_RULES = """RULES FOR INLINE COMMENTS:
-- BE SELECTIVE. A real reader does not react to every paragraph. Most of the text you just read and move on. You only comment when something genuinely provokes a reaction — surprise, confusion, delight, suspicion, frustration, or a strong opinion.
-- For a typical section of 20-40 paragraphs, you should leave 3-6 comments. Not more. If a section is uneventful, 2-3 comments is fine. If a section has a major twist or climax, you might go up to 7-8. Never exceed 8.
-- Ask yourself before each comment: "Would I actually stop and think about this, or would I just keep reading?" If the answer is keep reading, don't comment.
-- Prioritize: plot turning points, character reveals, moments of confusion, things that connect to earlier predictions, lines that genuinely impressed or bothered you, and pacing problems. Skip: routine description, transitions, dialogue that's just moving the scene forward, and anything that's fine but unremarkable.
-- Keep each comment to 1-2 sentences. Only go to 3 sentences if you're explaining a theory with evidence.
-- section_reflection remains optional and should be null for most sections."""
 
 
 def compress_memory(memories: List[Dict], personality: str) -> Dict:
