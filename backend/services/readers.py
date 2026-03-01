@@ -211,30 +211,27 @@ async def get_reader_inline_reaction(
 
     # ── Build prompt ──────────────────────────────────────────────────────────
     system_prompt = build_reader_system_prompt(
-        reader, genre, section_number, memory_str, numbered_text, line_start, prompt_line_end
+        reader, genre, section_number, memory_str, line_start, prompt_line_end
     )
 
-    if not system_prompt or len(system_prompt) < 50:
-        logger.error(f"[{reader_name}] Section {section_number}: prompt is empty or too short! Content: {repr(system_prompt[:200])}")
-
     prompt_words = len(system_prompt.split())
-    logger.info(f"[{reader_name}] Section {section_number}: prompt built ({prompt_words} words, ~{int(prompt_words * 1.3)} tokens)")
-    if prompt_words * 1.3 > 3000:
-        logger.warning(f"[{reader_name}] Section {section_number}: prompt exceeds 3000 tokens — memory compression may not be working correctly")
+    logger.info(f"[{reader_name}] Section {section_number}: prompt built ({prompt_words} words)")
 
-    chat = make_chat(system_prompt).with_params(max_tokens=1000)
+    temperature = float(reader.get("temperature", 0.7))
+    chat = make_chat(system_prompt).with_params(
+        max_tokens=800,
+        temperature=temperature,
+        response_format={"type": "json_object"},
+    )
 
-    # ── API call — held behind semaphore so memory fetches for other readers
-    # can complete before the thread pool gets saturated ───────────────────────
-    logger.info(f"[{reader_name}] Section {section_number}: OpenAI call started")
+    # ── API call — section text goes in the user message (system = instructions)
+    logger.info(f"[{reader_name}] Section {section_number}: OpenAI call started (temp={temperature})")
     t0 = time.monotonic()
     try:
         async with _get_llm_semaphore():
             response = await asyncio.wait_for(
-                chat.send_message(UserMessage(
-                    text=f"Read section {section_number} and leave your inline comments."
-                )),
-                timeout=45,
+                chat.send_message(UserMessage(text=numbered_text)),
+                timeout=60,
             )
     except asyncio.TimeoutError:
         elapsed = time.monotonic() - t0
