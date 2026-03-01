@@ -31,11 +31,10 @@ export default function AuthCallback() {
           { session_id: sessionId },
           { withCredentials: true }
         );
-        const { user } = res.data;
-        const token = sessionId; // backend sets cookie; we also store for header fallback
-        // Actually store the session_token returned from the backend if available
-        const token2 = res.headers["x-session-token"] || sessionId;
-        login(user, null);
+        const { user, session_token } = res.data;
+        // Store session_token for Authorization header fallback
+        if (session_token) localStorage.setItem("session_token", session_token);
+        login(user, session_token);
         navigate("/dashboard", { replace: true });
       } catch (err) {
         console.error("Auth callback failed:", err);
