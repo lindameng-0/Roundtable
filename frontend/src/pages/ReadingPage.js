@@ -58,6 +58,7 @@ export default function ReadingPage() {
 
       if (existing.length > 0) loadExistingReactions(existing, pRes.data);
       if (allDone) {
+        setTotalSections(mRes.data.total_sections || 0);
         setReadingDone(true);
       } else {
         startReadingAll(mRes.data, pRes.data);
