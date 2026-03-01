@@ -586,27 +586,61 @@ async def get_reader_inline_reaction(
     paragraph_lines = section.get("paragraph_lines", [])
     reader_name = reader.get("name", "Unknown")
 
-    logger.info(f"Reader {reader_name}: starting section {section_number}")
+    logger.info(f"[{reader_name}] Section {section_number}: === START ===")
 
-    # Build numbered text for the reader
+    # Build numbered text
     numbered_text = "\n".join(f"{pl['line']}: {pl['text']}" for pl in paragraph_lines)
 
-    # Get accumulated memory
-    memories = await db.reader_memories.find(
-        {"manuscript_id": manuscript_id, "reader_id": reader["id"]},
-        {"_id": 0}
-    ).sort("section_number", 1).to_list(100)
+    # ── Memory retrieval with timeout ─────────────────────────────────────────
+    logger.info(f"[{reader_name}] Section {section_number}: memory fetch started")
+    try:
+        memories = await asyncio.wait_for(
+            db.reader_memories.find(
+                {"manuscript_id": manuscript_id, "reader_id": reader["id"]},
+                {"_id": 0}
+            ).sort("section_number", 1).to_list(100),
+            timeout=10
+        )
+    except asyncio.TimeoutError:
+        logger.warning(f"[{reader_name}] Section {section_number}: memory fetch TIMED OUT, using empty memory")
+        memories = []
+
+    # Validate each memory entry — ensure memory_json is a dict, not a string
+    valid_memories = []
+    for m in memories:
+        mj = m.get("memory_json", {})
+        if isinstance(mj, str):
+            try:
+                mj = json.loads(mj)
+                m = {**m, "memory_json": mj}
+            except json.JSONDecodeError:
+                logger.warning(f"[{reader_name}] Section {section_number}: malformed memory_json string for section {m.get('section_number')}, skipping")
+                continue
+        if isinstance(mj, dict):
+            valid_memories.append(m)
+    memories = valid_memories
+
     compressed_memory = compress_memory(memories, reader.get("personality", ""))
     memory_str = json.dumps(compressed_memory, indent=2) if compressed_memory else "No previous sections read yet."
+    logger.info(f"[{reader_name}] Section {section_number}: memory fetch complete ({len(memory_str)} chars)")
 
+    # ── Build prompt ──────────────────────────────────────────────────────────
     system_prompt = build_reader_system_prompt(
         reader, genre, section_number, memory_str, numbered_text, line_start, line_end
     )
 
+    if not system_prompt or len(system_prompt) < 50:
+        logger.error(f"[{reader_name}] Section {section_number}: prompt is empty or too short! Content: {repr(system_prompt[:200])}")
+
+    prompt_words = len(system_prompt.split())
+    logger.info(f"[{reader_name}] Section {section_number}: prompt built ({prompt_words} words, ~{int(prompt_words * 1.3)} tokens)")
+    if prompt_words * 1.3 > 3000:
+        logger.warning(f"[{reader_name}] Section {section_number}: prompt exceeds 3000 tokens — memory compression may not be working correctly")
+
     chat = make_chat(system_prompt).with_params(max_tokens=600)
 
     # ── API call with 45-second timeout ───────────────────────────────────────
-    logger.info(f"Reader {reader_name}: API call sent for section {section_number}")
+    logger.info(f"[{reader_name}] Section {section_number}: OpenAI call started")
     t0 = time.monotonic()
     try:
         response = await asyncio.wait_for(
@@ -617,12 +651,12 @@ async def get_reader_inline_reaction(
         )
     except asyncio.TimeoutError:
         elapsed = time.monotonic() - t0
-        logger.error(f"Reader {reader_name}: API call TIMED OUT for section {section_number} after {elapsed:.1f}s")
+        logger.error(f"[{reader_name}] Section {section_number}: OpenAI call TIMED OUT after {elapsed:.1f}s")
         raise  # re-raise so process_reader can handle it
 
     elapsed = time.monotonic() - t0
     response_len = len(response) if response else 0
-    logger.info(f"Reader {reader_name}: API response received for section {section_number} ({response_len} chars, {elapsed:.1f}s)")
+    logger.info(f"[{reader_name}] Section {section_number}: OpenAI call complete ({response_len} chars, {elapsed*1000:.0f}ms)")
 
     # ── JSON parsing with fallback ────────────────────────────────────────────
     parsed = {}
@@ -630,19 +664,18 @@ async def get_reader_inline_reaction(
     try:
         clean = re.sub(r'```[a-z]*\n?', '', response).strip().rstrip('`')
         parsed = json.loads(clean)
-        logger.info(f"Reader {reader_name}: JSON parsed successfully for section {section_number}")
+        logger.info(f"[{reader_name}] Section {section_number}: JSON parsed")
     except (json.JSONDecodeError, KeyError, TypeError):
-        # Try to extract JSON substring from response
         try:
             start = response.find('{')
             end = response.rfind('}') + 1
             if start >= 0 and end > start:
                 parsed = json.loads(response[start:end])
-                logger.info(f"Reader {reader_name}: JSON extracted via substring search for section {section_number}")
+                logger.info(f"[{reader_name}] Section {section_number}: JSON extracted via substring search")
             else:
                 raise ValueError("No JSON object found in response")
         except Exception as e:
-            logger.warning(f"Reader {reader_name}: JSON parse FAILED for section {section_number}: {e}. Using fallback.")
+            logger.warning(f"[{reader_name}] Section {section_number}: JSON parse FAILED: {e}. Using fallback.")
             parsed = {
                 "inline_comments": [],
                 "section_reflection": response[:500] if response else None,
@@ -668,10 +701,10 @@ async def get_reader_inline_reaction(
         "created_at": now_iso()
     }
     await db.reader_reactions.insert_one({**reaction_doc})
-    logger.info(f"Reader {reader_name}: reaction stored for section {section_number}")
+    logger.info(f"[{reader_name}] Section {section_number}: stored to DB")
 
     # ── Save memory update ────────────────────────────────────────────────────
-    if memory_update:
+    if memory_update and isinstance(memory_update, dict):
         mem_doc = {
             "id": str(uuid.uuid4()),
             "manuscript_id": manuscript_id,
@@ -682,7 +715,8 @@ async def get_reader_inline_reaction(
         }
         await db.reader_memories.insert_one({**mem_doc})
 
-    logger.info(f"Reader {reader_name}: event sent to frontend for section {section_number}")
+    logger.info(f"[{reader_name}] Section {section_number}: event sent to frontend")
+    logger.info(f"[{reader_name}] Section {section_number}: === DONE ===")
 
     return {
         "reader_id": reader["id"],
