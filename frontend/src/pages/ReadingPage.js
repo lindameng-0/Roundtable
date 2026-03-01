@@ -437,6 +437,8 @@ export default function ReadingPage() {
   // thinkingReaders: Set of reader_ids currently mid-LLM-call this section
   const [thinkingReaders, setThinkingReaders] = useState(new Map()); // readerId -> {name, avatarIndex, personality, sectionNumber}
 
+  const esRef = useRef(null);
+
   useEffect(() => {
     loadData();
     return () => { esRef.current?.close(); };
