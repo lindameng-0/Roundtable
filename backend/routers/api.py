@@ -125,14 +125,35 @@ async def create_manuscript(manuscript: ManuscriptCreate, request: Request):
 
 
 @api_router.post("/manuscripts/upload")
-async def upload_manuscript(file: UploadFile = File(...), title: str = Form("Untitled Manuscript")):
-    if not file.filename.endswith('.txt'):
-        raise HTTPException(400, "Only .txt files are supported")
-    content = await file.read()
-    raw_text = content.decode('utf-8', errors='replace').strip()
+async def upload_manuscript(
+    request: Request,
+    file: UploadFile = File(...),
+    title: str = Form("Untitled Manuscript"),
+):
+    filename = file.filename or ""
+    if filename.endswith(".docx"):
+        try:
+            from docx import Document
+            import io
+            content = await file.read()
+            doc = Document(io.BytesIO(content))
+            paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+            raw_text = "\n\n".join(paragraphs)
+        except Exception as e:
+            raise HTTPException(400, f"Failed to read .docx file: {e}")
+    elif filename.endswith(".txt"):
+        content = await file.read()
+        raw_text = content.decode("utf-8", errors="replace").strip()
+    else:
+        raise HTTPException(400, "Please upload a .txt or .docx file")
+
     if not raw_text:
         raise HTTPException(400, "File is empty")
-    return await create_manuscript(ManuscriptCreate(title=title or file.filename, raw_text=raw_text))
+
+    return await create_manuscript(
+        ManuscriptCreate(title=title or filename or "Untitled Manuscript", raw_text=raw_text),
+        request,
+    )
 
 
 @api_router.get("/manuscripts/{manuscript_id}", response_model=ManuscriptResponse)
