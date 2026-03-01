@@ -265,7 +265,7 @@ class TestSSEReadAll:
         mid = created_manuscript["id"]
 
         # Ensure personas exist
-        requests.post(f"{BASE_URL}/api/manuscripts/{mid}/generate-personas", timeout=120)
+        requests.get(f"{BASE_URL}/api/manuscripts/{mid}/personas", timeout=120)
 
         collected_events = []
         event_types_seen = set()
