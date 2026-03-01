@@ -162,19 +162,14 @@ async def get_reader_inline_reaction(
     prompt_line_end = capped_lines[-1]["line"] if capped_lines else line_end
     numbered_text = "\n".join(f"{pl['line']}: {pl['text']}" for pl in capped_lines)
 
-    # ── Memory retrieval with timeout ─────────────────────────────────────────
+    # ── Memory retrieval (no asyncio.wait_for — cancelling Motor mid-flight
+    # corrupts the connection pool and silently breaks all subsequent DB writes)
     logger.info(f"[{reader_name}] Section {section_number}: memory fetch started")
-    try:
-        memories = await asyncio.wait_for(
-            db.reader_memories.find(
-                {"manuscript_id": manuscript_id, "reader_id": reader["id"]},
-                {"_id": 0},
-            ).sort("section_number", 1).to_list(100),
-            timeout=10,
-        )
-    except asyncio.TimeoutError:
-        logger.warning(f"[{reader_name}] Section {section_number}: memory fetch TIMED OUT, using empty memory")
-        memories = []
+    memories = await db.reader_memories.find(
+        {"manuscript_id": manuscript_id, "reader_id": reader["id"]},
+        {"_id": 0},
+    ).sort("section_number", -1).limit(5).to_list(5)  # cap at last 5 sections
+    memories.reverse()  # restore chronological order
 
     # Validate each memory entry — ensure memory_json is a dict, not a string
     valid_memories = []
