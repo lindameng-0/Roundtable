@@ -667,6 +667,7 @@ export default function ReadingPage() {
         // nothing extra needed
 
       } else if (data.type === "all_complete") {
+        readingStartedRef.current = false;
         setReadingDone(true);
         setProcessingSection(null);
         setThinkingReaders(new Map());
