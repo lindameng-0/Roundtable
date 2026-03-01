@@ -731,15 +731,44 @@ async def read_all_sections_stream(manuscript_id: str):
             queue = asyncio.Queue()
 
             async def process_reader(reader, sec=section, q=queue):
+                """Top-level wrapper: no exception can escape — either complete or error goes into queue."""
+                reader_name = reader.get("name", "Unknown")
+                logger.info(f"Starting reader pipeline: {reader_name}")
                 try:
                     result = await get_reader_inline_reaction(reader, sec, genre, manuscript_id)
+
+                    # Check for JSON parse warning and emit a non-terminal warning event first
+                    parse_warning = result.pop("_parse_warning", False)
+                    if parse_warning:
+                        logger.warning(f"Reader {reader_name}: JSON formatting issue on section {sec['section_number']}")
+                        await q.put({
+                            "type": "reader_warning",
+                            "reader_id": reader["id"],
+                            "reader_name": reader_name,
+                            "section_number": sec["section_number"],
+                            "message": f"{reader_name} had a formatting issue, partial feedback saved"
+                        })
+
                     await q.put({"type": "reader_complete", **result})
-                except Exception as e:
-                    logger.error(f"Error: reader {reader.get('name')} on section {sec['section_number']}: {e}")
+                    logger.info(f"Reader {reader_name}: completed section {sec['section_number']}")
+
+                except asyncio.TimeoutError:
+                    logger.error(f"Reader {reader_name}: TIMED OUT on section {sec['section_number']}")
                     await q.put({
                         "type": "reader_error",
                         "reader_id": reader["id"],
-                        "reader_name": reader.get("name", "Unknown"),
+                        "reader_name": reader_name,
+                        "section_number": sec["section_number"],
+                        "error": f"{reader_name} timed out on section {sec['section_number']}",
+                        "message": f"{reader_name} timed out on this section, moving on"
+                    })
+
+                except Exception as e:
+                    logger.error(f"Reader {reader_name}: ERROR on section {sec['section_number']}: {e}")
+                    await q.put({
+                        "type": "reader_error",
+                        "reader_id": reader["id"],
+                        "reader_name": reader_name,
                         "section_number": sec["section_number"],
                         "error": str(e)
                     })
@@ -748,19 +777,30 @@ async def read_all_sections_stream(manuscript_id: str):
             for reader in readers:
                 yield f"data: {json.dumps({'type': 'reader_thinking', 'reader_id': reader['id'], 'reader_name': reader.get('name'), 'avatar_index': reader.get('avatar_index', 0), 'personality': reader.get('personality', ''), 'section_number': sn})}\n\n"
 
-            # Launch all readers in parallel
+            # Launch all readers in parallel with return_exceptions=True safety
             reader_tasks = [asyncio.create_task(process_reader(r)) for r in readers]
 
-            # Drain exactly len(readers) completion events
-            for _ in range(len(readers)):
-                result = await queue.get()
+            # Drain queue: count terminal events (reader_complete / reader_error).
+            # Non-terminal events (reader_warning) pass through without counting.
+            # A 120-second per-event timeout acts as an absolute safety net.
+            terminal_count = 0
+            while terminal_count < len(readers):
+                try:
+                    result = await asyncio.wait_for(queue.get(), timeout=120)
+                except asyncio.TimeoutError:
+                    logger.error(f"Section {sn}: queue drain timed out — some readers stalled. Moving on.")
+                    yield f"data: {json.dumps({'type': 'section_error', 'section_number': sn, 'message': 'Some readers stalled on this section'})}\n\n"
+                    break
                 yield f"data: {json.dumps(result)}\n\n"
+                if result.get("type") in ("reader_complete", "reader_error"):
+                    terminal_count += 1
 
             await asyncio.gather(*reader_tasks, return_exceptions=True)
             yield f"data: {json.dumps({'type': 'section_complete', 'section_number': sn})}\n\n"
             # Keep-alive comment between sections so proxy doesn't timeout
             yield ": keep-alive\n\n"
 
+        logger.info("All reader pipelines complete. Sending reading_complete event.")
         yield f"data: {json.dumps({'type': 'all_complete'})}\n\n"
 
     return StreamingResponse(
