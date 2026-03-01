@@ -673,27 +673,27 @@ async def read_all_sections_stream(manuscript_id: str):
 
         for section in sorted(sections, key=lambda s: s["section_number"]):
             sn = section["section_number"]
+
+            # Skip sections where all readers already have reactions (idempotent on reconnect)
+            existing = await db.reader_reactions.count_documents(
+                {"manuscript_id": manuscript_id, "section_number": sn}
+            )
+            if existing >= len(readers):
+                # Emit a quick skip event so frontend knows this section was already done
+                yield f"data: {json.dumps({'type': 'section_skipped', 'section_number': sn})}\n\n"
+                continue
+
             yield f"data: {json.dumps({'type': 'section_start', 'section_number': sn, 'total_sections': total_sections})}\n\n"
 
-            # Use a queue so all 5 readers truly run in parallel and results stream as they arrive
             queue = asyncio.Queue()
 
-            async def process_reader(reader, sec=section):
-                # Immediately signal that this reader has started working
-                await queue.put({
-                    "type": "reader_thinking",
-                    "reader_id": reader["id"],
-                    "reader_name": reader.get("name"),
-                    "avatar_index": reader.get("avatar_index", 0),
-                    "personality": reader.get("personality", ""),
-                    "section_number": sec["section_number"],
-                })
+            async def process_reader(reader, sec=section, q=queue):
                 try:
                     result = await get_reader_inline_reaction(reader, sec, genre, manuscript_id)
-                    await queue.put({"type": "reader_complete", **result})
+                    await q.put({"type": "reader_complete", **result})
                 except Exception as e:
                     logger.error(f"Error: reader {reader.get('name')} on section {sec['section_number']}: {e}")
-                    await queue.put({
+                    await q.put({
                         "type": "reader_error",
                         "reader_id": reader["id"],
                         "reader_name": reader.get("name", "Unknown"),
@@ -701,17 +701,22 @@ async def read_all_sections_stream(manuscript_id: str):
                         "error": str(e)
                     })
 
-            # Launch all 5 readers at once
+            # Emit thinking events immediately for all readers (before any await)
+            for reader in readers:
+                yield f"data: {json.dumps({'type': 'reader_thinking', 'reader_id': reader['id'], 'reader_name': reader.get('name'), 'avatar_index': reader.get('avatar_index', 0), 'personality': reader.get('personality', ''), 'section_number': sn})}\n\n"
+
+            # Launch all readers in parallel
             reader_tasks = [asyncio.create_task(process_reader(r)) for r in readers]
 
-            # Stream results as each reader emits events (thinking + complete = 2 events per reader)
-            expected_events = len(readers) * 2
-            for _ in range(expected_events):
+            # Drain exactly len(readers) completion events
+            for _ in range(len(readers)):
                 result = await queue.get()
                 yield f"data: {json.dumps(result)}\n\n"
 
-            # Ensure all tasks are done before moving to next section
             await asyncio.gather(*reader_tasks, return_exceptions=True)
+            yield f"data: {json.dumps({'type': 'section_complete', 'section_number': sn})}\n\n"
+
+        yield f"data: {json.dumps({'type': 'all_complete'})}\n\n"
 
             yield f"data: {json.dumps({'type': 'section_complete', 'section_number': sn})}\n\n"
 
