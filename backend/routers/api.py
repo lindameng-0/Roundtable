@@ -25,6 +25,8 @@ from services.editor import generate_editor_report as _build_editor_report
 import re
 from emergentintegrations.llm.chat import UserMessage
 
+from routers.auth import _get_session_user
+
 api_router = APIRouter(prefix="/api")
 logger = logging.getLogger(__name__)
 
