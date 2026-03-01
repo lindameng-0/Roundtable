@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 
 from db import get_db
 
+# Load .env first so all os.environ reads below see env vars
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
