@@ -116,14 +116,18 @@ def split_manuscript(raw_text: str) -> Tuple[List[Dict], int]:
 
     sections: List[Dict] = []
     global_line = 1
-    for idx, seg in enumerate(final_segments):
+    section_number = 0
+    for seg in final_segments:
         paragraphs = [p.strip() for p in seg["text"].split("\n") if p.strip()]
+        if not paragraphs:
+            continue  # skip empty segments so line numbering stays valid
+        section_number += 1
         line_start = global_line
         paragraph_lines = [{"line": global_line + k, "text": p} for k, p in enumerate(paragraphs)]
-        global_line += len(paragraphs)
+        global_line += len(paragraph_lines)
         line_end = global_line - 1
         sections.append({
-            "section_number": idx + 1,
+            "section_number": section_number,
             "title": seg["title"],
             "text": seg["text"],
             "start_char": 0,

@@ -292,6 +292,13 @@ async def read_all_sections_stream(manuscript_id: str, request: Request):
                 return
 
             sn = section["section_number"]
+            paragraph_lines = section.get("paragraph_lines") or []
+            line_start = section.get("line_start", 0)
+            line_end = section.get("line_end", 0)
+            if not paragraph_lines or line_start > line_end:
+                logger.warning("Section %s has no paragraph_lines or invalid line range, skipping", sn)
+                yield f"data: {json.dumps({'type': 'section_skipped', 'section_number': sn})}\n\n"
+                continue
 
             # Skip sections where all readers already have reactions (idempotent on reconnect)
             existing = await db.reader_reactions.count_documents(
@@ -320,7 +327,7 @@ async def read_all_sections_stream(manuscript_id: str, request: Request):
             # connection alive through nginx and browser proxies.
             # Overall 120-second section safety net via elapsed time.
             terminal_count = 0
-            section_deadline = asyncio.get_event_loop().time() + 120
+            section_deadline = asyncio.get_event_loop().time() + 180
             while terminal_count < len(readers):
                 if await request.is_disconnected():
                     logger.info("Client disconnected — cancelling reader tasks for section %s", sn)
@@ -331,7 +338,7 @@ async def read_all_sections_stream(manuscript_id: str, request: Request):
 
                 remaining = section_deadline - asyncio.get_event_loop().time()
                 if remaining <= 0:
-                    logger.error(f"Section {sn}: 120s deadline reached — some readers stalled. Moving on.")
+                    logger.error(f"Section {sn}: section deadline reached — some readers stalled. Moving on.")
                     yield f"data: {json.dumps({'type': 'section_error', 'section_number': sn, 'message': 'Some readers stalled on this section'})}\n\n"
                     break
                 try:

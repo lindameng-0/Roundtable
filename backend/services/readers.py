@@ -148,6 +148,31 @@ async def get_reader_inline_reaction(
     paragraph_lines = section.get("paragraph_lines", [])
     reader_name = reader.get("name", "Unknown")
 
+    if not paragraph_lines or line_start > line_end:
+        logger.warning(f"[{reader_name}] Section {section_number}: no paragraph_lines or invalid range, skipping")
+        reaction_doc = {
+            "id": str(uuid.uuid4()),
+            "manuscript_id": manuscript_id,
+            "reader_id": reader["id"],
+            "reader_name": reader["name"],
+            "section_number": section_number,
+            "inline_comments": [],
+            "section_reflection": None,
+            "created_at": now_iso(),
+        }
+        await db.reader_reactions.insert_one({**reaction_doc})
+        return {
+            "reader_id": reader["id"],
+            "reader_name": reader["name"],
+            "avatar_index": reader.get("avatar_index", 0),
+            "personality": reader.get("personality", ""),
+            "section_number": section_number,
+            "inline_comments": [],
+            "section_reflection": None,
+            "reaction_id": reaction_doc["id"],
+            "_parse_warning": False,
+        }
+
     logger.info(f"[{reader_name}] Section {section_number}: === START ===")
 
     # Cap section text to 2000 words so prompts stay under ~3000 tokens.
@@ -211,7 +236,7 @@ async def get_reader_inline_reaction(
 
     temperature = float(reader.get("temperature", 0.7))
     chat = make_chat(system_prompt).with_params(
-        max_tokens=800,
+        max_tokens=1200,
         temperature=temperature,
         response_format={"type": "json_object"},
     )
@@ -223,7 +248,7 @@ async def get_reader_inline_reaction(
         async with _get_llm_semaphore():
             response = await asyncio.wait_for(
                 chat.send_message(UserMessage(text=numbered_text)),
-                timeout=60,
+                timeout=120,
             )
     except asyncio.TimeoutError:
         elapsed = time.monotonic() - t0
