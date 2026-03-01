@@ -5,6 +5,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 from config import client
 from routers.api import api_router
+from routers.auth import auth_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -13,6 +14,7 @@ logging.basicConfig(
 
 app = FastAPI()
 app.include_router(api_router)
+app.include_router(auth_router)
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
