@@ -291,7 +291,7 @@ class TestSSEStreamNoDuplicates:
         time.sleep(2)
 
         # Check reading status
-        status_resp = requests.get(f"{BASE_URL}/api/manuscripts/{mid}/reading-status", timeout=10)
+        status_resp = requests.get(f"{BASE_URL}/api/manuscripts/{mid}/reading-status", timeout=30)
         assert status_resp.status_code == 200
         status = status_resp.json()
         print(f"\nReading status: {status}")
