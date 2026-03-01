@@ -61,6 +61,17 @@ export default function LoginPage() {
           </p>
         </div>
 
+        <div className="text-center mt-5">
+          <a
+            href="/setup"
+            data-testid="skip-auth-link"
+            className="text-xs text-ink-400 hover:text-clay transition-colors underline underline-offset-2"
+          >
+            Continue without signing in
+          </a>
+          <p className="text-xs text-ink-400 mt-1">(manuscripts won't be saved to your account)</p>
+        </div>
+
         <p className="text-xs text-center text-ink-400 mt-8">
           Your manuscripts are private and only visible to you.
         </p>
