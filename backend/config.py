@@ -10,7 +10,10 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY')
+# Provider API keys — set the ones you use; LiteLLM reads these from env for the active provider
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
+ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY')
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')  # or GOOGLE_API_KEY for Gemini
 
 # Mutable — can be changed at runtime via POST /api/config/model
 LLM_MODEL = os.environ.get('LLM_MODEL', 'gpt-4o')

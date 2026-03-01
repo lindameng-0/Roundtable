@@ -8,7 +8,7 @@ Build a collaborative AI beta reader tool for fiction writers. The app simulates
 ### Tech Stack
 - **Backend:** FastAPI (Python) + Motor/MongoDB async, modular services/routers
 - **Frontend:** React + Tailwind CSS (Cormorant Garamond + Manrope fonts)
-- **LLM:** Emergent Universal Key via `emergentintegrations` (gpt-4o-mini default, switchable)
+- **LLM:** OpenAI / Claude / Gemini via LiteLLM (set OPENAI_API_KEY, ANTHROPIC_API_KEY, or GEMINI_API_KEY in backend/.env; model switchable)
 - **Auth:** Emergent-managed Google OAuth
 - **DB:** MongoDB
 

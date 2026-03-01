@@ -5,8 +5,7 @@ import asyncio
 import logging
 from typing import Dict, List
 
-from emergentintegrations.llm.chat import UserMessage
-from utils import make_chat, now_iso
+from utils import make_chat, now_iso, UserMessage
 from config import db
 from models import ReaderPersonaResponse
 

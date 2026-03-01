@@ -7,7 +7,7 @@ import logging
 from typing import Dict, List
 
 from emergentintegrations.llm.chat import UserMessage
-from utils import make_chat, now_iso, validate_inline_comments
+from utils import make_chat, now_iso, validate_inline_comments, UserMessage
 from config import db
 
 logger = logging.getLogger(__name__)
