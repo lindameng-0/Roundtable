@@ -1,7 +1,8 @@
 import React from "react";
 import { BookOpen } from "lucide-react";
 
-const EMERGENT_GOOGLE_AUTH_URL = `https://demobackend.emergentagent.com/auth/v1/env/oauth/google/auth?frontend_url=${encodeURIComponent(window.location.origin + "/auth/callback")}`;
+// REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
+const EMERGENT_GOOGLE_AUTH_URL = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(window.location.origin + "/auth/callback")}`;
 
 export default function LoginPage() {
   return (
