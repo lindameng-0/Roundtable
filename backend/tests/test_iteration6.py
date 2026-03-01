@@ -395,12 +395,17 @@ class TestSSEStream:
 
     def test_sse_emits_start_event_with_totals(self, created_manuscript):
         mid = created_manuscript["id"]
+        # Ensure personas exist before calling SSE (personas are required)
+        p_resp = requests.get(f"{BASE_URL}/api/manuscripts/{mid}/personas", timeout=120)
+        assert p_resp.status_code == 200, f"Persona generation failed: {p_resp.status_code}"
+        
         resp = requests.get(
             f"{BASE_URL}/api/manuscripts/{mid}/read-all",
             stream=True,
             timeout=90,
             headers={"Accept": "text/event-stream"}
         )
+        assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
         start_found = False
         for line in resp.iter_lines(decode_unicode=True):
             if line.startswith("data:"):
@@ -413,6 +418,10 @@ class TestSSEStream:
                         assert data["total_sections"] >= 1
                         assert data["total_readers"] == 5
                         print(f"PASS: start event has total_sections={data['total_sections']}, total_readers={data['total_readers']}")
+                        break
+                    # If sections are already processed (all skipped), all_complete arrives quickly
+                    if data.get("type") == "all_complete":
+                        print("INFO: all_complete received before start event captured — stream completed before iteration")
                         break
                 except json.JSONDecodeError:
                     pass
