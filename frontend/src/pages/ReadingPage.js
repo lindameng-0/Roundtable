@@ -511,11 +511,14 @@ export default function ReadingPage() {
 
   const startReadingAll = useCallback((ms, ps) => {
     const url = `${process.env.REACT_APP_BACKEND_URL}/api/manuscripts/${ms.id}/read-all`;
-    const es = new EventSource(url);
-    esRef.current = es;
+    let cancelled = false;
 
-    es.onmessage = (event) => {
-      const data = JSON.parse(event.data);
+    // Use fetch+ReadableStream instead of EventSource — EventSource auto-reconnects
+    // which causes duplicate reads when there's a gap between sections
+    const controller = new AbortController();
+    esRef.current = { close: () => { cancelled = true; controller.abort(); } };
+
+    const handleEvent = (data) => {
 
       if (data.type === "start") {
         setTotalSections(data.total_sections);
