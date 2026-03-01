@@ -53,7 +53,7 @@ async def generate_single_persona(
     avatar_index: int,
     manuscript_id: str,
 ) -> Dict:
-    system = f"""You are a creative writing assistant. Generate a realistic reader persona for a book club member.
+    system = """You are a creative writing assistant. Generate a realistic reader persona for a book club member.
 Return ONLY a valid JSON object (no markdown):
 {{
   "name": "full name (diverse, realistic)",
