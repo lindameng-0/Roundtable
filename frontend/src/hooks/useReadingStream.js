@@ -158,6 +158,7 @@ export function useReadingStream(manuscriptId) {
         // nothing extra needed
 
       } else if (data.type === "all_complete" || data.type === "reading_complete") {
+        completedNormally = true;
         readingStartedRef.current = false;
         setReadingDone(true);
         setProcessingSection(null);
