@@ -65,6 +65,17 @@ async def update_model(req: ModelConfigRequest):
 
 # ─── Manuscripts ──────────────────────────────────────────────────────────────
 
+@api_router.get("/manuscripts")
+async def list_manuscripts(request: Request):
+    """List all manuscripts for the current authenticated user."""
+    user = await _get_session_user(request)
+    docs = await db.manuscripts.find(
+        {"user_id": user["user_id"]},
+        {"_id": 0, "raw_text": 0, "sections": 0}  # exclude heavy fields
+    ).sort("created_at", -1).to_list(100)
+    return docs
+
+
 @api_router.post("/manuscripts", response_model=ManuscriptResponse)
 async def create_manuscript(manuscript: ManuscriptCreate, request: Request):
     raw_text = manuscript.raw_text.strip()
