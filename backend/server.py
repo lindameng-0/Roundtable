@@ -512,20 +512,41 @@ async def regenerate_personas(manuscript_id: str, req: RegenerateRequest):
 
 # ─── Reading: Inline Annotation Format ───────────────────────────────────────
 
+FULL_PROMPT_RULES = """RULES FOR INLINE COMMENTS:
+- BE SELECTIVE. A real reader does not react to every paragraph. Most of the text you just read and move on. You only comment when something genuinely provokes a reaction — surprise, confusion, delight, suspicion, frustration, or a strong opinion.
+- For a typical section of 20-40 paragraphs, you should leave 3-6 comments. Not more. If a section is uneventful, 2-3 comments is fine. If a section has a major twist or climax, you might go up to 7-8. Never exceed 8.
+- Ask yourself before each comment: "Would I actually stop and think about this, or would I just keep reading?" If the answer is keep reading, don't comment.
+- Prioritize: plot turning points, character reveals, moments of confusion, things that connect to earlier predictions, lines that genuinely impressed or bothered you, and pacing problems. Skip: routine description, transitions, dialogue that's just moving the scene forward, and anything that's fine but unremarkable.
+- Keep each comment to 1-2 sentences. Only go to 3 sentences if you're explaining a theory with evidence.
+- section_reflection remains optional and should be null for most sections."""
+
 def build_reader_system_prompt(reader: Dict, genre: str, section_number: int, memory_str: str, numbered_text: str, line_start: int, line_end: int) -> str:
+    is_first_section = (section_number == 1)
+
+    if not is_first_section:
+        # Compressed prompt for sections 2+ — ~100 tokens vs ~500
+        return f"""You are {reader['name']}. {reader.get('personality_specific_instructions', '')}
+
+You are a selective commenter. You do not annotate everything. Long stretches of text may pass without a comment from you, and that is normal. Silence means the writing is doing its job. You only speak up when something genuinely strikes you.
+
+Voice: plain language, commas and periods only. 3-6 comments per section, never more than 8. 1-2 sentences per comment.
+
+Previous memory:
+{memory_str}
+
+Lines in this section are numbered {line_start} to {line_end}.
+
+Respond ONLY with valid JSON: {{"inline_comments":[{{"line":<int>,"type":"reaction|prediction|confusion|critique|praise|theory|comparison","comment":"<text>"}}],"section_reflection":<null or "text">,"memory_update":{{"plot_events":[],"character_notes":{{}},"predictions":[],"questions":[],"emotional_state":"","memorable_quotes":[]}}}}
+
+Section text:
+{numbered_text}"""
+
+    # Full prompt for section 1 only
     return f"""You are {reader['name']}, {reader['age']}, a {reader['occupation']} who reads {reader.get('reading_habits', '')}.
 You love {reader.get('favorite_genres', genre)} with {reader.get('genre_preferences', 'a focus on character')}.
 {reader.get('reading_priority', 'You care about a compelling story.')}.
 
-As you read, you:
-- Notice when a character's choice feels true or false to who they are
-- Compare moments to other books you've read (sometimes aloud in your head)
-- Remember small details and wonder if they'll matter later
-- React emotionally before thinking critically
-- Mix praise and criticism naturally — you're honest but fair
-- Express uncertainty when you're guessing
-- May interpret or analyze the text, but be realistic for a human who's reading
-- May generate fan theories based on earlier information
+You are a selective commenter. You do not annotate everything. Long stretches of text may pass without a comment from you, and that is normal. Silence means the writing is doing its job. You only speak up when something genuinely strikes you.
 
 {reader.get('personality_specific_instructions', '')}
 
@@ -536,45 +557,20 @@ Here is what you remember from previous sections:
 
 ---
 
-OUTPUT FORMAT:
-
-You are leaving comments on specific lines as you read, like margin notes on a manuscript.
-Do NOT quote the text back. Reference where you are by line number only.
-
 Lines in this section are numbered {line_start} to {line_end}.
 
-Respond ONLY with a valid JSON object in this exact structure:
-
+Respond ONLY with a valid JSON object:
 {{
   "inline_comments": [
-    {{
-      "line": <integer line number between {line_start} and {line_end}>,
-      "type": "reaction" | "prediction" | "confusion" | "critique" | "praise" | "theory" | "comparison",
-      "comment": "<your thought in 1-3 sentences, in your natural voice>"
-    }}
+    {{"line": <integer {line_start}-{line_end}>, "type": "reaction|prediction|confusion|critique|praise|theory|comparison", "comment": "<1-2 sentences>"}}
   ],
-  "section_reflection": "<optional 2-4 sentences about the section as a whole, or null>",
-  "memory_update": {{
-    "plot_events": ["event 1", "event 2"],
-    "character_notes": {{"character_name": "updated impression"}},
-    "predictions": [{{"prediction": "what you think will happen", "confidence": "high/medium/low", "evidence": "why"}}],
-    "questions": ["unresolved question"],
-    "emotional_state": "how you're feeling about the story right now",
-    "memorable_quotes": ["any standout lines"]
-  }}
+  "section_reflection": <null or "2-3 sentences">,
+  "memory_update": {{"plot_events": [], "character_notes": {{}}, "predictions": [], "questions": [], "emotional_state": "", "memorable_quotes": []}}
 }}
 
-RULES:
-- Comment only where you naturally have a reaction. Typically 4-10 comments per section, sometimes fewer.
-- Keep each comment to 1-3 sentences. These are margin notes, not essays.
-- Do not quote the text in your comments.
-- Use the "type" field honestly.
-- section_reflection should be null most of the time.
-- Fan theories go in inline_comments as type "theory" AND in memory_update predictions.
-- Use plain language with only commas and periods. No exclamation marks, no all caps.
+{FULL_PROMPT_RULES}
 
-Here is the section text (read it carefully):
-
+Section text:
 {numbered_text}"""
 
 async def get_reader_inline_reaction(
