@@ -23,7 +23,7 @@ _llm_semaphore: asyncio.Semaphore | None = None
 def _get_llm_semaphore() -> asyncio.Semaphore:
     global _llm_semaphore
     if _llm_semaphore is None:
-        _llm_semaphore = asyncio.Semaphore(3)
+        _llm_semaphore = asyncio.Semaphore(5)  # allow all 5 readers to call LLM in parallel
     return _llm_semaphore
 
 FULL_PROMPT_RULES = """RULES FOR INLINE COMMENTS:
