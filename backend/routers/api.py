@@ -16,6 +16,7 @@ from models import (
     ReaderPersonaResponse,
     RegenerateRequest,
     ModelConfigRequest,
+    AppendTextRequest,
 )
 from utils import now_iso, make_chat, UserMessage
 
@@ -131,6 +132,28 @@ async def create_manuscript(manuscript: ManuscriptCreate, request: Request):
         logger.exception("Failed to save manuscript to database")
         raise HTTPException(503, f"Database error: {str(e)}")
     return ManuscriptResponse(**doc)
+
+
+@api_router.patch("/manuscripts/{manuscript_id}/append-text", response_model=ManuscriptResponse)
+async def append_manuscript_text(manuscript_id: str, body: AppendTextRequest, request: Request):
+    """Append text to an existing manuscript and re-run sectioning. Used for chunked uploads to avoid 413."""
+    chunk = body.raw_text_chunk
+    if not chunk:
+        raise HTTPException(400, "raw_text_chunk cannot be empty")
+    doc = await db.manuscripts.find_one({"id": manuscript_id}, None)
+    if not doc:
+        raise HTTPException(404, "Manuscript not found")
+    new_raw = (doc.get("raw_text") or "") + chunk
+    sections, total_lines = split_manuscript(new_raw)
+    update = {
+        "raw_text": new_raw,
+        "sections": sections,
+        "total_sections": len(sections),
+        "total_lines": total_lines,
+    }
+    await db.manuscripts.update_one({"id": manuscript_id}, {"$set": update})
+    updated = await db.manuscripts.find_one({"id": manuscript_id}, None)
+    return ManuscriptResponse(**updated)
 
 
 @api_router.post("/manuscripts/upload")

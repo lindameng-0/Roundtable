@@ -62,3 +62,7 @@ class RegenerateRequest(BaseModel):
 class ModelConfigRequest(BaseModel):
     provider: str
     model: str
+
+
+class AppendTextRequest(BaseModel):
+    raw_text_chunk: str

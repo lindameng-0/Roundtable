@@ -9,6 +9,10 @@ import ModelSelector from "../components/ModelSelector";
 
 const API = process.env.REACT_APP_BACKEND_URL + "/api";
 
+// Chunked upload: if request body would exceed this (bytes), send in chunks to avoid 413
+const SAFE_BODY_SIZE = 800 * 1024; // 800KB
+const CHUNK_CHARS = 400 * 1024; // 400K chars per chunk
+
 const STEPS = ["manuscript", "genre", "readers"];
 
 const READER_AVATAR_URLS = [
@@ -103,10 +107,29 @@ export default function SetupPage() {
     try {
       const token = localStorage.getItem("session_token");
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      const res = await axios.post(`${API}/manuscripts`, {
-        title: title || "Untitled Manuscript",
-        raw_text: text,
-      }, { headers, withCredentials: true });
+      const payload = { title: title || "Untitled Manuscript", raw_text: text };
+      const bodySize = new Blob([JSON.stringify(payload)]).size;
+
+      let res;
+      if (bodySize <= SAFE_BODY_SIZE) {
+        res = await axios.post(`${API}/manuscripts`, payload, { headers, withCredentials: true });
+      } else {
+        // Chunked upload to avoid 413 (proxy body limit)
+        const firstChunk = text.slice(0, CHUNK_CHARS);
+        res = await axios.post(`${API}/manuscripts`, {
+          title: title || "Untitled Manuscript",
+          raw_text: firstChunk,
+        }, { headers, withCredentials: true });
+        const manuscriptId = res.data.id;
+        for (let start = CHUNK_CHARS; start < text.length; start += CHUNK_CHARS) {
+          const chunk = text.slice(start, start + CHUNK_CHARS);
+          res = await axios.patch(
+            `${API}/manuscripts/${manuscriptId}/append-text`,
+            { raw_text_chunk: chunk },
+            { headers, withCredentials: true }
+          );
+        }
+      }
       setManuscript(res.data);
       setGenre({
         genre: res.data.genre,
@@ -116,7 +139,11 @@ export default function SetupPage() {
       });
       setStep("genre");
     } catch (err) {
-      const msg = err.response?.data?.detail ?? err.response?.data?.message ?? err.message ?? "Failed to process manuscript. Please try again.";
+      const status = err.response?.status;
+      const msg =
+        status === 413
+          ? "Manuscript is too large for the server limit. If you use nginx, set client_max_body_size 50M (see backend/nginx-body-size.conf)."
+          : (err.response?.data?.detail ?? err.response?.data?.message ?? err.message ?? "Failed to process manuscript. Please try again.");
       const text = Array.isArray(msg) ? msg.map((m) => m.msg ?? m).join(", ") : msg;
       toast.error(text);
     } finally {
