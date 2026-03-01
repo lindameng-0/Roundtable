@@ -40,6 +40,19 @@ function PublicOnlyRoute({ children }) {
   return children;
 }
 
+/** Authenticated → /dashboard, guest → /setup */
+function RootRedirect() {
+  const { user, loading } = useAuth();
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-paper flex items-center justify-center">
+        <Loader2 className="w-5 h-5 animate-spin text-clay" strokeWidth={1.5} />
+      </div>
+    );
+  }
+  return <Navigate to={user ? "/dashboard" : "/setup"} replace />;
+}
+
 function App() {
   return (
     <div className="App">
