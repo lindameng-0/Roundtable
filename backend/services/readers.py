@@ -230,6 +230,8 @@ async def get_reader_inline_reaction(
     parse_warning = False
     try:
         clean = re.sub(r'```[a-z]*\n?', '', response).strip().rstrip('`')
+        # Repair common LLM formatting mistakes: trailing commas before } or ]
+        clean = re.sub(r',(\s*[}\]])', r'\1', clean)
         parsed = json.loads(clean)
         logger.info(f"[{reader_name}] Section {section_number}: JSON parsed")
     except (json.JSONDecodeError, KeyError, TypeError):
@@ -237,7 +239,9 @@ async def get_reader_inline_reaction(
             start = response.find('{')
             end = response.rfind('}') + 1
             if start >= 0 and end > start:
-                parsed = json.loads(response[start:end])
+                fragment = response[start:end]
+                fragment = re.sub(r',(\s*[}\]])', r'\1', fragment)
+                parsed = json.loads(fragment)
                 logger.info(f"[{reader_name}] Section {section_number}: JSON extracted via substring search")
             else:
                 raise ValueError("No JSON object found in response")
