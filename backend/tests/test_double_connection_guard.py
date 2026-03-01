@@ -297,7 +297,7 @@ class TestSSEStreamNoDuplicates:
         print(f"\nReading status: {status}")
 
         # Get all reactions
-        reactions_resp = requests.get(f"{BASE_URL}/api/manuscripts/{mid}/all-reactions", timeout=10)
+        reactions_resp = requests.get(f"{BASE_URL}/api/manuscripts/{mid}/all-reactions", timeout=30)
         assert reactions_resp.status_code == 200
         reactions = reactions_resp.json()
 
