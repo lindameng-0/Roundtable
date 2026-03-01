@@ -13,5 +13,5 @@ db = client[os.environ['DB_NAME']]
 EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY')
 
 # Mutable — can be changed at runtime via POST /api/config/model
-LLM_MODEL = os.environ.get('LLM_MODEL', 'gpt-4o-mini')
+LLM_MODEL = os.environ.get('LLM_MODEL', 'gpt-4o')
 LLM_PROVIDER = os.environ.get('LLM_PROVIDER', 'openai')
