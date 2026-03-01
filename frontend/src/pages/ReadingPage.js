@@ -615,7 +615,41 @@ export default function ReadingPage() {
         });
 
       } else if (data.type === "reader_error") {
-        toast.error(`${data.reader_name} had an error on section ${data.section_number}`);
+        // Clear from thinking strip
+        if (data.reader_id) {
+          setThinkingReaders((prev) => {
+            const next = new Map(prev);
+            next.delete(data.reader_id);
+            return next;
+          });
+        }
+        toast.error(`${data.reader_name || "A reader"} had an error on section ${data.section_number}`);
+
+      } else if (data.type === "reader_warning") {
+        toast.warning(`${data.reader_name || "A reader"}: ${data.message || "formatting issue, partial feedback saved"}`, { duration: 4000 });
+
+      } else if (data.type === "reader_crashed") {
+        if (data.reader_id) {
+          setThinkingReaders((prev) => {
+            const next = new Map(prev);
+            next.delete(data.reader_id);
+            return next;
+          });
+        }
+        toast.error(`${data.reader_name || "A reader"} stopped reading unexpectedly.`);
+
+      } else if (data.type === "reading_complete") {
+        // Alias for all_complete (sent by newer backend versions)
+        setReadingDone(true);
+        setProcessingSection(null);
+        setThinkingReaders(new Map());
+        setReaderStatus((prev) => {
+          const next = { ...prev };
+          Object.keys(next).forEach((id) => { next[id] = { ...next[id], done: true, currentSection: null }; });
+          return next;
+        });
+        toast.success("Your readers have finished. Generate your Editor Report?");
+        return;
 
       } else if (data.type === "section_complete") {
         // nothing extra needed
