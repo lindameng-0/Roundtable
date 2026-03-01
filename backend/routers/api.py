@@ -262,16 +262,24 @@ async def read_all_sections_stream(manuscript_id: str):
                 for r in readers
             ]
 
-            # Drain queue counting terminal events. Non-terminal (reader_warning) pass through freely.
-            # A 120-second per-event timeout is the absolute safety net.
+            # Drain queue counting terminal events.
+            # Poll every 15s max so we can send heartbeat pings to keep the SSE
+            # connection alive through nginx and browser proxies.
+            # Overall 120-second section safety net via elapsed time.
             terminal_count = 0
+            section_deadline = asyncio.get_event_loop().time() + 120
             while terminal_count < len(readers):
-                try:
-                    result = await asyncio.wait_for(queue.get(), timeout=120)
-                except asyncio.TimeoutError:
-                    logger.error(f"Section {sn}: queue drain timed out — some readers stalled. Moving on.")
+                remaining = section_deadline - asyncio.get_event_loop().time()
+                if remaining <= 0:
+                    logger.error(f"Section {sn}: 120s deadline reached — some readers stalled. Moving on.")
                     yield f"data: {json.dumps({'type': 'section_error', 'section_number': sn, 'message': 'Some readers stalled on this section'})}\n\n"
                     break
+                try:
+                    result = await asyncio.wait_for(queue.get(), timeout=min(15, remaining))
+                except asyncio.TimeoutError:
+                    # Send heartbeat so nginx / browser proxies know the connection is alive
+                    yield ": heartbeat\n\n"
+                    continue
                 yield f"data: {json.dumps(result)}\n\n"
                 if result.get("type") in ("reader_complete", "reader_error"):
                     terminal_count += 1
