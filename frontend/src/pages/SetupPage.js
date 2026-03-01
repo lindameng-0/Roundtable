@@ -252,7 +252,7 @@ export default function SetupPage() {
                   Bring your manuscript to the table
                 </h2>
                 <p className="text-ink-600 text-base">
-                  Paste your text or upload a .txt file. Roundtable will assemble a panel of readers just for your story.
+                  Paste your text or upload a <strong>.txt</strong> or <strong>.docx</strong> file. Roundtable will assemble a panel of readers just for your story.
                 </p>
               </div>
 
@@ -282,7 +282,7 @@ export default function SetupPage() {
                   data-testid="manuscript-text-area"
                   value={text}
                   onChange={(e) => setText(e.target.value)}
-                  placeholder="Paste your manuscript here... or drag and drop a .txt file above"
+                  placeholder="Paste your manuscript here... or drag and drop a .txt or .docx file above"
                   className="w-full h-80 bg-transparent border-none focus:outline-none focus:ring-0 p-6 manuscript-text resize-none placeholder:text-ink-400/50"
                   style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.05rem", lineHeight: "1.85" }}
                 />
@@ -290,7 +290,7 @@ export default function SetupPage() {
                   <div className="absolute inset-0 flex items-center justify-center bg-paper/80 pointer-events-none">
                     <div className="text-center">
                       <Upload className="w-8 h-8 text-clay mx-auto mb-2" strokeWidth={1.5} />
-                      <p className="text-clay font-medium">Drop your .txt file</p>
+                      <p className="text-clay font-medium">Drop your .txt or .docx file</p>
                     </div>
                   </div>
                 )}
@@ -302,10 +302,14 @@ export default function SetupPage() {
                   className="flex items-center gap-2 text-sm text-ink-600 cursor-pointer hover:text-clay transition-colors"
                 >
                   <Upload className="w-4 h-4" strokeWidth={1.5} />
-                  Upload .txt file
+                  {uploadedFileName ? (
+                    <span className="text-clay font-medium truncate max-w-xs" data-testid="uploaded-filename">{uploadedFileName}</span>
+                  ) : (
+                    "Upload .txt or .docx"
+                  )}
                   <input
                     type="file"
-                    accept=".txt"
+                    accept=".txt,.docx"
                     className="hidden"
                     onChange={(e) => handleFileUpload(e.target.files[0])}
                     data-testid="file-upload-input"
