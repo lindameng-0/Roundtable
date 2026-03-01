@@ -679,6 +679,15 @@ async def read_all_sections_stream(manuscript_id: str):
             queue = asyncio.Queue()
 
             async def process_reader(reader, sec=section):
+                # Immediately signal that this reader has started working
+                await queue.put({
+                    "type": "reader_thinking",
+                    "reader_id": reader["id"],
+                    "reader_name": reader.get("name"),
+                    "avatar_index": reader.get("avatar_index", 0),
+                    "personality": reader.get("personality", ""),
+                    "section_number": sec["section_number"],
+                })
                 try:
                     result = await get_reader_inline_reaction(reader, sec, genre, manuscript_id)
                     await queue.put({"type": "reader_complete", **result})
@@ -695,8 +704,9 @@ async def read_all_sections_stream(manuscript_id: str):
             # Launch all 5 readers at once
             reader_tasks = [asyncio.create_task(process_reader(r)) for r in readers]
 
-            # Stream results as each reader finishes
-            for _ in range(len(readers)):
+            # Stream results as each reader emits events (thinking + complete = 2 events per reader)
+            expected_events = len(readers) * 2
+            for _ in range(expected_events):
                 result = await queue.get()
                 yield f"data: {json.dumps(result)}\n\n"
 
