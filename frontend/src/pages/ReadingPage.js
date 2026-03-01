@@ -537,6 +537,8 @@ export default function ReadingPage() {
           return next;
         });
 
+      } else if (data.type === "section_skipped") {
+        // Section already read (reconnect scenario) — nothing to do, comments already loaded
       } else if (data.type === "reader_thinking") {
         const { reader_id, reader_name, avatar_index, personality, section_number } = data;
         setThinkingReaders((prev) => {
