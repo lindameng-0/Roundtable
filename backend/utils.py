@@ -114,11 +114,12 @@ def validate_inline_comments(
         if not isinstance(c, dict):
             continue
         line = c.get("line")
-        if not isinstance(line, int):
-            try:
-                line = int(line)
-            except (TypeError, ValueError):
-                continue
+        if line is None:
+            continue
+        try:
+            line = int(float(line))
+        except (TypeError, ValueError):
+            continue
         line = max(line_start, min(line_end, line))
         comment_val = c.get("comment")
         if comment_val is not None and not isinstance(comment_val, str):

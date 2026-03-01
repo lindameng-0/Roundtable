@@ -83,7 +83,7 @@ def build_reader_system_prompt(
     psi = reader.get("personality_specific_instructions", "")
 
     if section_number > 1:
-        # ── Compressed prompt (sections 2+) ─────────────────────────────────
+        # ── Compressed prompt (sections 2+) — include full schema so model returns inline_comments
         return f"""You are {name}. {psi}
 
 Voice: plain language, commas and periods only. No exclamation marks, no all-caps, no emoji. Selective commenter, 3-6 comments per section max.
@@ -92,8 +92,23 @@ Previous memory:
 {memory_str}
 
 Lines {line_start}-{line_end}. Section {section_number} of a {genre} manuscript.
-Respond with a JSON object only (inline_comments, section_reflection, memory_update). Same schema as before.
-Only reference line numbers between {line_start} and {line_end}."""
+Respond with a JSON object only. Use this exact structure:
+
+{{
+  "inline_comments": [
+    {{ "line": <integer {line_start}-{line_end}>, "type": "reaction" | "prediction" | "confusion" | "critique" | "praise" | "theory" | "comparison", "comment": "<1-2 sentences>" }}
+  ],
+  "section_reflection": "<2-4 sentences or null>",
+  "memory_update": {{
+    "plot_events": ["event"],
+    "character_notes": {{"name": "impression"}},
+    "predictions": [{{"prediction": "text", "confidence": "high/medium/low", "evidence": "why"}}],
+    "questions": ["question"],
+    "emotional_state": "one sentence"
+  }}
+}}
+
+Rules: 3-6 inline comments. Only reference line numbers between {line_start} and {line_end}. Do not quote the text."""
 
     # ── Full prompt (section 1) ──────────────────────────────────────────────
     return f"""You are {name}, {reader.get("age", 35)}, a {reader.get("occupation", "reader")}. {reader.get("reading_habits", "")}. You love {reader.get("favorite_genres", genre)}. {reader.get("reading_priority", "You care about a compelling story.")}.
@@ -246,25 +261,45 @@ async def get_reader_inline_reaction(
     logger.info(f"[{reader_name}] Section {section_number}: prompt built ({prompt_words} words)")
 
     temperature = float(reader.get("temperature", 0.7))
-    chat = make_chat(system_prompt).with_params(
+    chat_with_json = make_chat(system_prompt).with_params(
         max_tokens=1200,
         temperature=temperature,
         response_format={"type": "json_object"},
     )
+    chat_plain = make_chat(system_prompt).with_params(max_tokens=1200, temperature=temperature)
 
     # ── API call — section text goes in the user message (system = instructions)
     logger.info(f"[{reader_name}] Section {section_number}: OpenAI call started (temp={temperature})")
     t0 = time.monotonic()
+    response = None
     try:
         async with _get_llm_semaphore():
             response = await asyncio.wait_for(
-                chat.send_message(UserMessage(text=numbered_text)),
+                chat_with_json.send_message(UserMessage(text=numbered_text)),
                 timeout=120,
             )
     except asyncio.TimeoutError:
         elapsed = time.monotonic() - t0
         logger.error(f"[{reader_name}] Section {section_number}: OpenAI call TIMED OUT after {elapsed:.1f}s")
         raise
+    except Exception as e:
+        err_str = str(e).lower()
+        if "response_format" in err_str or "json_schema" in err_str:
+            logger.warning(f"[{reader_name}] Section {section_number}: provider may not support json_object, retrying without response_format")
+            try:
+                async with _get_llm_semaphore():
+                    response = await asyncio.wait_for(
+                        chat_plain.send_message(UserMessage(text=numbered_text)),
+                        timeout=120,
+                    )
+            except asyncio.TimeoutError:
+                elapsed = time.monotonic() - t0
+                logger.error(f"[{reader_name}] Section {section_number}: OpenAI call TIMED OUT after {elapsed:.1f}s")
+                raise
+        else:
+            raise
+    if response is None:
+        raise RuntimeError("No response from LLM")
 
     elapsed = time.monotonic() - t0
     logger.info(f"[{reader_name}] Section {section_number}: OpenAI call complete ({len(response)} chars, {elapsed*1000:.0f}ms)")
@@ -299,10 +334,33 @@ async def get_reader_inline_reaction(
                 "memory_update": {},
             }
             parse_warning = True
+            # Try to salvage inline_comments from raw response (e.g. truncated or malformed JSON)
+            try:
+                idx = response.find('"inline_comments"')
+                if idx >= 0:
+                    bracket = response.find('[', idx)
+                    if bracket >= 0:
+                        depth = 1
+                        i = bracket + 1
+                        while i < len(response) and depth > 0:
+                            if response[i] == '[':
+                                depth += 1
+                            elif response[i] == ']':
+                                depth -= 1
+                            i += 1
+                        if depth == 0:
+                            arr_str = response[bracket:i]
+                            arr = json.loads(arr_str)
+                            if isinstance(arr, list):
+                                parsed["inline_comments"] = arr
+                                logger.info(f"[{reader_name}] Section {section_number}: recovered {len(arr)} comments from raw response")
+            except Exception:
+                pass
 
-    inline_comments = validate_inline_comments(
-        parsed.get("inline_comments", []), line_start, prompt_line_end
-    )
+    raw_comments = parsed.get("inline_comments", [])
+    if not isinstance(raw_comments, list):
+        raw_comments = []
+    inline_comments = validate_inline_comments(raw_comments, line_start, prompt_line_end)
     section_reflection = parsed.get("section_reflection")
     if section_reflection is not None and not isinstance(section_reflection, str):
         section_reflection = str(section_reflection)
