@@ -66,10 +66,18 @@ async def update_model(req: ModelConfigRequest):
 # ─── Manuscripts ──────────────────────────────────────────────────────────────
 
 @api_router.post("/manuscripts", response_model=ManuscriptResponse)
-async def create_manuscript(manuscript: ManuscriptCreate):
+async def create_manuscript(manuscript: ManuscriptCreate, request: Request):
     raw_text = manuscript.raw_text.strip()
     if not raw_text:
         raise HTTPException(400, "Manuscript text cannot be empty")
+
+    # Attach user_id if the user is authenticated (optional auth — anonymous allowed)
+    user_id = None
+    try:
+        user = await _get_session_user(request)
+        user_id = user["user_id"]
+    except HTTPException:
+        pass  # anonymous submission still allowed
 
     doc_id = str(uuid.uuid4())
     sections, total_lines = split_manuscript(raw_text)
