@@ -205,16 +205,18 @@ async def get_reader_inline_reaction(
 
     chat = make_chat(system_prompt).with_params(max_tokens=1000)
 
-    # ── API call with 45-second timeout ───────────────────────────────────────
+    # ── API call — held behind semaphore so memory fetches for other readers
+    # can complete before the thread pool gets saturated ───────────────────────
     logger.info(f"[{reader_name}] Section {section_number}: OpenAI call started")
     t0 = time.monotonic()
     try:
-        response = await asyncio.wait_for(
-            chat.send_message(UserMessage(
-                text=f"Read section {section_number} and leave your inline comments."
-            )),
-            timeout=45,
-        )
+        async with _get_llm_semaphore():
+            response = await asyncio.wait_for(
+                chat.send_message(UserMessage(
+                    text=f"Read section {section_number} and leave your inline comments."
+                )),
+                timeout=45,
+            )
     except asyncio.TimeoutError:
         elapsed = time.monotonic() - t0
         logger.error(f"[{reader_name}] Section {section_number}: OpenAI call TIMED OUT after {elapsed:.1f}s")
