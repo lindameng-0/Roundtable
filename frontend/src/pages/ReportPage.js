@@ -110,7 +110,9 @@ export default function ReportPage() {
       setReport(res.data.report);
       toast.success("Editor report generated");
     } catch (err) {
-      toast.error("Failed to generate report. Make sure you've read at least one section.");
+      const detail = err.response?.data?.detail ?? err.response?.data?.message;
+      const msg = typeof detail === "string" ? detail : (Array.isArray(detail) ? detail.map((d) => d.msg ?? d).join(", ") : null);
+      toast.error(msg || "Failed to generate report. Make sure you've read at least one section.");
     } finally {
       setGenerating(false);
     }
@@ -176,6 +178,12 @@ export default function ReportPage() {
             {manuscript?.target_audience && <span className="chip">{manuscript.target_audience}</span>}
           </div>
         </motion.div>
+
+        {report?.coverage_note && (
+          <div className="mb-8 px-4 py-3 bg-amber-50 border border-amber-200 text-amber-800 text-sm" style={{ borderRadius: "2px" }}>
+            {report.coverage_note}
+          </div>
+        )}
 
         {!report ? (
           <div className="text-center py-20 border border-ink-900/8 bg-white" style={{ borderRadius: "2px" }}>

@@ -446,13 +446,21 @@ async def create_editor_report(manuscript_id: str):
     if not reactions:
         raise HTTPException(400, "No reader reactions found. Read the manuscript first.")
 
+    # Only allow report when all readers have finished all sections
     if total_sections > 0 and total_readers > 0:
         sections_covered = set(r.get("section_number") for r in reactions)
         missing_sections = set(range(1, total_sections + 1)) - sections_covered
         if missing_sections:
-            raise HTTPException(400, f"Reading is not complete. Sections {sorted(missing_sections)} have not been read yet.")
-        if len(reactions) < total_sections * total_readers:
-            raise HTTPException(400, f"Reading is not complete. {len(reactions)} of {total_sections * total_readers} reader-section combinations finished.")
+            raise HTTPException(
+                400,
+                f"Reading is not complete. Sections {sorted(missing_sections)} have not been read yet.",
+            )
+        expected_reactions = total_sections * total_readers
+        if len(reactions) < expected_reactions:
+            raise HTTPException(
+                400,
+                f"Reading is not complete. {len(reactions)} of {expected_reactions} reader–section combinations finished. Wait for all readers to finish all sections.",
+            )
 
     report_data = await _build_editor_report(manuscript, reactions)
 

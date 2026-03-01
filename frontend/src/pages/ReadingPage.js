@@ -83,8 +83,10 @@ export default function ReadingPage() {
     try {
       await axios.post(`${API}/manuscripts/${manuscriptId}/editor-report`);
       navigate(`/report/${manuscriptId}`);
-    } catch {
-      toast.error("Failed to generate report. Make sure readers have finished at least one section.");
+    } catch (err) {
+      const detail = err.response?.data?.detail ?? err.response?.data?.message;
+      const msg = typeof detail === "string" ? detail : (Array.isArray(detail) ? detail.map((d) => d.msg ?? d).join(", ") : null);
+      toast.error(msg || "Failed to generate report. Make sure readers have finished at least one section.");
     } finally {
       setLoadingReport(false);
     }
