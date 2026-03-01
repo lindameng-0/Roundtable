@@ -868,6 +868,13 @@ export default function ReadingPage() {
               </div>
             )}
 
+            {/* Thinking strip — shows while readers are mid-LLM-call */}
+            <AnimatePresence>
+              {thinkingReaders.size > 0 && (
+                <ThinkingStrip thinkingReaders={thinkingReaders} personas={personas} />
+              )}
+            </AnimatePresence>
+
             {/* Reader panels */}
             {personas.map((persona) => {
               const status = readerStatus[persona.id] || { currentSection: null, done: false, totalComments: 0 };
