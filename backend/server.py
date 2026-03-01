@@ -599,10 +599,9 @@ async def get_reader_inline_reaction(
         reader, genre, section_number, memory_str, numbered_text, line_start, line_end
     )
 
-    chat = make_chat(system_prompt)
+    chat = make_chat(system_prompt).with_params(max_tokens=600)
     response = await chat.send_message(UserMessage(
-        text=f"Read section {section_number} and leave your inline comments.",
-        max_tokens=600
+        text=f"Read section {section_number} and leave your inline comments."
     ))
 
     # Parse JSON response
