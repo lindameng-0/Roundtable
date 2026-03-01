@@ -471,6 +471,14 @@ export default function ReadingPage() {
           return next;
         });
 
+      } else if (data.type === "reader_thinking") {
+        const { reader_id, reader_name, avatar_index, personality, section_number } = data;
+        setThinkingReaders((prev) => {
+          const next = new Map(prev);
+          next.set(reader_id, { reader_name, avatar_index, personality, section_number });
+          return next;
+        });
+
       } else if (data.type === "reader_complete") {
         const { reader_id, reader_name, inline_comments = [], section_reflection, section_number } = data;
 
