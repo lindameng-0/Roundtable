@@ -221,7 +221,7 @@ export function ManuscriptView({
               Your readers have finished.
             </h3>
             <p className="text-sm text-ink-600 mb-4">
-              {totalCommentCount} annotations across {totalSections} sections. Ready for the editorial synthesis?
+              {totalCommentCount} {totalCommentCount === 1 ? "annotation" : "annotations"} across {totalSections} {totalSections === 1 ? "section" : "sections"}. Ready for the editorial synthesis?
             </p>
             <button
               data-testid="generate-report-complete-btn"
