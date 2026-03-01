@@ -769,12 +769,39 @@ async def read_all_sections_stream(manuscript_id: str):
                 reader_name = reader.get("name", "Unknown")
                 logger.info(f"Starting reader pipeline: {reader_name}")
                 try:
+                    # ── Duplicate guard ───────────────────────────────────────────────────
+                    # If two concurrent SSE connections both try to process the same section,
+                    # the second one will find the first one's saved reaction and return it
+                    # directly instead of making an unnecessary (and rate-limit-burning) LLM call.
+                    existing_reaction = await db.reader_reactions.find_one(
+                        {
+                            "manuscript_id": manuscript_id,
+                            "reader_id": reader["id"],
+                            "section_number": sec["section_number"]
+                        },
+                        {"_id": 0}
+                    )
+                    if existing_reaction:
+                        logger.info(f"[{reader_name}] Section {sec['section_number']}: reaction already exists (concurrent-connection guard), reusing saved result")
+                        await q.put({
+                            "type": "reader_complete",
+                            "reader_id": reader["id"],
+                            "reader_name": reader_name,
+                            "avatar_index": reader.get("avatar_index", 0),
+                            "personality": reader.get("personality", ""),
+                            "section_number": sec["section_number"],
+                            "inline_comments": existing_reaction.get("inline_comments", []),
+                            "section_reflection": existing_reaction.get("section_reflection"),
+                            "reaction_id": existing_reaction.get("id", "")
+                        })
+                        return
+
                     result = await get_reader_inline_reaction(reader, sec, genre, manuscript_id)
 
                     # Check for JSON parse warning and emit a non-terminal warning event first
                     parse_warning = result.pop("_parse_warning", False)
                     if parse_warning:
-                        logger.warning(f"Reader {reader_name}: JSON formatting issue on section {sec['section_number']}")
+                        logger.warning(f"[{reader_name}] Section {sec['section_number']}: JSON formatting issue, emitting reader_warning")
                         await q.put({
                             "type": "reader_warning",
                             "reader_id": reader["id"],
