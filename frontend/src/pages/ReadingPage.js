@@ -203,6 +203,65 @@ function AnnotatedParagraph({ lineData, commentsByLine, personas, openPopoverLin
   );
 }
 
+// ─── Thinking Strip ───────────────────────────────────────────────────────────
+function ThinkingStrip({ thinkingReaders, personas }) {
+  const entries = Array.from(thinkingReaders.entries());
+  if (entries.length === 0) return null;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -6 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -6 }}
+      transition={{ duration: 0.2 }}
+      className="mb-4 border border-ink-900/8 bg-white overflow-hidden"
+      style={{ borderRadius: "2px" }}
+      data-testid="thinking-strip"
+    >
+      <div className="px-3 py-2 border-b border-ink-900/6">
+        <p className="text-xs text-ink-400 uppercase tracking-widest">Readers working now</p>
+      </div>
+      <div className="divide-y divide-ink-900/5">
+        {entries.map(([readerId, info]) => {
+          const persona = personas.find((p) => p.id === readerId);
+          const readerColor = READER_COLORS[info.avatar_index ?? 0];
+          return (
+            <div key={readerId} className="flex items-center gap-2.5 px-3 py-2.5">
+              <div
+                className="w-6 h-6 overflow-hidden flex-shrink-0"
+                style={{ borderRadius: "2px", border: `1.5px solid ${readerColor}` }}
+              >
+                <img
+                  src={READER_AVATAR_URLS[(info.avatar_index ?? 0) % READER_AVATAR_URLS.length]}
+                  alt={info.reader_name}
+                  className="w-full h-full object-cover"
+                  onError={(e) => { e.target.style.display = "none"; }}
+                />
+              </div>
+              <div className="flex-1 min-w-0">
+                <span className="text-xs font-medium text-ink-900">{info.reader_name}</span>
+                <span className="text-xs text-ink-400 ml-1.5">is reading section {info.section_number}...</span>
+              </div>
+              {/* Animated dots */}
+              <div className="flex items-center gap-0.5 flex-shrink-0">
+                {[0, 1, 2].map((i) => (
+                  <motion.div
+                    key={i}
+                    className="w-1 h-1 rounded-full"
+                    style={{ background: readerColor }}
+                    animate={{ opacity: [0.3, 1, 0.3] }}
+                    transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
+                  />
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </motion.div>
+  );
+}
+
 // ─── Reader Panel (Sidebar) ───────────────────────────────────────────────────
 function ReaderPanel({ persona, readerStatus, reflections, totalComments, activeTypes, allComments }) {
   const [expanded, setExpanded] = useState(false);
