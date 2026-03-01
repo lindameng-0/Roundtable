@@ -718,10 +718,6 @@ async def read_all_sections_stream(manuscript_id: str):
 
         yield f"data: {json.dumps({'type': 'all_complete'})}\n\n"
 
-            yield f"data: {json.dumps({'type': 'section_complete', 'section_number': sn})}\n\n"
-
-        yield f"data: {json.dumps({'type': 'all_complete'})}\n\n"
-
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
