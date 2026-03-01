@@ -88,9 +88,11 @@ Return ONLY a valid JSON object (no markdown):
     raw_name = data.get("name")
     if isinstance(raw_name, str):
         raw_name = raw_name.strip()
-    if not raw_name:
-        raw_name = f"Reader {avatar_index + 1}"
-    name = raw_name
+    else:
+        raw_name = str(raw_name).strip() if raw_name is not None else ""
+    name = raw_name if raw_name else f"Reader {avatar_index + 1}"
+    # Ensure we never store a non-string (e.g. LLM returns a number)
+    name = str(name).strip() or f"Reader {avatar_index + 1}"
 
     return {
         "id": str(uuid.uuid4()),

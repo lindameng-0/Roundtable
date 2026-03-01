@@ -235,7 +235,15 @@ async def get_personas(manuscript_id: str):
             logger.exception("Persona generation failed for manuscript %s", manuscript_id)
             msg = str(e).strip() or "LLM or database error"
             raise HTTPException(503, f"Reader generation failed: {msg}")
-    return [ReaderPersonaResponse(**p) for p in personas]
+
+    def _normalize_persona(p: dict) -> dict:
+        p = dict(p)
+        name = (p.get("name") or "").strip() if isinstance(p.get("name"), str) else ""
+        if not name:
+            p["name"] = f"Reader {(p.get('avatar_index') or 0) + 1}"
+        return p
+
+    return [ReaderPersonaResponse(**_normalize_persona(p)) for p in personas]
 
 
 @api_router.post("/manuscripts/{manuscript_id}/personas/regenerate")

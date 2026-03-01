@@ -30,6 +30,12 @@ const PERSONALITY_COLORS = {
 
 const ALL_TYPES = Object.keys(COMMENT_TYPE_COLORS);
 
+function getReaderDisplayName(persona, index) {
+  const n = persona?.name;
+  if (n != null && String(n).trim()) return String(n).trim();
+  return `Reader ${(index ?? persona?.avatar_index ?? 0) + 1}`;
+}
+
 function ThinkingStrip({ thinkingReaders, personas }) {
   const entries = Array.from(thinkingReaders.entries());
   if (entries.length === 0) return null;
@@ -50,18 +56,19 @@ function ThinkingStrip({ thinkingReaders, personas }) {
       <div className="divide-y divide-ink-900/5">
         {entries.map(([readerId, info]) => {
           const readerColor = READER_COLORS[info.avatar_index ?? 0];
+          const displayName = (info.reader_name && String(info.reader_name).trim()) || `Reader ${(info.avatar_index ?? 0) + 1}`;
           return (
             <div key={readerId} className="flex items-center gap-2.5 px-3 py-2.5">
               <div className="w-6 h-6 overflow-hidden flex-shrink-0" style={{ borderRadius: "2px", border: `1.5px solid ${readerColor}` }}>
                 <img
                   src={READER_AVATAR_URLS[(info.avatar_index ?? 0) % READER_AVATAR_URLS.length]}
-                  alt={info.reader_name}
+                  alt={displayName}
                   className="w-full h-full object-cover"
                   onError={(e) => { e.target.style.display = "none"; }}
                 />
               </div>
               <div className="flex-1 min-w-0">
-                <span className="text-xs font-medium text-ink-900">{info.reader_name}</span>
+                <span className="text-xs font-medium text-ink-900">{displayName}</span>
                 <span className="text-xs text-ink-400 ml-1.5">is reading section {info.section_number}...</span>
               </div>
               <div className="flex items-center gap-0.5 flex-shrink-0">
@@ -98,7 +105,7 @@ function ReaderPanel({ persona, readerStatus, reflections, totalComments, active
 
   return (
     <div
-      data-testid={`reader-panel-${persona.name.replace(/\s+/g, "-").toLowerCase()}`}
+      data-testid={`reader-panel-${getReaderDisplayName(persona).replace(/\s+/g, "-").toLowerCase()}`}
       className="border border-ink-900/8 bg-white mb-3 overflow-hidden"
       style={{ borderRadius: "2px" }}
     >
@@ -109,13 +116,13 @@ function ReaderPanel({ persona, readerStatus, reflections, totalComments, active
         <div className="w-8 h-8 overflow-hidden flex-shrink-0" style={{ borderRadius: "2px", border: `2px solid ${readerColor}` }}>
           <img
             src={READER_AVATAR_URLS[(persona.avatar_index ?? 0) % READER_AVATAR_URLS.length]}
-            alt={persona.name}
+            alt={getReaderDisplayName(persona)}
             className="w-full h-full object-cover"
             onError={(e) => { e.target.style.display = "none"; }}
           />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-ink-900 truncate">{persona.name}</p>
+          <p className="text-sm font-semibold text-ink-900 truncate">{getReaderDisplayName(persona)}</p>
           <p className="text-xs" style={{ color }}>
             {done ? `${totalComments} comments` : currentSection ? `Reading section ${currentSection}...` : "Waiting..."}
           </p>

@@ -32,6 +32,12 @@ const PERSONALITY_COLORS = {
   genre_savvy: "#2D2A26",
 };
 
+function getReaderDisplayName(p, index) {
+  const n = p?.name;
+  if (n != null && String(n).trim()) return String(n).trim();
+  return `Reader ${(index ?? p?.avatar_index ?? 0) + 1}`;
+}
+
 export default function SetupPage() {
   const navigate = useNavigate();
   const [step, setStep] = useState("manuscript");
@@ -589,7 +595,7 @@ export default function SetupPage() {
                       <div className="w-12 h-12 overflow-hidden flex-shrink-0" style={{ borderRadius: "2px" }}>
                         <img
                           src={READER_AVATAR_URLS[p.avatar_index % READER_AVATAR_URLS.length]}
-                          alt={p.name}
+                          alt={getReaderDisplayName(p, i)}
                           className="w-full h-full object-cover"
                           onError={(e) => {
                             e.target.style.display = "none";
@@ -598,7 +604,7 @@ export default function SetupPage() {
                         />
                       </div>
                       <div>
-                        <h3 className="font-medium text-ink-900 text-base">{p.name}</h3>
+                        <h3 className="font-medium text-ink-900 text-base">{getReaderDisplayName(p, i)}</h3>
                         <p className="text-xs text-ink-400">
                           {p.age} · {p.occupation}
                         </p>
