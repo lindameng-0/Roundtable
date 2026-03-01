@@ -1,0 +1,19 @@
+This is Roundtable, a collaborative AI beta reader tool for fiction writers.
+
+Tech stack:
+- Backend: FastAPI (Python), OpenAI API (GPT-4o-mini), Supabase (Postgres)
+- Frontend: React with Tailwind CSS
+- Auth: Google OAuth via Supabase
+
+Key architecture:
+- 5 AI reader personas process manuscript sections independently in parallel
+- Each reader has isolated structured memory (plot events, predictions, character notes)
+- Readers output inline JSON annotations tied to line numbers
+- An Editor AI synthesizes all reader reactions into a summary report
+- Frontend displays annotations as margin dots on the manuscript text
+
+When making changes:
+- Always handle async errors with try/except and timeouts
+- Never let one reader's failure crash the other readers' pipelines
+- Keep reader prompts concise — compressed prompts for section 2+
+- Test with a short 3-section manuscript before deploying
