@@ -25,7 +25,7 @@ export default function ReadingPage() {
   // All SSE-driven state comes from the hook
   const {
     commentsByLine, readerStatus, reflections, allComments,
-    thinkingReaders, readingDone, processingSection, totalSections,
+    thinkingReaders, readingDone, setReadingDone, processingSection, totalSections,
     isStalled, esRef, startReadingAll, loadExistingReactions,
     handleRetry, handleViewPartial,
   } = useReadingStream(manuscriptId);
@@ -57,10 +57,10 @@ export default function ReadingPage() {
       const allDone = totalSecs > 0 && sectionsWithReactions.size >= totalSecs && existing.length >= totalSecs * pRes.data.length;
 
       if (existing.length > 0) loadExistingReactions(existing, pRes.data);
-      if (!allDone) startReadingAll(mRes.data, pRes.data);
-      else {
-        // Mark done but don't start stream
-        const { setReadingDone } = await import("../hooks/useReadingStream");
+      if (allDone) {
+        setReadingDone(true);
+      } else {
+        startReadingAll(mRes.data, pRes.data);
       }
     } catch {
       toast.error("Failed to load manuscript");
