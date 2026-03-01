@@ -712,6 +712,25 @@ export default function ReadingPage() {
     }
   };
 
+  const handleRetry = useCallback(() => {
+    setIsStalled(false);
+    lastEventTimeRef.current = Date.now();
+    // Close existing stream if any
+    esRef.current?.close();
+    if (manuscript && personas.length > 0) {
+      startReadingAll(manuscript, personas);
+    }
+  }, [manuscript, personas, startReadingAll]);
+
+  const handleViewPartial = useCallback(() => {
+    setIsStalled(false);
+    esRef.current?.close();
+    setReadingDone(true);
+    setProcessingSection(null);
+    setThinkingReaders(new Map());
+    toast.info("Showing partial results. You can still generate a report with what's been collected.");
+  }, []);
+
   const handleOpenPopover = useCallback((lineNumber, e) => {
     setOpenPopoverLine((prev) => (prev === lineNumber ? null : lineNumber));
   }, []);
