@@ -26,7 +26,7 @@ export default function ReadingPage() {
   const {
     commentsByLine, readerStatus, reflections, allComments,
     thinkingReaders, readingDone, setReadingDone, processingSection, totalSections,
-    isStalled, esRef, startReadingAll, loadExistingReactions,
+    setTotalSections, isStalled, esRef, startReadingAll, loadExistingReactions,
     handleRetry, handleViewPartial,
   } = useReadingStream(manuscriptId);
 

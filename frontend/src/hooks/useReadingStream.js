@@ -243,6 +243,7 @@ export function useReadingStream(manuscriptId) {
     esRef,
     startReadingAll,
     loadExistingReactions,
+    setTotalSections,
     handleRetry,
     handleViewPartial,
   };
