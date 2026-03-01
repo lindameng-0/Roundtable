@@ -439,6 +439,9 @@ export default function ReadingPage() {
 
   const esRef = useRef(null);
   const lastEventTimeRef = useRef(Date.now());
+  // Prevents React StrictMode double-mount (or any other re-render) from opening
+  // two concurrent SSE connections to the backend simultaneously.
+  const readingStartedRef = useRef(false);
   const [isStalled, setIsStalled] = useState(false);
 
   useEffect(() => {
