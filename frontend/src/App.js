@@ -50,11 +50,13 @@ function App() {
             <Route path="/login" element={<PublicOnlyRoute><LoginPage /></PublicOnlyRoute>} />
             <Route path="/auth/callback" element={<AuthCallback />} />
 
-            {/* Protected routes */}
+            {/* Protected routes (require auth) */}
             <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
-            <Route path="/setup" element={<ProtectedRoute><SetupPage /></ProtectedRoute>} />
-            <Route path="/read/:manuscriptId" element={<ProtectedRoute><ReadingPage /></ProtectedRoute>} />
-            <Route path="/report/:manuscriptId" element={<ProtectedRoute><ReportPage /></ProtectedRoute>} />
+
+            {/* Optional-auth routes (sign-in not required) */}
+            <Route path="/setup" element={<SetupPage />} />
+            <Route path="/read/:manuscriptId" element={<ReadingPage />} />
+            <Route path="/report/:manuscriptId" element={<ReportPage />} />
 
             {/* Root: redirect based on auth */}
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
