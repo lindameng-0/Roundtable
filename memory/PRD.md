@@ -46,7 +46,27 @@ Build a collaborative AI beta reader tool for fiction writers. The app simulates
 6. Editor AI report with engagement chart + recommendations
 7. Model selector (gpt-4o, claude, gemini, etc.)
 
-## What's Been Implemented (Jan 2026 — v2 update)
+## What's Been Implemented (Feb 2026 — v3 resiliency update)
+- **Backend resiliency (6-point plan, fully tested)**:
+  - `asyncio.wait_for(timeout=45)` on every OpenAI API call in `get_reader_inline_reaction()`
+  - JSON parse failure fallback: returns partial data + `_parse_warning` flag instead of crashing
+  - `process_reader()` emits `reader_warning` (non-terminal) + `reader_complete` (terminal), or `reader_error` on timeout
+  - Queue drain changed from count-based to terminal-event-based with `asyncio.wait_for(timeout=120)` absolute safety net
+  - `return_exceptions=True` on `asyncio.gather` (already existed, confirmed)
+  - Extensive `logger.info/warning/error` logging at every pipeline step
+- **Frontend stall detection**:
+  - `lastEventTimeRef` tracks time of last SSE event
+  - `useEffect` polls every 10 seconds; sets `isStalled=true` if 60s elapsed with no events
+  - Stall banner (`data-testid=stall-warning-banner`) appears with **Retry** and **View partial results** buttons
+  - `handleRetry()` closes old stream and restarts reading (backend skips completed sections)
+  - `handleViewPartial()` marks reading as done and allows report generation with partial data
+- **New SSE event types handled on frontend**:
+  - `reader_warning` → `toast.warning()` (soft, 4s)
+  - `reader_crashed` → `toast.error()` + clears from ThinkingStrip
+  - `reading_complete` → alias for `all_complete` (for forward compatibility)
+  - `reader_error` → also now clears the reader from ThinkingStrip
+
+
 - **Auto-reading**: clicking Start Reading triggers full automatic read of all sections via `/read-all` SSE endpoint. No manual section navigation.
 - **Inline annotations**: reader output is JSON `{inline_comments: [{line, type, comment}], section_reflection, memory_update}`. Line numbers are global across the full manuscript.
 - **Continuous manuscript view**: full manuscript rendered as scrollable document with all sections. Each paragraph has a `data-line` attribute.
