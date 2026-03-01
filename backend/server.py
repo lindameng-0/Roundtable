@@ -584,6 +584,9 @@ async def get_reader_inline_reaction(
     line_start = section["line_start"]
     line_end = section["line_end"]
     paragraph_lines = section.get("paragraph_lines", [])
+    reader_name = reader.get("name", "Unknown")
+
+    logger.info(f"Reader {reader_name}: starting section {section_number}")
 
     # Build numbered text for the reader
     numbered_text = "\n".join(f"{pl['line']}: {pl['text']}" for pl in paragraph_lines)
@@ -601,25 +604,51 @@ async def get_reader_inline_reaction(
     )
 
     chat = make_chat(system_prompt).with_params(max_tokens=600)
-    response = await chat.send_message(UserMessage(
-        text=f"Read section {section_number} and leave your inline comments."
-    ))
 
-    # Parse JSON response
+    # ── API call with 45-second timeout ───────────────────────────────────────
+    logger.info(f"Reader {reader_name}: API call sent for section {section_number}")
+    t0 = time.monotonic()
+    try:
+        response = await asyncio.wait_for(
+            chat.send_message(UserMessage(
+                text=f"Read section {section_number} and leave your inline comments."
+            )),
+            timeout=45
+        )
+    except asyncio.TimeoutError:
+        elapsed = time.monotonic() - t0
+        logger.error(f"Reader {reader_name}: API call TIMED OUT for section {section_number} after {elapsed:.1f}s")
+        raise  # re-raise so process_reader can handle it
+
+    elapsed = time.monotonic() - t0
+    response_len = len(response) if response else 0
+    logger.info(f"Reader {reader_name}: API response received for section {section_number} ({response_len} chars, {elapsed:.1f}s)")
+
+    # ── JSON parsing with fallback ────────────────────────────────────────────
     parsed = {}
+    parse_warning = False
     try:
         clean = re.sub(r'```[a-z]*\n?', '', response).strip().rstrip('`')
         parsed = json.loads(clean)
-    except Exception:
-        # Try to find JSON in response
+        logger.info(f"Reader {reader_name}: JSON parsed successfully for section {section_number}")
+    except (json.JSONDecodeError, KeyError, TypeError):
+        # Try to extract JSON substring from response
         try:
             start = response.find('{')
             end = response.rfind('}') + 1
             if start >= 0 and end > start:
                 parsed = json.loads(response[start:end])
+                logger.info(f"Reader {reader_name}: JSON extracted via substring search for section {section_number}")
+            else:
+                raise ValueError("No JSON object found in response")
         except Exception as e:
-            logger.error(f"Failed to parse reader response for {reader.get('name')}: {e}")
-            parsed = {"inline_comments": [], "section_reflection": None, "memory_update": {}}
+            logger.warning(f"Reader {reader_name}: JSON parse FAILED for section {section_number}: {e}. Using fallback.")
+            parsed = {
+                "inline_comments": [],
+                "section_reflection": response[:500] if response else None,
+                "memory_update": {}
+            }
+            parse_warning = True
 
     inline_comments = validate_inline_comments(
         parsed.get("inline_comments", []), line_start, line_end
@@ -627,7 +656,7 @@ async def get_reader_inline_reaction(
     section_reflection = parsed.get("section_reflection")
     memory_update = parsed.get("memory_update", {})
 
-    # Save reaction
+    # ── Save reaction ─────────────────────────────────────────────────────────
     reaction_doc = {
         "id": str(uuid.uuid4()),
         "manuscript_id": manuscript_id,
@@ -639,8 +668,9 @@ async def get_reader_inline_reaction(
         "created_at": now_iso()
     }
     await db.reader_reactions.insert_one({**reaction_doc})
+    logger.info(f"Reader {reader_name}: reaction stored for section {section_number}")
 
-    # Save memory update
+    # ── Save memory update ────────────────────────────────────────────────────
     if memory_update:
         mem_doc = {
             "id": str(uuid.uuid4()),
@@ -652,6 +682,8 @@ async def get_reader_inline_reaction(
         }
         await db.reader_memories.insert_one({**mem_doc})
 
+    logger.info(f"Reader {reader_name}: event sent to frontend for section {section_number}")
+
     return {
         "reader_id": reader["id"],
         "reader_name": reader["name"],
@@ -660,7 +692,8 @@ async def get_reader_inline_reaction(
         "section_number": section_number,
         "inline_comments": inline_comments,
         "section_reflection": section_reflection,
-        "reaction_id": reaction_doc["id"]
+        "reaction_id": reaction_doc["id"],
+        "_parse_warning": parse_warning
     }
 
 @api_router.get("/manuscripts/{manuscript_id}/read-all")
