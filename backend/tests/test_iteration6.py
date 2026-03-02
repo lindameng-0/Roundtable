@@ -272,6 +272,53 @@ class TestDocxUpload:
         print(f"PASS: .docx upload title preserved: {data['title']}")
 
 
+# ── Manuscript Upload (.pdf) ───────────────────────────────────────────────────
+
+class TestPdfUpload:
+    """POST /api/manuscripts/upload with .pdf file"""
+
+    def _create_pdf_bytes(self, text: str) -> bytes:
+        """Create a minimal PDF with the given text using PyMuPDF."""
+        try:
+            import fitz
+        except ImportError:
+            pytest.skip("pymupdf not installed")
+        doc = fitz.open()
+        page = doc.new_page()
+        # Insert text in one block (PyMuPDF uses get_text() to extract later)
+        page.insert_text((50, 70), text.replace("\n", " ")[:2000], fontsize=11)
+        buf = io.BytesIO()
+        doc.save(buf)
+        doc.close()
+        buf.seek(0)
+        return buf.read()
+
+    def test_pdf_upload_returns_200(self):
+        pdf_bytes = self._create_pdf_bytes(SHORT_MANUSCRIPT)
+        resp = requests.post(
+            f"{BASE_URL}/api/manuscripts/upload",
+            files={"file": ("TEST_story.pdf", io.BytesIO(pdf_bytes), "application/pdf")},
+            data={"title": "TEST_IT6_PDF Upload"},
+            timeout=90
+        )
+        assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text[:300]}"
+        print("PASS: .pdf upload returned 200")
+
+    def test_pdf_upload_extracts_text(self):
+        pdf_bytes = self._create_pdf_bytes(SHORT_MANUSCRIPT)
+        resp = requests.post(
+            f"{BASE_URL}/api/manuscripts/upload",
+            files={"file": ("TEST_story2.pdf", io.BytesIO(pdf_bytes), "application/pdf")},
+            data={"title": "TEST_IT6_PDF Upload 2"},
+            timeout=90
+        )
+        assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+        data = resp.json()
+        assert "id" in data and "total_sections" in data
+        assert data["total_sections"] >= 1
+        print(f"PASS: .pdf upload returned manuscript with {data['total_sections']} sections")
+
+
 # ── Manuscript JSON (paste) ────────────────────────────────────────────────────
 
 class TestManuscriptPaste:

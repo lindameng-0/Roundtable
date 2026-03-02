@@ -68,22 +68,22 @@ export default function SetupPage() {
   const handleFileUpload = async (file) => {
     if (!file) return;
     const name = file.name || "";
-    if (!name.endsWith(".txt") && !name.endsWith(".docx")) {
-      toast.error("Please upload a .txt or .docx file");
+    if (!name.endsWith(".txt") && !name.endsWith(".docx") && !name.endsWith(".pdf")) {
+      toast.error("Please upload a .txt, .docx, or .pdf file");
       return;
     }
-    if (name.endsWith(".docx")) {
-      // For .docx, upload to backend for extraction
+    if (name.endsWith(".docx") || name.endsWith(".pdf")) {
+      // For .docx and .pdf, upload to backend for extraction
       setLoading(true);
       try {
         const formData = new FormData();
         formData.append("file", file);
-        formData.append("title", title || name.replace(/\.docx$/, ""));
+        formData.append("title", title || name.replace(/\.(docx|pdf)$/, ""));
         const headers = {};
         const token = localStorage.getItem("session_token");
         if (token) headers["Authorization"] = `Bearer ${token}`;
         const res = await axios.post(`${API}/manuscripts/upload`, formData, { headers, withCredentials: true });
-        // docx upload goes straight to the manuscript — skip text paste step
+        // docx/pdf upload goes straight to the manuscript — skip text paste step
         setManuscript(res.data);
         setGenre({
           genre: res.data.genre,
@@ -92,11 +92,11 @@ export default function SetupPage() {
           comparable_books: res.data.comparable_books || [],
         });
         setUploadedFileName(name);
-        setTitle((t) => t || name.replace(/\.docx$/, ""));
+        setTitle((t) => t || name.replace(/\.(docx|pdf)$/, ""));
         setStep("genre");
         toast.success(`Extracted text from ${name}`);
       } catch (err) {
-        toast.error("Failed to read .docx file");
+        toast.error(err?.response?.data?.detail || (name.endsWith(".pdf") ? "Failed to read .pdf file" : "Failed to read .docx file"));
       } finally {
         setLoading(false);
       }
@@ -342,7 +342,7 @@ export default function SetupPage() {
                   Bring your manuscript to the table
                 </h2>
                 <p className="text-ink-600 text-base">
-                  Paste your text or upload a <strong>.txt</strong> or <strong>.docx</strong> file. Roundtable will assemble a panel of readers just for your story.
+                  Paste your text or upload a <strong>.txt</strong>, <strong>.docx</strong>, or <strong>.pdf</strong> file. Roundtable will assemble a panel of readers just for your story.
                 </p>
               </div>
 
@@ -372,7 +372,7 @@ export default function SetupPage() {
                   data-testid="manuscript-text-area"
                   value={text}
                   onChange={(e) => setText(e.target.value)}
-                  placeholder="Paste your manuscript here... or drag and drop a .txt or .docx file above"
+                  placeholder="Paste your manuscript here... or drag and drop a .txt, .docx, or .pdf file above"
                   className="w-full h-80 bg-transparent border-none focus:outline-none focus:ring-0 p-6 manuscript-text resize-none placeholder:text-ink-400/50"
                   style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.05rem", lineHeight: "1.85" }}
                 />
@@ -380,7 +380,7 @@ export default function SetupPage() {
                   <div className="absolute inset-0 flex items-center justify-center bg-paper/80 pointer-events-none">
                     <div className="text-center">
                       <Upload className="w-8 h-8 text-clay mx-auto mb-2" strokeWidth={1.5} />
-                      <p className="text-clay font-medium">Drop your .txt or .docx file</p>
+                      <p className="text-clay font-medium">Drop your .txt, .docx, or .pdf file</p>
                     </div>
                   </div>
                 )}
@@ -395,11 +395,11 @@ export default function SetupPage() {
                   {uploadedFileName ? (
                     <span className="text-clay font-medium truncate max-w-xs" data-testid="uploaded-filename">{uploadedFileName}</span>
                   ) : (
-                    "Upload .txt or .docx"
+                    "Upload .txt, .docx, or .pdf"
                   )}
                   <input
                     type="file"
-                    accept=".txt,.docx"
+                    accept=".txt,.docx,.pdf"
                     className="hidden"
                     onChange={(e) => handleFileUpload(e.target.files[0])}
                     data-testid="file-upload-input"

@@ -176,7 +176,7 @@ MAX_BODY_SIZE_BYTES = 100 * 1024 * 1024
 
 @api_router.post("/manuscripts/upload")
 async def upload_manuscript(request: Request):
-    """Accept .txt or .docx file. Form parsed with max_part_size=100MB for full-length books."""
+    """Accept .txt, .docx, or .pdf file. Form parsed with max_part_size=100MB for full-length books."""
     async with request.form(max_part_size=MAX_BODY_SIZE_BYTES) as form:
         file = form.get("file")
         if not file or not getattr(file, "filename", None):
@@ -195,11 +195,24 @@ async def upload_manuscript(request: Request):
                 raw_text = "\n\n".join(paragraphs)
             except Exception as e:
                 raise HTTPException(400, f"Failed to read .docx file: {e}")
+        elif filename.endswith(".pdf"):
+            try:
+                import fitz  # PyMuPDF
+                import io
+                content = await file.read()
+                doc = fitz.open(stream=content, filetype="pdf")
+                parts = []
+                for page in doc:
+                    parts.append(page.get_text())
+                doc.close()
+                raw_text = "\n\n".join(p.strip() for p in parts if p.strip())
+            except Exception as e:
+                raise HTTPException(400, f"Failed to read .pdf file: {e}")
         elif filename.endswith(".txt"):
             content = await file.read()
             raw_text = content.decode("utf-8", errors="replace").strip()
         else:
-            raise HTTPException(400, "Please upload a .txt or .docx file")
+            raise HTTPException(400, "Please upload a .txt, .docx, or .pdf file")
 
     if not raw_text:
         raise HTTPException(400, "File is empty")
