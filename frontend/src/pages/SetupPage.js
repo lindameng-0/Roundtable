@@ -1,9 +1,9 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { UserMenu } from "../components/UserMenu";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
-import { Upload, FileText, ChevronRight, RefreshCw, X, Plus, BookOpen, Trash2 } from "lucide-react";
+import { Upload, FileText, ChevronRight, RefreshCw, X, Plus, BookOpen, Trash2, CheckCircle } from "lucide-react";
 import axios from "axios";
 
 const API = (process.env.REACT_APP_BACKEND_URL || "http://localhost:8000").replace(/\/$/, "") + "/api";
@@ -64,6 +64,68 @@ export default function SetupPage() {
 
   const [uploadedFileName, setUploadedFileName] = useState(null);
 
+  const [usage, setUsage] = useState(null);
+  const [usageLoading, setUsageLoading] = useState(true);
+  const [waitlistJoined, setWaitlistJoined] = useState(false);
+  const [waitlistEmail, setWaitlistEmail] = useState("");
+  const [waitlistSubmitting, setWaitlistSubmitting] = useState(false);
+  const [waitlistConfirmed, setWaitlistConfirmed] = useState(false);
+
+  const limitReached = usage && !usage.is_admin && usage.used >= usage.limit;
+
+  const fetchUsage = useCallback(async () => {
+    try {
+      const token = localStorage.getItem("session_token");
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const res = await axios.get(`${API}/user/usage`, { headers, withCredentials: true });
+      setUsage(res.data);
+      if (res.data.email) setWaitlistEmail(res.data.email);
+    } catch {
+      setUsage({ used: 0, limit: 2, is_admin: false });
+    } finally {
+      setUsageLoading(false);
+    }
+  }, []);
+
+  const fetchWaitlistStatus = useCallback(async () => {
+    try {
+      const token = localStorage.getItem("session_token");
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const res = await axios.get(`${API}/waitlist/status`, { headers, withCredentials: true });
+      setWaitlistJoined(res.data.joined === true);
+      if (res.data.joined) setWaitlistConfirmed(true);
+    } catch {
+      setWaitlistJoined(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchUsage();
+    fetchWaitlistStatus();
+  }, [fetchUsage, fetchWaitlistStatus]);
+
+  const handleJoinWaitlist = async (e) => {
+    e.preventDefault();
+    const email = waitlistEmail.trim();
+    if (!email || !email.includes("@")) {
+      toast.error("Please enter a valid email");
+      return;
+    }
+    setWaitlistSubmitting(true);
+    try {
+      const token = localStorage.getItem("session_token");
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      await axios.post(`${API}/waitlist`, { email }, { headers, withCredentials: true });
+      setWaitlistConfirmed(true);
+      setWaitlistJoined(true);
+      toast.success("You're on the list!");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to join waitlist");
+    } finally {
+      setWaitlistSubmitting(false);
+    }
+  };
+
   const handleFileUpload = async (file) => {
     if (!file) return;
     const name = file.name || "";
@@ -95,7 +157,13 @@ export default function SetupPage() {
         setStep("genre");
         toast.success(`Extracted text from ${name}`);
       } catch (err) {
-        toast.error(err?.response?.data?.detail || (name.endsWith(".pdf") ? "Failed to read .pdf file" : "Failed to read .docx file"));
+        if (err.response?.status === 403 && err.response?.data?.error === "limit_reached") {
+          const d = err.response.data;
+          setUsage({ used: d.used ?? 2, limit: d.limit ?? 2, is_admin: false });
+          toast.error(d.message || "You've used your 2 free reads.");
+        } else {
+          toast.error(err?.response?.data?.detail || (name.endsWith(".pdf") ? "Failed to read .pdf file" : "Failed to read .docx file"));
+        }
       } finally {
         setLoading(false);
       }
@@ -165,6 +233,12 @@ export default function SetupPage() {
       setStep("genre");
     } catch (err) {
       const status = err.response?.status;
+      const data = err.response?.data;
+      if (status === 403 && data?.error === "limit_reached") {
+        setUsage({ used: data.used ?? 2, limit: data.limit ?? 2, is_admin: false });
+        toast.error(data.message || "You've used your 2 free reads.");
+        return;
+      }
       const payloadStr = JSON.stringify({ title: title || "Untitled Manuscript", raw_text: text });
       const bodySizeBytes = new TextEncoder().encode(payloadStr).length;
       const sizeMB = (bodySizeBytes / (1024 * 1024)).toFixed(2);
@@ -285,6 +359,11 @@ export default function SetupPage() {
               Roundtable
             </h1>
             <p className="text-xs text-ink-400 tracking-widest uppercase mt-0.5">A panel of readers for your story</p>
+            {!usageLoading && usage && step === "manuscript" && !limitReached && (
+              <p className="text-xs text-ink-400 mt-1">
+                {usage.is_admin ? "Admin — unlimited" : `${usage.used} of ${usage.limit} free reads used`}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-4">
             <UserMenu />
@@ -293,6 +372,7 @@ export default function SetupPage() {
       </header>
 
       {/* Step indicator */}
+      {!limitReached && (
       <div className="max-w-5xl mx-auto px-8 pt-8">
         <div className="flex items-center gap-3 mb-10">
           {[
@@ -323,11 +403,74 @@ export default function SetupPage() {
           ))}
         </div>
       </div>
+      )}
 
       <div className="max-w-5xl mx-auto px-8 pb-20">
         <AnimatePresence mode="wait">
+          {/* ── Limit reached: waitlist card ── */}
+          {limitReached && (
+            <motion.div
+              key="limit-reached"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -16 }}
+              transition={{ duration: 0.35 }}
+              className="bg-white border border-ink-900/8 p-8"
+              style={{ borderRadius: "2px" }}
+            >
+              <div className="mb-6">
+                <h2 className="font-serif text-3xl text-ink-900 mb-2" style={{ fontFamily: "'Cormorant Garamond', serif" }}>
+                  You've used your free reads
+                </h2>
+                <p className="text-ink-600 text-base">
+                  Roundtable is launching paid plans soon. Join the waitlist for early access pricing.
+                </p>
+              </div>
+              {waitlistConfirmed ? (
+                <div className="flex items-center gap-3 text-sage font-medium">
+                  <CheckCircle className="w-5 h-5 flex-shrink-0" strokeWidth={1.5} />
+                  <span>You're on the list. We'll reach out soon.</span>
+                </div>
+              ) : (
+                <form onSubmit={handleJoinWaitlist} className="space-y-4">
+                  <div>
+                    <label className="text-xs text-ink-400 uppercase tracking-widest block mb-2">Email</label>
+                    <input
+                      type="email"
+                      value={waitlistEmail}
+                      onChange={(e) => setWaitlistEmail(e.target.value)}
+                      placeholder="you@example.com"
+                      className="w-full border border-ink-900/12 bg-white px-4 py-3 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none focus:border-clay transition-colors"
+                      style={{ borderRadius: "2px" }}
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={waitlistSubmitting}
+                    className="flex items-center gap-2 bg-clay hover:bg-clay-hover text-white px-6 py-3 text-sm font-medium transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                    style={{ borderRadius: "2px" }}
+                  >
+                    {waitlistSubmitting ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" strokeWidth={1.5} />
+                        Joining...
+                      </>
+                    ) : (
+                      "Join Waitlist"
+                    )}
+                  </button>
+                </form>
+              )}
+              <p className="mt-6 pt-6 border-t border-ink-900/8">
+                <a href="#" className="text-xs text-ink-500 hover:text-clay transition-colors">
+                  Want to keep reading? Share Roundtable with a friend
+                </a>
+              </p>
+            </motion.div>
+          )}
+
           {/* ── Step 1: Manuscript ── */}
-          {step === "manuscript" && (
+          {!limitReached && step === "manuscript" && (
             <motion.div
               key="manuscript"
               initial={{ opacity: 0, y: 16 }}

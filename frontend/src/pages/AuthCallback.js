@@ -4,11 +4,11 @@ import { useAuth } from "../context/AuthContext";
 import { Loader2 } from "lucide-react";
 import axios from "axios";
 
-const API = process.env.REACT_APP_BACKEND_URL + "/api";
+const API = (process.env.REACT_APP_BACKEND_URL || "http://localhost:8000").replace(/\/$/, "") + "/api";
 
 /**
  * Handles the OAuth redirect: reads session_id from URL hash,
- * exchanges it for a session, then redirects to /dashboard.
+ * exchanges it for a session, then redirects to /setup (manuscript page).
  */
 export default function AuthCallback() {
   const navigate = useNavigate();
@@ -35,7 +35,7 @@ export default function AuthCallback() {
         // Store session_token for Authorization header fallback
         if (session_token) localStorage.setItem("session_token", session_token);
         login(user, session_token);
-        navigate("/dashboard", { replace: true });
+        navigate("/setup", { replace: true });
       } catch (err) {
         console.error("Auth callback failed:", err);
         navigate("/login", { replace: true });

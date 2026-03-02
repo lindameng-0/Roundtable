@@ -17,6 +17,7 @@ from models import (
     RegenerateRequest,
     ModelConfigRequest,
     AppendTextRequest,
+    WaitlistRequest,
 )
 from utils import now_iso, make_chat, UserMessage
 
@@ -34,6 +35,20 @@ from routers.auth import _get_session_user
 
 api_router = APIRouter(prefix="/api")
 logger = logging.getLogger(__name__)
+
+MANUSCRIPT_LIMIT = 2
+
+
+async def _get_optional_user(request: Request):
+    """Return current user or None if not authenticated."""
+    try:
+        return await _get_session_user(request)
+    except HTTPException:
+        return None
+
+
+def _is_admin(email: str) -> bool:
+    return email and (email.strip().lower() in [e.strip().lower() for e in getattr(_cfg, "ADMIN_EMAILS", [])])
 
 
 # ─── Root & Config ────────────────────────────────────────────────────────────
@@ -68,6 +83,64 @@ async def update_model(req: ModelConfigRequest):
     return {"provider": _cfg.LLM_PROVIDER, "model": _cfg.LLM_MODEL}
 
 
+# ─── User usage (for manuscript limit) ───────────────────────────────────────
+
+@api_router.get("/user/usage")
+async def get_user_usage(request: Request):
+    """Return used/manuscript limit and is_admin. Unauthenticated => used 0, limit 2, is_admin false."""
+    user = await _get_optional_user(request)
+    if not user:
+        return {"used": 0, "limit": MANUSCRIPT_LIMIT, "is_admin": False}
+    email = (user.get("email") or "").strip()
+    is_admin = _is_admin(email)
+    used = await db.manuscripts.count_documents({"user_id": user["user_id"]})
+    return {"used": used, "limit": MANUSCRIPT_LIMIT, "is_admin": is_admin, "email": email or None}
+
+
+# ─── Waitlist (when user hits manuscript limit) ─────────────────────────────────
+
+@api_router.post("/waitlist")
+async def join_waitlist(request: Request, body: WaitlistRequest):
+    """Add email to waitlist. Optional auth to attach user_id."""
+    email = (body.email or "").strip()
+    if not email or "@" not in email:
+        raise HTTPException(400, "Valid email required")
+    user = await _get_optional_user(request)
+    user_id = user.get("user_id") if user else None
+    try:
+        await db.waitlist.insert_one({
+            "email": email,
+            "user_id": user_id,
+            "created_at": now_iso(),
+        })
+    except Exception as e:
+        err_msg = str(getattr(e, "message", e)) if hasattr(e, "message") else str(e)
+        if "23505" in err_msg or "duplicate" in err_msg.lower() or "unique" in err_msg.lower():
+            pass  # already on waitlist, treat as success
+        else:
+            raise HTTPException(503, f"Database error: {str(e)}")
+    return {"ok": True}
+
+
+@api_router.get("/waitlist/status")
+async def waitlist_status(request: Request):
+    """Return { joined: true/false } for the current user (by email or user_id)."""
+    user = await _get_optional_user(request)
+    if not user:
+        return {"joined": False}
+    email = (user.get("email") or "").strip()
+    user_id = user.get("user_id")
+    if email:
+        row = await db.waitlist.find_one({"email": email}, {"_id": 0})
+        if row:
+            return {"joined": True}
+    if user_id:
+        row = await db.waitlist.find_one({"user_id": user_id}, {"_id": 0})
+        if row:
+            return {"joined": True}
+    return {"joined": False}
+
+
 # ─── Manuscripts ──────────────────────────────────────────────────────────────
 
 @api_router.get("/manuscripts")
@@ -93,11 +166,28 @@ async def create_manuscript(manuscript: ManuscriptCreate, request: Request):
 
     # Attach user_id if the user is authenticated (optional auth — anonymous allowed)
     user_id = None
+    user = None
     try:
         user = await _get_session_user(request)
         user_id = user["user_id"]
     except HTTPException:
         pass  # anonymous submission still allowed
+
+    # Usage limit: non-admin users get 2 free manuscripts total
+    if user_id and user:
+        if not _is_admin(user.get("email") or ""):
+            used = await db.manuscripts.count_documents({"user_id": user_id})
+            if used >= MANUSCRIPT_LIMIT:
+                from fastapi.responses import JSONResponse
+                return JSONResponse(
+                    status_code=403,
+                    content={
+                        "error": "limit_reached",
+                        "message": "You've used your 2 free reads.",
+                        "used": used,
+                        "limit": MANUSCRIPT_LIMIT,
+                    },
+                )
 
     doc_id = str(uuid.uuid4())
     sections, total_lines = split_manuscript(raw_text)

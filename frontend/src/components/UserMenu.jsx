@@ -65,7 +65,11 @@ export function UserMenu() {
               </button>
               <button
                 data-testid="user-menu-signout"
-                onClick={() => { setOpen(false); logout(); navigate("/login"); }}
+                onClick={async () => {
+                  setOpen(false);
+                  await logout();
+                  navigate("/login", { replace: true });
+                }}
                 className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-ink-700 hover:bg-paper transition-colors"
               >
                 <LogOut className="w-3.5 h-3.5" strokeWidth={1.5} />

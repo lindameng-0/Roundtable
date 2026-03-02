@@ -94,6 +94,15 @@ CREATE TABLE IF NOT EXISTS editor_reports (
 );
 CREATE INDEX IF NOT EXISTS idx_editor_reports_manuscript_id ON editor_reports(manuscript_id);
 
+-- Waitlist (when user hits manuscript limit)
+CREATE TABLE IF NOT EXISTS waitlist (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  email TEXT NOT NULL,
+  user_id TEXT REFERENCES users(user_id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS waitlist_email_unique ON waitlist(email);
+
 -- Enable RLS if you want row-level security (optional; use service_role key to bypass)
 -- ALTER TABLE manuscripts ENABLE ROW LEVEL SECURITY;
 -- etc.

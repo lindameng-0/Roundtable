@@ -174,6 +174,10 @@ class _SupabaseDb:
     def user_sessions(self) -> _SupabaseTable:
         return _SupabaseTable(self._client, "user_sessions")
 
+    @property
+    def waitlist(self) -> _SupabaseTable:
+        return _SupabaseTable(self._client, "waitlist")
+
 
 def get_db(url: str, key: str) -> _SupabaseDb:
     return _SupabaseDb(url, key)

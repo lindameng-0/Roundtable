@@ -76,3 +76,7 @@ class ModelConfigRequest(BaseModel):
 
 class AppendTextRequest(BaseModel):
     raw_text_chunk: str
+
+
+class WaitlistRequest(BaseModel):
+    email: str
