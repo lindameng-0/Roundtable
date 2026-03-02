@@ -481,15 +481,26 @@ async def get_reader_inline_reaction(
                 if attempt < max_attempts - 1:
                     continue
                 raise
-            # Rate limit: wait suggested time (e.g. "try again in 7.044s") then retry
+            # Rate limit: parse "try again in Xs" or "Xms" from error, wait that long + 1s buffer
             is_rate_limit = (
                 isinstance(e, getattr(litellm, "RateLimitError", type(None)))
                 or "rate limit" in err_str
                 or "ratelimit" in err_str
             )
             if is_rate_limit:
-                wait_match = re.search(r"try again in (\d+(?:\.\d+)?)\s*s", str(e), re.I)
-                wait_sec = min(float(wait_match.group(1)) if wait_match else 10.0, 60.0)
+                wait_match = re.search(
+                    r"try again in (\d+(?:\.\d+)?)\s*(ms|s)?",
+                    str(e),
+                    re.I,
+                )
+                if wait_match:
+                    wait_sec = float(wait_match.group(1))
+                    if (wait_match.group(2) or "s").lower() == "ms":
+                        wait_sec /= 1000
+                    wait_sec += 1.0  # 1 second buffer
+                    wait_sec = min(wait_sec, 60.0)
+                else:
+                    wait_sec = 5.0
                 logger.warning(
                     f"[{reader_name}] Section {section_number}: rate limited, waiting {wait_sec:.1f}s then retry (attempt {attempt + 1}/{max_attempts})"
                 )
@@ -516,8 +527,24 @@ async def get_reader_inline_reaction(
     logger.info(f"[{reader_name}] Section {section_number}: OpenAI call complete ({len(response)} chars, {elapsed*1000:.0f}ms)")
 
     # ── Parse and validate response (repair malformed JSON, validate structure)
-    parsed = parse_reader_response(response, previous_memory=compressed_for_prompt)
+    # Use compressed_for_prompt as previous_memory so fallback carries forward last good memory
+    last_good_memory = compressed_for_prompt if isinstance(compressed_for_prompt, dict) else {}
+    parsed = parse_reader_response(response, previous_memory=last_good_memory)
     parse_warning = bool(parsed.pop("_used_fallback", False))
+
+    # If we got empty comments (fallback or empty list), retry once before giving up
+    if not parsed.get("inline_comments"):
+        logger.warning(f"[{reader_name}] Section {section_number}: empty response, retrying once")
+        await asyncio.sleep(2)
+        try:
+            response_retry = await _call_llm(use_json_format=True)
+            parsed = parse_reader_response(response_retry, previous_memory=last_good_memory)
+            parse_warning = bool(parsed.pop("_used_fallback", False))
+            if parsed.get("inline_comments"):
+                logger.info(f"[{reader_name}] Section {section_number}: retry succeeded")
+        except Exception as retry_err:
+            logger.warning(f"[{reader_name}] Section {section_number}: retry failed: {retry_err}")
+
     if parse_warning:
         logger.warning(f"[{reader_name}] Section {section_number}: used fallback response (JSON repair or validation)")
     raw_comments = parsed.get("inline_comments", [])
@@ -565,6 +592,7 @@ async def get_reader_inline_reaction(
     logger.info(f"[{reader_name}] Section {section_number}: stored to DB")
 
     # ── Save memory update (only if we got valid reader output; skip when fallback was used)
+    # When fallback: carry forward last good memory by saving previous section's memory for this section
     if (
         memory_update
         and isinstance(memory_update, dict)
@@ -582,6 +610,7 @@ async def get_reader_inline_reaction(
             }
             try:
                 await db.reader_memories.insert_one({**mem_doc})
+                logger.info(f"[{reader_name}] Section {section_number}: memory updated ({len(memory_update)} keys)")
                 break
             except Exception as db_err:
                 err_str = str(db_err)
@@ -593,6 +622,24 @@ async def get_reader_inline_reaction(
                     await asyncio.sleep(1)
                     continue
                 raise
+    elif parse_warning and memories:
+        # Carry forward: save previous section's memory for this section so next section has continuous timeline
+        last_mem = memories[-1]
+        mj = last_mem.get("memory_json", {})
+        if isinstance(mj, dict):
+            try:
+                await db.reader_memories.insert_one({
+                    "id": str(uuid.uuid4()),
+                    "manuscript_id": manuscript_id,
+                    "reader_id": reader["id"],
+                    "section_number": section_number,
+                    "memory_json": mj,
+                    "created_at": now_iso(),
+                })
+                logger.info(f"[{reader_name}] Section {section_number}: carried forward previous memory (fallback response)")
+            except Exception as carry_err:
+                if "23505" not in str(carry_err) and "duplicate key" not in str(carry_err).lower():
+                    logger.warning(f"[{reader_name}] Section {section_number}: carry-forward memory insert failed: {carry_err}")
 
     logger.info(f"[{reader_name}] Section {section_number}: event sent to frontend")
     logger.info(f"[{reader_name}] Section {section_number}: === DONE ===")

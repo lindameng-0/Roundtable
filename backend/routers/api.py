@@ -378,11 +378,16 @@ async def read_all_sections_stream(
                 rname = (reader.get("name") or "").strip() or f"Reader {reader.get('avatar_index', 0) + 1}"
                 yield f"data: {json.dumps({'type': 'reader_thinking', 'reader_id': reader['id'], 'reader_name': rname, 'avatar_index': reader.get('avatar_index', 0), 'personality': reader.get('personality', ''), 'section_number': sn})}\n\n"
 
-            # Launch all readers in parallel
+            # Stagger reader starts by 3s each to stay under 30k TPM (avoid 429s)
+            async def run_reader_with_delay(delay: float, r: dict, sec: dict, g: str, mid: str, q: asyncio.Queue):
+                if delay > 0:
+                    await asyncio.sleep(delay)
+                return await reader_pipeline(r, sec, g, mid, q)
+
             section_with_total = {**section, "total_sections": total_sections}
             reader_tasks = [
-                asyncio.create_task(reader_pipeline(r, section_with_total, genre, manuscript_id, queue))
-                for r in readers
+                asyncio.create_task(run_reader_with_delay(i * 3, r, section_with_total, genre, manuscript_id, queue))
+                for i, r in enumerate(readers)
             ]
 
             # Drain queue counting terminal events.
