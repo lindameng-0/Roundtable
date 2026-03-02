@@ -14,7 +14,9 @@ import {
   Cell,
 } from "recharts";
 
-const API = (process.env.REACT_APP_BACKEND_URL || "http://localhost:8000").replace(/\/$/, "") + "/api";
+import { getApi } from "../apiConfig";
+
+const API = getApi();
 
 const PRIORITY_COLORS = {
   high: "#C86B56",

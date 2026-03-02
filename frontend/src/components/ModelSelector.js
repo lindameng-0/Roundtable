@@ -2,8 +2,9 @@ import React, { useState, useEffect } from "react";
 import { Settings2, ChevronDown, Check } from "lucide-react";
 import axios from "axios";
 import { toast } from "sonner";
+import { getApi } from "../apiConfig";
 
-const API = process.env.REACT_APP_BACKEND_URL + "/api";
+const API = getApi();
 
 export const ModelSelector = () => {
   const [open, setOpen] = useState(false);

@@ -3,13 +3,13 @@ import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import axios from "axios";
-
 import { useReadingStream } from "../hooks/useReadingStream";
 import { ProgressBar } from "../components/ProgressBar";
 import { ManuscriptView } from "../components/ManuscriptView";
 import { ReaderSidebar } from "../components/ReaderSidebar";
+import { getApi } from "../apiConfig";
 
-const API = (process.env.REACT_APP_BACKEND_URL || "http://localhost:8000").replace(/\/$/, "") + "/api";
+const API = getApi();
 
 export default function ReadingPage() {
   const { manuscriptId } = useParams();

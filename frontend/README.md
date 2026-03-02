@@ -76,7 +76,12 @@ This section has moved here: [https://facebook.github.io/create-react-app/docs/d
    ```
    This builds the app, copies `index.html` to `404.html` (so client-side routes work), and pushes the `build` folder to the `gh-pages` branch. The site will be at **https://roundtable.works** once DNS has propagated.
 
-For production, set `REACT_APP_BACKEND_URL` to your API URL before building (e.g. `https://api.roundtable.works`).
+For production, the frontend must know your backend URL. You can do either:
+
+- **Option A (recommended):** Set `REACT_APP_BACKEND_URL` to your backend URL (e.g. `https://your-app.up.railway.app`) **before** running `npm run build` / `npm run deploy`.
+- **Option B:** After deploying, edit the **built** `index.html` (in the deployed `build` or on GitHub Pages) and set the meta tag:  
+  `<meta name="backend-url" content="https://your-app.up.railway.app" />`  
+  (replace with your real Railway backend URL). Then redeploy that file. This fixes "Network Error" on Continue without rebuilding.
 
 ### `npm run build` fails to minify
 

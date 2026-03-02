@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 
-const API_BASE = (process.env.REACT_APP_BACKEND_URL || "http://localhost:8000").replace(/\/$/, "");
+import { getApiBase } from "../apiConfig";
 
 /**
  * Manages the SSE reading stream, all real-time state, and stall detection.
@@ -85,8 +85,8 @@ export function useReadingStream(manuscriptId) {
     readingStartedRef.current = true;
 
     const url = ps.length > 0
-      ? `${API_BASE}/api/manuscripts/${ms.id}/read-all?reader_ids=${ps.map((p) => p.id).join(",")}`
-      : `${API_BASE}/api/manuscripts/${ms.id}/read-all`;
+      ? `${getApiBase()}/api/manuscripts/${ms.id}/read-all?reader_ids=${ps.map((p) => p.id).join(",")}`
+      : `${getApiBase()}/api/manuscripts/${ms.id}/read-all`;
     let cancelled = false;
     let completedNormally = false; // set true when all_complete arrives
     const controller = new AbortController();

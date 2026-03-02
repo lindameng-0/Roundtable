@@ -5,8 +5,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { Upload, FileText, ChevronRight, RefreshCw, X, Plus, BookOpen, Trash2, CheckCircle } from "lucide-react";
 import axios from "axios";
+import { getApi } from "../apiConfig";
 
-const API = (process.env.REACT_APP_BACKEND_URL || "http://localhost:8000").replace(/\/$/, "") + "/api";
+const API = getApi();
 
 // Chunked upload: if request body would exceed this (bytes), send in chunks to avoid 413.
 // Use a conservative 90KB so we stay under typical proxy/h11 limits (~1MB or 16KB); backend allows 100MB.
@@ -244,13 +245,16 @@ export default function SetupPage() {
       const sizeMB = (bodySizeBytes / (1024 * 1024)).toFixed(2);
       let msg;
       if (status === 404) {
-        msg = "Request not found (404). Ensure the backend is running and REACT_APP_BACKEND_URL points to it (e.g. http://localhost:8000).";
+        msg = "Request not found (404). Ensure the backend is running and the site is configured with the correct API URL (see backend-url meta tag or REACT_APP_BACKEND_URL).";
       } else if (status === 413) {
         msg = bodySizeBytes <= SAFE_BODY_SIZE
           ? `Server rejected the request (413). Your manuscript is ${sizeMB} MB, under the 100 MB limit — the server may need a higher upload limit.`
           : "Manuscript is too large for the server limit (max 100 MB).";
       } else {
         msg = err.response?.data?.detail ?? err.response?.data?.message ?? err.message ?? "Failed to process manuscript. Please try again.";
+      }
+      if (err.message === "Network Error" || !err.response) {
+        msg = "Cannot reach the server. If you're on the live site, set the backend URL: in index.html set the meta name=\"backend-url\" content to your Railway URL (e.g. https://your-app.up.railway.app), or rebuild with REACT_APP_BACKEND_URL.";
       }
       const msgText = Array.isArray(msg) ? msg.map((m) => m.msg ?? m).join(", ") : msg;
       toast.error(msgText);

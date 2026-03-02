@@ -3,8 +3,9 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { Loader2 } from "lucide-react";
 import axios from "axios";
+import { getApi } from "../apiConfig";
 
-const API = (process.env.REACT_APP_BACKEND_URL || "http://localhost:8000").replace(/\/$/, "") + "/api";
+const API = getApi();
 
 /**
  * Handles the OAuth redirect: reads session_id from URL hash,

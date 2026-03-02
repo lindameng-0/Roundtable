@@ -5,8 +5,9 @@ import { BookOpen, Plus, Loader2, ChevronRight, FileText, CheckCircle, Clock } f
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import { UserMenu } from "../components/UserMenu";
+import { getApi } from "../apiConfig";
 
-const API = (process.env.REACT_APP_BACKEND_URL || "http://localhost:8000").replace(/\/$/, "") + "/api";
+const API = getApi();
 
 function ManuscriptCard({ ms, onClick }) {
   const totalSections = ms.total_sections || "—";
