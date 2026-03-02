@@ -1,8 +1,8 @@
 import React from "react";
 import { BookOpen } from "lucide-react";
 
-const BACKEND_BASE = (process.env.REACT_APP_BACKEND_URL || "http://localhost:8000").replace(/\/$/, "");
-const GOOGLE_AUTH_URL = `${BACKEND_BASE}/api/auth/google`;
+// Emergent OAuth: redirect to Emergent auth, which redirects back to /auth/callback with session_id in hash
+const EMERGENT_GOOGLE_AUTH_URL = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(window.location.origin + "/auth/callback")}`;
 
 export default function LoginPage() {
   return (
@@ -42,7 +42,7 @@ export default function LoginPage() {
           </p>
 
           <a
-            href={GOOGLE_AUTH_URL}
+            href={EMERGENT_GOOGLE_AUTH_URL}
             data-testid="google-signin-btn"
             className="flex items-center justify-center gap-3 w-full border border-ink-900/12 bg-white hover:bg-paper text-ink-700 px-4 py-3 text-sm font-medium transition-all"
             style={{ borderRadius: "2px" }}
