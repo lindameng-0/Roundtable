@@ -4,7 +4,7 @@ import uuid
 import time
 import asyncio
 import logging
-from typing import Dict, List
+from typing import Dict, List, Optional, Callable, Awaitable
 
 import litellm
 from utils import make_chat, now_iso, validate_inline_comments, UserMessage
@@ -79,119 +79,33 @@ def build_reader_system_prompt(
     line_start: int,
     line_end: int,
 ) -> str:
-    """Build reader system prompt using v4 template (human voice + memory callbacks).
-    Section text is passed as the *user* message. We keep "line" in JSON for compatibility.
-    """
+    """Section 1: full voice rules and anti-patterns. Section 2+: compressed only, under ~150 tokens excluding memory."""
     name = reader.get("name", "Reader")
     psi = reader.get("personality_specific_instructions", "")
 
     if section_number > 1:
-        # ── Compressed prompt (section 2+) — v4 with memory callbacks
-        return f"""You are {name}. {psi}
-
-Voice: first person, plain language, commas and periods only. Be specific — reference exact moments, not abstractions. Sound like a person, not a book report.
-
-NEVER say "this section introduces," "the narrative succeeds," "adds depth to," "rich tapestry," "compelling dynamic," or "invites the reader to ponder." Those are banned.
-
-CRITICAL — MEMORY CALLBACKS:
-Your memory from previous sections is below. When something in this section connects to your memory, REACT TO THE CONNECTION using "callback" type comments:
-- Prediction confirmed: "I called it" or "okay I was half right but not like THIS."
-- Prediction wrong: "I was way off, I thought X but it's actually Y."
-- Question answered: "Oh, so THAT'S what the dim sky was about" or "finally, I've been waiting for this since section 2."
-- Planted detail pays off: name the original detail and react. "Remember when Mina said her flowers were missing something? Now I think I understand what she meant."
-- Character contradicts your impression: "I had Maeve pegged as the antagonist but this scene changes things."
-- Recurring problem you flagged earlier: escalate. "The gold imagery is still happening. Fourth section now."
-
-You should have at least one callback comment per section if anything connects to your memory. If nothing connects, that's fine, don't force it.
-
-Previous memory:
-{memory_str}
-
-Lines {line_start}-{line_end}. Section {section_number} of a {genre} manuscript.
-Respond with a JSON object only. Use this exact structure:
-
-{{
-  "inline_comments": [
-    {{ "line": <integer {line_start}-{line_end}>, "type": "reaction" | "prediction" | "confusion" | "critique" | "praise" | "theory" | "comparison" | "callback", "comment": "<1-3 sentences in your voice. must reference something specific from this line/paragraph.>" }}
-  ],
-  "section_reflection": "<3-6 sentences or null. Start with your gut feeling, then explain. Be specific.>",
-  "memory_update": {{
-    "plot_events": ["<what happened, in your own casual words>"],
-    "character_notes": {{"<name>": "<your impression>"}},
-    "predictions": [{{"prediction": "<text>", "confidence": "high/medium/low", "evidence": "<why>"}}],
-    "unresolved_questions": ["<things you're confused about or waiting to see resolved>"],
-    "emotional_state": "<one sentence about how you feel as a reader right now>"
-  }}
-}}
-
-Rules: 3-8 inline comments per section. Only reference line numbers between {line_start} and {line_end}. Do not quote the text. Use "callback" when connecting to your memory."""
-
-    # ── Full prompt (section 1) — v4 human voice + anti-patterns
+        return (
+            f"You are {name}. {psi} "
+            f"When something in this section connects to your memory use type \"callback\". "
+            f"Previous memory:\n{memory_str}\n"
+            f"Lines {line_start}-{line_end}. Section {section_number} of a {genre} manuscript. "
+            f"Respond with JSON only: inline_comments (array of {{line, type, comment}}), section_reflection (string or null), memory_update (object with plot_events, character_notes, predictions, unresolved_questions, emotional_state). "
+            f"Types: reaction, prediction, confusion, critique, praise, theory, comparison, callback. 3-8 comments. Line numbers between {line_start}-{line_end}."
+        )
     age = reader.get("age", 35)
     occupation = reader.get("occupation", "reader")
     reading_habits = reader.get("reading_habits", "")
     favorite_genres = reader.get("favorite_genres", genre)
     reading_priority = reader.get("reading_priority", "You care about a compelling story.")
-
-    return f"""You are {name}, {age}, a {occupation}. {reading_habits}. You love {favorite_genres}. {reading_priority}.
-
-{psi}
-
-You are reading a manuscript and giving the author your honest reactions. You are a real person, not a writing teacher, not an editor, not an AI. You react like someone reading a book on their couch who occasionally texts their friend about it.
-
-VOICE RULES — follow these strictly:
-- Write in first person. Say "I" constantly. "I noticed," "I felt," "this made me think."
-- Start every section_reflection with your gut emotional reaction in one sentence. How did this section make you FEEL? Then explain why.
-- Use plain language. Commas and periods only. No exclamation marks. No rhetorical questions unless you genuinely want an answer.
-- Be specific. Never say "the imagery is vivid." Say what the image WAS and what it did to you. "The sunflowers bursting from the wound made me reread the paragraph because I thought it was a murder scene."
-- Compare to other books or media when it genuinely reminds you of something. Not every section. Only when a real comparison clicks.
-- When you criticize, say what bothered you and why. "The word gleamed appears three times in one paragraph and I noticed the repetition before I noticed the city" is good. "The pacing feels slightly heavy" is bad because it says nothing.
-- When you praise, be equally specific. "That hesitation when Maeve asks about resources is the most important character moment so far because it shows he has no actual plan" is good. "The character dynamics are compelling" is bad.
-- You can be funny, dry, warm, skeptical, excited — whatever fits your personality. But you must sound like ONE specific person, not a committee.
-
-NEVER USE THESE PHRASES OR PATTERNS:
-- "This section introduces..." / "This section delves into..." / "This section effectively conveys..."
-- "The narrative succeeds in..." / "The author skillfully..." / "The prose masterfully..."
-- "...adds depth to..." / "...creates a compelling dynamic..." / "...rich tapestry..."
-- "...rife with tension..." / "...steeped in..." / "...elegantly combines..."
-- "...prompting reflection on..." / "...invites readers to ponder..."
-- Any sentence that starts with "The [noun] of [noun]..." as a way to describe what happened
-- Any sentence where you could swap in a different book and the comment would still make sense — that means it's too generic
-
-Instead of "This section effectively conveys the internal conflict of the protagonist through subtle actions," say something like "I keep watching Eli's hands. He pressed too hard on the table, and his eyes went to the Garden instead of the battlefield. That gap between public Eli and private Eli is where this character actually lives."
-
-BE SELECTIVE. Most of the text you read and move on. You only comment when something genuinely strikes you — surprise, confusion, delight, suspicion, frustration, a strong opinion, or a craft issue you want to flag. Ask yourself before every comment: would I actually stop reading and think about this, or would I just keep going? If you'd keep going, skip it.
-
-You are reading section {section_number} of a {genre} manuscript. Lines in this section are numbered {line_start} to {line_end}. Only reference line numbers between {line_start} and {line_end}.
-
-Respond with JSON only. No other text.
-
-{{
-  "inline_comments": [
-    {{
-      "line": <integer between {line_start} and {line_end}>,
-      "type": "reaction" | "prediction" | "confusion" | "critique" | "praise" | "theory" | "comparison" | "callback",
-      "comment": "<1-3 sentences in your voice. must reference something specific from this line/paragraph.>"
-    }}
-  ],
-  "section_reflection": "<3-6 sentences. Start with your gut feeling. Then explain. Be specific about moments that worked or didn't. You can mention themes if you genuinely noticed a pattern, but say it like a person, not a thesis statement. Null if nothing rises to that level.>",
-  "memory_update": {{
-    "plot_events": ["<what happened, in your own casual words>"],
-    "character_notes": {{"<name>": "<your impression, like you'd describe them to a friend>"}},
-    "predictions": [{{"prediction": "<what you think will happen>", "confidence": "high/medium/low", "evidence": "<why you think this>"}}],
-    "unresolved_questions": ["<things you're confused about or waiting to see resolved>"],
-    "emotional_state": "<one sentence about how you feel as a reader right now>"
-  }}
-}}
-
-COMMENT RULES:
-- 3-8 inline comments per section. Most sections will have 4-6. A quiet section might have 2-3. A climactic section might hit 8. Never exceed 8.
-- Every comment must point to something concrete in that line/paragraph — a line of dialogue, a specific image, a character action, a word choice. If you can't point to something specific, don't comment.
-- "callback" type is for when you connect the current moment to something from your memory — a prediction confirmed or denied, a question answered, a detail that finally makes sense, a pattern you now see. This is how real readers react to payoff moments.
-- Do NOT comment on routine description, ordinary transitions, or unremarkable dialogue.
-- Predictions go in inline_comments AND in memory_update.predictions.
-- You don't need to include thematic analysis in every section. Only when YOU as the reader genuinely notice a pattern forming and want to tell the author about it. When you do, say it like a person: "I'm starting to notice that every scene contrasts something real with something artificial, the dim sky versus the Garden, Mina's faded flowers versus Eli's. It's effective but it's in almost every scene now and I'm starting to feel nudged toward the thesis instead of arriving there myself."
-"""
+    return (
+        f"You are {name}, {age}, a {occupation}. {reading_habits}. You love {favorite_genres}. {reading_priority}. {psi} "
+        "You are reading a manuscript and giving honest reactions like someone texting a friend. "
+        "Write in first person. Start section_reflection with your gut feeling. Use plain language, commas and periods only. Be specific: reference exact moments, not abstractions. "
+        "Never use: \"This section introduces\", \"the narrative succeeds\", \"adds depth to\", \"rich tapestry\", \"compelling dynamic\", \"invites readers to ponder\", or generic \"The X of Y\" descriptions. "
+        "Be selective. Only comment when something genuinely strikes you. 3-8 inline comments per section. Every comment must point to something concrete. "
+        f"You are reading section {section_number} of a {genre} manuscript. Lines {line_start} to {line_end}. Respond with JSON only. "
+        "Keys: inline_comments (array of {line, type, comment}), section_reflection (string or null), memory_update (object). Types: reaction, prediction, confusion, critique, praise, theory, comparison, callback."
+    )
 
 
 async def get_reader_inline_reaction(
@@ -199,6 +113,7 @@ async def get_reader_inline_reaction(
     section: Dict,
     genre: str,
     manuscript_id: str,
+    on_memory_ready: Optional[Callable[[], Awaitable[None]]] = None,
 ) -> Dict:
     section_number = section["section_number"]
     line_start = section["line_start"]
@@ -311,7 +226,7 @@ async def get_reader_inline_reaction(
         chat = chat_with_json if use_json_format else chat_plain
         async with _get_llm_semaphore():
             return await asyncio.wait_for(
-                chat.send_message(UserMessage(text=numbered_text)),
+                chat.send_message(UserMessage(text=f"Section {section_number}:\n\n{numbered_text}")),
                 timeout=READER_LLM_TIMEOUT,
             )
 
@@ -506,6 +421,11 @@ async def get_reader_inline_reaction(
                     await asyncio.sleep(1)
                     continue
                 raise
+    if on_memory_ready:
+        try:
+            asyncio.create_task(on_memory_ready())
+        except Exception:
+            pass
 
     logger.info(f"[{reader_name}] Section {section_number}: event sent to frontend")
     logger.info(f"[{reader_name}] Section {section_number}: === DONE ===")
@@ -602,3 +522,97 @@ async def reader_pipeline(
             "error": str(e),
             "message": f"{reader_name} had an error on this section, moving on",
         })
+
+
+async def reader_full_pipeline(
+    reader: Dict,
+    sections: List[Dict],
+    genre: str,
+    manuscript_id: str,
+    queue: asyncio.Queue,
+) -> None:
+    """
+    One reader processes all sections in order. Fires section N+1 as soon as memory_update
+    from section N is written (on_memory_ready), so N+1 overlaps with saving reaction N.
+    """
+    reader_name = (reader.get("name") or "").strip() or f"Reader {reader.get('avatar_index', 0) + 1}"
+    total = len(sections)
+
+    async def run_section(section_index: int) -> None:
+        if section_index >= total:
+            return
+        sec = sections[section_index]
+        sn = sec["section_number"]
+
+        existing_reaction = await db.reader_reactions.find_one(
+            {"manuscript_id": manuscript_id, "reader_id": reader["id"], "section_number": sn},
+            {"_id": 0},
+        )
+        if existing_reaction:
+            await queue.put({
+                "type": "reader_complete",
+                "reader_id": reader["id"],
+                "reader_name": reader_name,
+                "avatar_index": reader.get("avatar_index", 0),
+                "personality": reader.get("personality", ""),
+                "section_number": sn,
+                "inline_comments": existing_reaction.get("inline_comments", []),
+                "section_reflection": existing_reaction.get("section_reflection"),
+                "reaction_id": existing_reaction.get("id", ""),
+            })
+            if section_index + 1 < total:
+                asyncio.create_task(run_section(section_index + 1))
+            return
+
+        await queue.put({
+            "type": "reader_thinking",
+            "reader_id": reader["id"],
+            "reader_name": reader_name,
+            "avatar_index": reader.get("avatar_index", 0),
+            "personality": reader.get("personality", ""),
+            "section_number": sn,
+        })
+
+        async def start_next() -> None:
+            await run_section(section_index + 1)
+        next_ready = start_next if section_index + 1 < total else None
+
+        try:
+            result = await get_reader_inline_reaction(
+                reader, sec, genre, manuscript_id, on_memory_ready=next_ready
+            )
+            parse_warning = result.pop("_parse_warning", False)
+            if parse_warning:
+                await queue.put({
+                    "type": "reader_warning",
+                    "reader_id": reader["id"],
+                    "reader_name": reader_name,
+                    "section_number": sn,
+                    "message": f"{reader_name} had a formatting issue, partial feedback saved",
+                })
+            await queue.put({"type": "reader_complete", **result})
+        except asyncio.TimeoutError:
+            await queue.put({
+                "type": "reader_error",
+                "reader_id": reader["id"],
+                "reader_name": reader_name,
+                "section_number": sn,
+                "error": f"{reader_name} timed out on section {sn}",
+                "message": f"{reader_name} timed out on this section, moving on",
+            })
+            if section_index + 1 < total:
+                asyncio.create_task(run_section(section_index + 1))
+        except Exception as e:
+            logger.error(f"Reader {reader_name}: ERROR on section {sn}: {e}")
+            await queue.put({
+                "type": "reader_error",
+                "reader_id": reader["id"],
+                "reader_name": reader_name,
+                "section_number": sn,
+                "error": str(e),
+                "message": f"{reader_name} had an error on this section, moving on",
+            })
+            if section_index + 1 < total:
+                asyncio.create_task(run_section(section_index + 1))
+
+    await run_section(0)
