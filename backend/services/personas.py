@@ -11,6 +11,46 @@ from models import ReaderPersonaResponse
 
 logger = logging.getLogger(__name__)
 
+# Fallback full names (diverse) when LLM returns empty or generic "Reader N"
+FALLBACK_NAMES = [
+    "James Chen",
+    "Maya Okonkwo",
+    "Priya Sharma",
+    "Diego Reyes",
+    "Lena Kowalski",
+]
+
+# Target age ranges by manuscript age_range (min, max inclusive)
+AGE_RANGE_BY_LABEL = {
+    "middle grade": (8, 12),
+    "middle-grade": (8, 12),
+    "mg": (8, 12),
+    "ya": (14, 22),
+    "young adult": (14, 22),
+    "new adult": (18, 28),
+    "na": (18, 28),
+    "adult": (25, 65),
+}
+DEFAULT_AGE_RANGE = (25, 65)
+
+
+def _age_range_for_audience(age_range: str) -> tuple:
+    """Return (min_age, max_age) for a given age_range label."""
+    if not age_range or not isinstance(age_range, str):
+        return DEFAULT_AGE_RANGE
+    key = age_range.strip().lower()
+    return AGE_RANGE_BY_LABEL.get(key, DEFAULT_AGE_RANGE)
+
+
+def _varied_age_for_reader(min_age: int, max_age: int, avatar_index: int) -> int:
+    """Pick a different age per avatar_index within [min_age, max_age]."""
+    span = max(1, max_age - min_age + 1)
+    # Spread 5 readers across the range (e.g. 25,35,45,55,65 for Adult)
+    step = max(1, span // 5)
+    offset = min(avatar_index * step, span - 1)
+    return min_age + offset
+
+
 READER_ARCHETYPES = [
     {
         "archetype": "analytical",
@@ -49,30 +89,48 @@ async def generate_single_persona(
     archetype_info: Dict,
     genre: str,
     audience: str,
+    age_range_label: str,
     avatar_index: int,
     manuscript_id: str,
 ) -> Dict:
+    min_age, max_age = _age_range_for_audience(age_range_label)
+    default_age = _varied_age_for_reader(min_age, max_age, avatar_index)
+
     system = """You are a creative writing assistant. Generate a realistic reader persona for a book club member.
-Return ONLY a valid JSON object (no markdown):
+You MUST return a valid JSON object (no markdown). Every field must be specific and non-generic.
+
+REQUIREMENTS:
+- "name": A real-sounding full name (first and last). Use a diverse name; do NOT use "Reader" or a number.
+- "age": An integer within the target age range you are given. Each persona should feel like a distinct person.
+- "occupation", "reading_habits", "favorite_genres", "genre_preferences", "reading_priority": Be specific (e.g. "teaches high school English", "reads 2 books a month, mostly on commute", "literary fiction and slow-burn thrillers"). Do NOT leave generic like "Reader" or "A compelling story".
+- "liked_tropes" and "disliked_tropes": Arrays of specific tropes (e.g. "enemies to lovers", "chosen one").
+- "quote": One sentence in their voice about what makes or breaks a book for them.
+
+Return ONLY this JSON (no other text):
 {{
-  "name": "full name (diverse, realistic)",
-  "age": 35,
-  "occupation": "specific occupation",
-  "reading_habits": "describe reading habits and genre preferences in one sentence",
+  "name": "First Last",
+  "age": 30,
+  "occupation": "specific job or role",
+  "reading_habits": "one sentence, specific",
   "favorite_genres": "2-3 genres they love",
-  "genre_preferences": "specific subgenre or style preferences",
-  "reading_priority": "what they most care about in a book (one sentence)",
+  "genre_preferences": "subgenres or styles they prefer",
+  "reading_priority": "one sentence, what they care about most",
   "liked_tropes": ["trope1", "trope2", "trope3"],
   "disliked_tropes": ["trope1", "trope2"],
-  "voice_style": "how they express themselves (e.g. measured and precise, warm and chatty)",
-  "quote": "a one-line quote in their voice about what makes or breaks a book",
-  "personality_specific_instructions": "2-3 sentences describing their unique analytical lens as a reader — what they notice, how they process, what they're watching for"
+  "voice_style": "how they express themselves",
+  "quote": "one line in their voice",
+  "personality_specific_instructions": "2-3 sentences: their unique lens as a reader"
 }}"""
 
+    user_text = (
+        f"Create a {archetype_info['archetype']} reader persona for a {genre} novel. "
+        f"Target audience: {audience}. "
+        f"Age range for this audience: {age_range_label} (readers should be between {min_age} and {max_age} years old). "
+        f"Set this persona's age to a specific number between {min_age} and {max_age} that fits the audience. "
+        f"Give them a real full name and specific preferences—no generic placeholders."
+    )
     chat = make_chat(system)
-    response = await chat.send_message(UserMessage(
-        text=f"Create a {archetype_info['archetype']} reader persona for a {genre} novel targeting {audience}. Make them feel like a real, specific person with a distinct reading lens."
-    ))
+    response = await chat.send_message(UserMessage(text=user_text))
 
     try:
         clean = re.sub(r'```[a-z]*\n?', '', response).strip().rstrip('`')
@@ -90,21 +148,55 @@ Return ONLY a valid JSON object (no markdown):
         raw_name = raw_name.strip()
     else:
         raw_name = str(raw_name).strip() if raw_name is not None else ""
-    name = raw_name if raw_name else f"Reader {avatar_index + 1}"
-    # Ensure we never store a non-string (e.g. LLM returns a number)
-    name = str(name).strip() or f"Reader {avatar_index + 1}"
+    # Reject generic or empty names; use fallback
+    if not raw_name or raw_name.lower().startswith("reader") or raw_name.isdigit():
+        name = FALLBACK_NAMES[avatar_index % len(FALLBACK_NAMES)]
+    else:
+        name = str(raw_name).strip()
+    name = (name or FALLBACK_NAMES[avatar_index % len(FALLBACK_NAMES)]).strip()
+
+    # Parse age: must be int in [min_age, max_age]; otherwise use varied default
+    raw_age = data.get("age")
+    try:
+        age_val = int(float(raw_age)) if raw_age is not None else default_age
+    except (TypeError, ValueError):
+        age_val = default_age
+    age = max(min_age, min(max_age, age_val)) if (min_age <= age_val <= max_age) else default_age
+
+    # Archetype-based defaults when LLM returns empty or generic
+    arch = archetype_info.get("archetype", "")
+    default_occupations = {
+        "analytical": "editor or copywriter",
+        "emotional": "counselor or teacher",
+        "genre_savvy": "bookseller or librarian",
+        "casual": "works in tech or retail",
+        "skeptical": "lawyer or researcher",
+    }
+    default_priorities = {
+        "analytical": "Plot that holds together and pays off its setups.",
+        "emotional": "Characters I care about and moments that earn their weight.",
+        "genre_savvy": "Fresh takes on familiar tropes.",
+        "casual": "Pacing and characters that feel real.",
+        "skeptical": "Internal logic and consistency.",
+    }
+    occ = _coerce(data.get("occupation"), "")
+    if not occ or occ.lower() == "reader":
+        occ = default_occupations.get(arch, "reader")
+    prio = _coerce(data.get("reading_priority"), "")
+    if not prio or prio.lower() == "a compelling story":
+        prio = default_priorities.get(arch, "A compelling story.")
 
     return {
         "id": str(uuid.uuid4()),
         "manuscript_id": manuscript_id,
         "name": name,
-        "age": data.get("age", 35) if isinstance(data.get("age"), int) else 35,
-        "occupation": _coerce(data.get("occupation"), "Reader"),
+        "age": age,
+        "occupation": occ,
         "personality": archetype_info["archetype"],
         "reading_habits": _coerce(data.get("reading_habits"), "Reads widely across genres"),
         "favorite_genres": _coerce(data.get("favorite_genres"), genre),
         "genre_preferences": _coerce(data.get("genre_preferences"), ""),
-        "reading_priority": _coerce(data.get("reading_priority"), "A compelling story"),
+        "reading_priority": prio,
         "liked_tropes": data.get("liked_tropes", []) if isinstance(data.get("liked_tropes"), list) else [],
         "disliked_tropes": data.get("disliked_tropes", []) if isinstance(data.get("disliked_tropes"), list) else [],
         "voice_style": _coerce(data.get("voice_style"), "thoughtful and measured"),
@@ -120,11 +212,11 @@ Return ONLY a valid JSON object (no markdown):
 
 
 async def generate_all_personas(
-    manuscript_id: str, genre: str, audience: str
+    manuscript_id: str, genre: str, audience: str, age_range: str = "Adult"
 ) -> List[ReaderPersonaResponse]:
     await db.reader_personas.delete_many({"manuscript_id": manuscript_id})
     tasks = [
-        generate_single_persona(a, genre, audience, i, manuscript_id)
+        generate_single_persona(a, genre, audience, age_range or "Adult", i, manuscript_id)
         for i, a in enumerate(READER_ARCHETYPES)
     ]
     personas = await asyncio.gather(*tasks)

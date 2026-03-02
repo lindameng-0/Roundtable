@@ -228,6 +228,7 @@ async def get_personas(manuscript_id: str):
                 manuscript_id,
                 manuscript.get("genre", "Fiction"),
                 manuscript.get("target_audience", "General readers"),
+                manuscript.get("age_range", "Adult"),
             )
         except HTTPException:
             raise
@@ -253,6 +254,7 @@ async def regenerate_personas(manuscript_id: str, req: RegenerateRequest):
         raise HTTPException(404, "Manuscript not found")
     genre = manuscript.get("genre", "Fiction")
     audience = manuscript.get("target_audience", "General readers")
+    age_range = manuscript.get("age_range", "Adult")
 
     if req.reader_id:
         existing = await db.reader_personas.find_one(
@@ -262,7 +264,7 @@ async def regenerate_personas(manuscript_id: str, req: RegenerateRequest):
             raise HTTPException(404, "Reader not found")
         avatar_index = existing.get("avatar_index", 0)
         archetype = READER_ARCHETYPES[avatar_index % len(READER_ARCHETYPES)]
-        new_persona = await generate_single_persona(archetype, genre, audience, avatar_index, manuscript_id)
+        new_persona = await generate_single_persona(archetype, genre, audience, age_range, avatar_index, manuscript_id)
         new_persona["id"] = req.reader_id
         await db.reader_personas.replace_one({"id": req.reader_id}, {**new_persona})
         await db.reader_memories.delete_many({"reader_id": req.reader_id})
@@ -271,7 +273,7 @@ async def regenerate_personas(manuscript_id: str, req: RegenerateRequest):
     else:
         await db.reader_memories.delete_many({"manuscript_id": manuscript_id})
         await db.reader_reactions.delete_many({"manuscript_id": manuscript_id})
-        return await generate_all_personas(manuscript_id, genre, audience)
+        return await generate_all_personas(manuscript_id, genre, audience, age_range)
 
 
 # ─── Reading: SSE Stream ──────────────────────────────────────────────────────
