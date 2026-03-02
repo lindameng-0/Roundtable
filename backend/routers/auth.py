@@ -59,8 +59,12 @@ GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 @auth_router.get("/google")
 async def google_oauth_start(request: Request):
     """Redirect user to Google sign-in. After auth, Google redirects to /api/auth/google/callback."""
-    if not _cfg.GOOGLE_CLIENT_ID:
-        raise HTTPException(503, "Google OAuth is not configured (GOOGLE_CLIENT_ID missing)")
+    client_id = _cfg.GOOGLE_CLIENT_ID
+    if not client_id or client_id.strip() in ("", "your-google-client-id"):
+        raise HTTPException(
+            503,
+            "Google OAuth is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env with credentials from https://console.cloud.google.com/apis/credentials (create OAuth 2.0 Client ID, type Web application, add redirect URI: {}/api/auth/google/callback)".format(_cfg.BACKEND_URL),
+        )
     state = secrets.token_urlsafe(32)
     # Store state in cookie so we can verify it in callback (optional but recommended for CSRF)
     redirect_uri = f"{_cfg.BACKEND_URL}/api/auth/google/callback"
