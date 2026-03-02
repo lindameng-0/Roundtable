@@ -514,7 +514,27 @@ async def create_editor_report(manuscript_id: str):
         "report_json": report_data,
         "created_at": now_iso(),
     }
-    await db.editor_reports.insert_one({**report_doc})
+
+    try:
+        await db.editor_reports.insert_one({**report_doc})
+    except Exception as e:
+        err_msg = str(getattr(e, "message", e)) if hasattr(e, "message") else str(e)
+        if "23505" in err_msg or "duplicate key" in err_msg.lower() or "unique constraint" in err_msg.lower():
+            # One report per manuscript: update existing row instead of failing
+            await db.editor_reports.update_one(
+                {"manuscript_id": manuscript_id},
+                {"$set": {"report_json": report_data, "created_at": report_doc["created_at"]}},
+            )
+            existing = await db.editor_reports.find_one({"manuscript_id": manuscript_id}, {"_id": 0})
+            if existing:
+                return {
+                    "id": existing.get("id", report_doc["id"]),
+                    "manuscript_id": manuscript_id,
+                    "report": report_data,
+                    "created_at": existing.get("created_at", report_doc["created_at"]),
+                }
+        raise
+
     return {
         "id": report_doc["id"],
         "manuscript_id": manuscript_id,
