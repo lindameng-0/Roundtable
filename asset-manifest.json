@@ -1,13 +1,13 @@
 {
   "files": {
-    "main.css": "/Roundtable/static/css/main.1a307f97.css",
-    "main.js": "/Roundtable/static/js/main.bd11f699.js",
-    "index.html": "/Roundtable/index.html",
-    "main.1a307f97.css.map": "/Roundtable/static/css/main.1a307f97.css.map",
-    "main.bd11f699.js.map": "/Roundtable/static/js/main.bd11f699.js.map"
+    "main.css": "/static/css/main.1a307f97.css",
+    "main.js": "/static/js/main.bc64ffa4.js",
+    "index.html": "/index.html",
+    "main.1a307f97.css.map": "/static/css/main.1a307f97.css.map",
+    "main.bc64ffa4.js.map": "/static/js/main.bc64ffa4.js.map"
   },
   "entrypoints": [
     "static/css/main.1a307f97.css",
-    "static/js/main.bd11f699.js"
+    "static/js/main.bc64ffa4.js"
   ]
 }
