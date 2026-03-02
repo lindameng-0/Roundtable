@@ -483,8 +483,13 @@ async def get_reactions(manuscript_id: str, section_number: int):
 
 @api_router.post("/manuscripts/{manuscript_id}/editor-report")
 async def create_editor_report(manuscript_id: str):
-    manuscript = await db.manuscripts.find_one({"id": manuscript_id}, {"_id": 0})
+    manuscript_id = (manuscript_id or "").strip()
+    if not manuscript_id or manuscript_id.lower() == "undefined":
+        raise HTTPException(400, "Manuscript ID is missing. Open the report from the reading page or use a valid report URL.")
+
+    manuscript = await db.manuscripts.find_one({"id": manuscript_id}, None)
     if not manuscript:
+        logger.warning("create_editor_report: manuscript not found for id=%r", manuscript_id)
         raise HTTPException(404, "Manuscript not found")
 
     total_sections = manuscript.get("total_sections", 0)

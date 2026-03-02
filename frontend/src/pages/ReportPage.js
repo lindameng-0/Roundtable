@@ -14,7 +14,7 @@ import {
   Cell,
 } from "recharts";
 
-const API = process.env.REACT_APP_BACKEND_URL + "/api";
+const API = (process.env.REACT_APP_BACKEND_URL || "http://localhost:8000").replace(/\/$/, "") + "/api";
 
 const PRIORITY_COLORS = {
   high: "#C86B56",
@@ -113,6 +113,10 @@ export default function ReportPage() {
   };
 
   const generateReport = async () => {
+    if (!manuscriptId) {
+      toast.error("Missing manuscript. Open the report from the reading page.");
+      return;
+    }
     setGenerating(true);
     try {
       const res = await axios.post(`${API}/manuscripts/${manuscriptId}/editor-report`);
