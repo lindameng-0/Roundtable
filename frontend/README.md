@@ -65,6 +65,19 @@ This section has moved here: [https://facebook.github.io/create-react-app/docs/a
 
 This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
 
+### Deploy to GitHub Pages (roundtable.works)
+
+1. Push this repo to **https://github.com/lindameng-0/Roundtable** (or update the `-r` URL in the `deploy` script if your repo is different).
+2. On GitHub: **Settings → Pages** → Source: **Deploy from a branch** → Branch: **gh-pages** → folder **/ (root)** → Save.
+3. Add custom domain: under Pages, set **Custom domain** to `roundtable.works` and save. Then add the DNS records your registrar shows (usually an A record for GitHub’s IPs and/or a CNAME for `lindameng-0.github.io`).
+4. From the **frontend** directory run:
+   ```bash
+   npm run deploy
+   ```
+   This builds the app, copies `index.html` to `404.html` (so client-side routes work), and pushes the `build` folder to the `gh-pages` branch. The site will be at **https://roundtable.works** once DNS has propagated.
+
+For production, set `REACT_APP_BACKEND_URL` to your API URL before building (e.g. `https://api.roundtable.works`).
+
 ### `npm run build` fails to minify
 
 This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
