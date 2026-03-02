@@ -57,7 +57,7 @@ function App() {
   return (
     <div className="App">
       <AuthProvider>
-        <BrowserRouter basename={process.env.PUBLIC_URL || ""}>
+        <BrowserRouter>
           <Routes>
             {/* Public routes */}
             <Route path="/login" element={<PublicOnlyRoute><LoginPage /></PublicOnlyRoute>} />

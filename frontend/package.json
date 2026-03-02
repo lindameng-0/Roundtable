@@ -2,7 +2,7 @@
   "name": "frontend",
   "version": "0.1.0",
   "private": true,
-  "homepage": "https://lindameng-0.github.io/Roundtable",
+  "homepage": "https://roundtable.works",
   "dependencies": {
     "@hookform/resolvers": "^5.0.1",
     "@radix-ui/react-accordion": "^1.2.8",
@@ -62,7 +62,7 @@
     "start": "craco start",
     "build": "craco build",
     "test": "craco test",
-    "deploy": "npm run build && gh-pages -d build"
+    "deploy": "npm run build && node -e \"require('fs').copyFileSync('build/index.html','build/404.html')\" && gh-pages -d build -r https://github.com/lindameng-0/Roundtable.git"
   },
   "browserslist": {
     "production": [
