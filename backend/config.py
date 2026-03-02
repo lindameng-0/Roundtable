@@ -17,6 +17,6 @@ OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
 ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY')
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')  # or GOOGLE_API_KEY for Gemini
 
-# Mutable — can be changed at runtime via POST /api/config/model
-LLM_MODEL = os.environ.get('LLM_MODEL', 'gpt-4o')
+# Mutable — only gpt-4o-mini is used
+LLM_MODEL = os.environ.get('LLM_MODEL', 'gpt-4o-mini')
 LLM_PROVIDER = os.environ.get('LLM_PROVIDER', 'openai')

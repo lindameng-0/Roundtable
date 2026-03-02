@@ -132,7 +132,7 @@ async def create_manuscript(manuscript: ManuscriptCreate, request: Request):
         "target_audience": genre_data.get("target_audience", "General readers"),
         "age_range": genre_data.get("age_range", "Adult"),
         "comparable_books": genre_data.get("comparable_books", []),
-        "model": getattr(manuscript, "model", None) or "gpt-4o",
+        "model": getattr(manuscript, "model", None) or "gpt-4o-mini",
         "sections": sections,
         "total_sections": len(sections),
         "total_lines": total_lines,
@@ -398,7 +398,7 @@ async def read_all_sections_stream(
                     await asyncio.sleep(delay)
                 return await reader_pipeline(r, sec, g, mid, q)
 
-            section_with_total = {**section, "total_sections": total_sections, "model": manuscript.get("model") or "gpt-4o"}
+            section_with_total = {**section, "total_sections": total_sections, "model": manuscript.get("model") or "gpt-4o-mini"}
             reader_tasks = [
                 asyncio.create_task(run_reader_with_delay(i * 3, r, section_with_total, genre, manuscript_id, queue))
                 for i, r in enumerate(readers)

@@ -5,7 +5,7 @@ from typing import List, Optional, Dict, Any
 class ManuscriptCreate(BaseModel):
     title: Optional[str] = "Untitled Manuscript"
     raw_text: str
-    model: Optional[str] = "gpt-4o"
+    model: Optional[str] = "gpt-4o-mini"
 
 
 class ManuscriptResponse(BaseModel):
