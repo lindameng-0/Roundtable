@@ -187,6 +187,7 @@ def split_manuscript(raw_text: str) -> Tuple[List[Dict], int]:
     Split manuscript into reading sections using smart boundaries (6k target, natural breaks).
     Returns (sections, total_lines) where each section has section_number, title, text,
     line_start, line_end, paragraph_lines, word_count. Global paragraph numbering is preserved.
+    paragraph_lines: one entry per non-empty LINE (split by newline), so display and annotations match line numbers.
     """
     raw_text = raw_text.strip()
     if not raw_text:
@@ -195,30 +196,36 @@ def split_manuscript(raw_text: str) -> Tuple[List[Dict], int]:
     section_dicts = split_manuscript_into_sections(raw_text)
     sections: List[Dict] = []
     parsed = _parse_paragraphs_with_breaks(raw_text)
+    global_line = 1
     for sn, sec in enumerate(section_dicts, 1):
-        text = sec["text"]
         start_para = sec["start_paragraph"]
         end_para = sec["end_paragraph"]
         word_count = sec["word_count"]
         start_idx = start_para - 1
         end_idx = end_para - 1
-        paragraph_lines = [
-            {"line": start_para + k, "text": parsed[start_idx + k][0]}
-            for k in range(end_idx - start_idx + 1)
-            if start_idx + k < len(parsed)
-        ]
+        paragraph_lines: List[Dict] = []
+        for j in range(start_idx, min(end_idx + 1, len(parsed))):
+            para_text = parsed[j][0]
+            for line in para_text.split("\n"):
+                stripped = line.strip()
+                if stripped:
+                    paragraph_lines.append({"line": global_line, "text": stripped})
+                    global_line += 1
         if not paragraph_lines:
             continue
+        line_start = paragraph_lines[0]["line"]
+        line_end = paragraph_lines[-1]["line"]
+        text = "\n\n".join(pl["text"] for pl in paragraph_lines)
         sections.append({
             "section_number": sn,
             "title": f"Section {sn}",
             "text": text,
             "start_char": 0,
             "end_char": 0,
-            "line_start": start_para,
-            "line_end": end_para,
+            "line_start": line_start,
+            "line_end": line_end,
             "paragraph_lines": paragraph_lines,
             "word_count": word_count,
         })
-    total_lines = section_dicts[-1]["end_paragraph"] if section_dicts else 0
+    total_lines = global_line - 1
     return sections, total_lines
