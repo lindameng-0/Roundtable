@@ -109,12 +109,17 @@ async def create_manuscript(manuscript: ManuscriptCreate, request: Request):
 {"genre":"primary genre","target_audience":"target reader description","age_range":"Adult/YA/Middle Grade/New Adult","comparable_books":["Book by Author","Book by Author","Book by Author"]}"""
         chat = make_chat(genre_prompt)
         sample = raw_text[:3000]
-        response = await chat.send_message(UserMessage(text=f"Analyze:\n\n{sample}"))
+        response = await asyncio.wait_for(
+            chat.send_message(UserMessage(text=f"Analyze:\n\n{sample}")),
+            timeout=45.0,
+        )
         try:
             clean = re.sub(r'```[a-z]*\n?', '', response).strip().rstrip('`')
             genre_data = json.loads(clean)
         except Exception:
             pass  # keep defaults
+    except asyncio.TimeoutError:
+        logger.warning("Genre detection timed out after 45s, using defaults")
     except Exception as e:
         logger.warning("Genre detection failed, using defaults: %s", e)
 
