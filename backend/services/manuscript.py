@@ -1,11 +1,14 @@
 import re
+import logging
 from typing import List, Dict, Tuple
 
-# Smart section splitting: 2500-4000 word sections for focused reading (was 6k target, 8k max)
+logger = logging.getLogger(__name__)
+
+# Smart section splitting: 2500-4000 word sections for focused reading
 TARGET_WORDS = 3000
 WINDOW_LOW = 2500
 WINDOW_HIGH = 4000
-MAX_SECTION_WORDS = 4500
+MAX_SECTION_WORDS = 4000  # hard max; do not keep a 5000-word "chapter" as one section
 MIN_SECTION_WORDS = 1500
 
 # Legacy constants for any callers that expect the old targets
@@ -64,7 +67,7 @@ def split_manuscript_into_sections(raw_text: str) -> List[Dict]:
     """
     Split manuscript into sections with smart boundaries.
     Target 3000 words; look for break in 2500-4000 (chapter > scene > paragraph).
-    Never split mid-paragraph; max 4500; min 1500 except last section.
+    Never split mid-paragraph; max 4000; min 1500 except last section.
     Returns list of dicts: text, start_paragraph (1-based), end_paragraph (1-based), word_count.
     """
     parsed = _parse_paragraphs_with_breaks(raw_text.strip())
@@ -94,12 +97,14 @@ def split_manuscript_into_sections(raw_text: str) -> List[Dict]:
         if sections and remaining < MIN_SECTION_WORDS:
             end_idx = para_count - 1
             section_text = "\n\n".join(parsed[i][0] for i in range(start_idx, end_idx + 1))
+            sec_word_count = len(section_text.split())
             sections.append({
                 "text": section_text,
                 "start_paragraph": start_idx + 1,
                 "end_paragraph": end_idx + 1,
-                "word_count": len(section_text.split()),
+                "word_count": sec_word_count,
             })
+            logger.info("Section %s (final): %s words (paragraphs %s-%s)", len(sections), sec_word_count, start_idx + 1, end_idx + 1)
             break
 
         # Target: find best break in [WINDOW_LOW, WINDOW_HIGH] or force by MAX_SECTION_WORDS
@@ -111,32 +116,38 @@ def split_manuscript_into_sections(raw_text: str) -> List[Dict]:
         best_idx: int | None = None
         best_priority = -1  # chapter=2, scene=1, paragraph=0
 
-        # Prefer chapter break in 2500-4500 range
+        # Only use a chapter break if the resulting section is within target size (2500-4000).
+        # If the next chapter would create a segment > WINDOW_HIGH, skip it and split at scene/paragraph ~3000.
         for i in range(start_idx, para_count):
             w_after = cum_words[i]
             if w_after > start_words + MAX_SECTION_WORDS:
                 break
-            if w_after < start_words + MIN_SECTION_WORDS and i < para_count - 1:
+            segment_words = w_after - start_words
+            if segment_words < MIN_SECTION_WORDS and i < para_count - 1:
                 continue
             break_after = parsed[i][1]
             if break_after == "chapter":
-                best_idx = i
-                best_priority = 2
-                if WINDOW_LOW <= (w_after - start_words) <= WINDOW_HIGH:
+                if WINDOW_LOW <= segment_words <= WINDOW_HIGH:
+                    best_idx = i
+                    best_priority = 2
+                    break
+                if segment_words > WINDOW_HIGH:
                     break
         if best_idx is not None:
             end_idx = best_idx
             section_text = "\n\n".join(parsed[j][0] for j in range(start_idx, end_idx + 1))
+            sec_word_count = len(section_text.split())
             sections.append({
                 "text": section_text,
                 "start_paragraph": start_idx + 1,
                 "end_paragraph": end_idx + 1,
-                "word_count": len(section_text.split()),
+                "word_count": sec_word_count,
             })
+            logger.info("Section %s: %s words (paragraphs %s-%s)", len(sections), sec_word_count, start_idx + 1, end_idx + 1)
             start_idx = end_idx + 1
             continue
 
-        # Look for scene or paragraph break in 2500-4000, then up to 4500
+        # Look for scene or paragraph break in 2500-4000, then up to max
         for i in range(start_idx, para_count):
             w_after = cum_words[i]
             if w_after > start_words + MAX_SECTION_WORDS:
@@ -161,7 +172,7 @@ def split_manuscript_into_sections(raw_text: str) -> List[Dict]:
         if best_idx is not None:
             end_idx = best_idx
         else:
-            # Force split at paragraph before exceeding 4500
+            # Force split at paragraph before exceeding max
             end_idx = start_idx
             for i in range(start_idx, para_count):
                 if cum_words[i] - start_words > MAX_SECTION_WORDS:
@@ -171,12 +182,14 @@ def split_manuscript_into_sections(raw_text: str) -> List[Dict]:
                 end_idx = start_idx
 
         section_text = "\n\n".join(parsed[j][0] for j in range(start_idx, end_idx + 1))
+        sec_word_count = len(section_text.split())
         sections.append({
             "text": section_text,
             "start_paragraph": start_idx + 1,
             "end_paragraph": end_idx + 1,
-            "word_count": len(section_text.split()),
+            "word_count": sec_word_count,
         })
+        logger.info("Section %s: %s words (paragraphs %s-%s)", len(sections), sec_word_count, start_idx + 1, end_idx + 1)
         start_idx = end_idx + 1
 
     return sections

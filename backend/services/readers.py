@@ -457,6 +457,11 @@ async def get_reader_inline_reaction(
             user_text = (
                 f"Section {section_number} of {total_sections}. This section deserves the same depth of feedback as section 1. Read carefully.\n\n{numbered_text}"
             )
+            if section_number == total_sections:
+                user_text = (
+                    "This is the final section of the manuscript. It deserves the same annotation density as every other section — endings are where the most important payoffs happen. Do not wrap up early or summarize. React to specific moments like you did in section 1.\n\n"
+                    + user_text
+                )
             return await asyncio.wait_for(
                 chat.send_message(UserMessage(text=user_text)),
                 timeout=READER_LLM_TIMEOUT,
