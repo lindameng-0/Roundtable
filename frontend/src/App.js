@@ -26,7 +26,7 @@ function ProtectedRoute({ children }) {
   return children;
 }
 
-/** If already logged in, redirect /login → /dashboard. */
+/** If already logged in, redirect /login → /setup (manuscript page). */
 function PublicOnlyRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) {
@@ -36,11 +36,11 @@ function PublicOnlyRoute({ children }) {
       </div>
     );
   }
-  if (user) return <Navigate to="/dashboard" replace />;
+  if (user) return <Navigate to="/setup" replace />;
   return children;
 }
 
-/** Authenticated → /dashboard, guest → /setup */
+/** Authenticated → /dashboard, guest → /login */
 function RootRedirect() {
   const { user, loading } = useAuth();
   if (loading) {
@@ -50,7 +50,7 @@ function RootRedirect() {
       </div>
     );
   }
-  return <Navigate to={user ? "/dashboard" : "/setup"} replace />;
+  return <Navigate to={user ? "/dashboard" : "/login"} replace />;
 }
 
 function App() {
@@ -73,7 +73,7 @@ function App() {
 
             {/* Root: redirect based on auth */}
             <Route path="/" element={<RootRedirect />} />
-            <Route path="*" element={<Navigate to="/setup" replace />} />
+            <Route path="*" element={<Navigate to="/login" replace />} />
           </Routes>
         </BrowserRouter>
       </AuthProvider>

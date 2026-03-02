@@ -116,13 +116,14 @@ export default function DashboardPage() {
               Your manuscripts
             </h1>
             {user && <p className="text-sm text-ink-400">Welcome back, {user.name?.split(" ")[0]}.</p>}
-            {usage && (
-              <p className="text-xs text-ink-400 mt-1">
+          </div>
+          <div className="flex items-center gap-4">
+            {usage != null && (
+              <p className="text-xs text-ink-400">
                 {usage.is_admin ? "Admin — unlimited" : `Free reads: ${Math.max(0, usage.limit - usage.used)}/${usage.limit} remaining`}
               </p>
             )}
-          </div>
-          <button
+            <button
             data-testid="new-manuscript-btn"
             onClick={() => navigate("/setup")}
             className="flex items-center gap-2 bg-clay text-white text-sm px-4 py-2.5 hover:bg-clay-hover transition-colors"
@@ -131,6 +132,7 @@ export default function DashboardPage() {
             <Plus className="w-4 h-4" strokeWidth={2} />
             New manuscript
           </button>
+          </div>
         </div>
 
         {loading ? (
