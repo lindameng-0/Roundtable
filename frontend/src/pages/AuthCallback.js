@@ -32,10 +32,11 @@ export default function AuthCallback() {
           { withCredentials: true }
         );
         const { user, session_token } = res.data;
-        // Store session_token for Authorization header fallback
         if (session_token) localStorage.setItem("session_token", session_token);
         login(user, session_token);
-        navigate("/setup", { replace: true });
+        // Clear hash and redirect after state is committed so /setup sees logged-in user
+        window.history.replaceState(null, "", window.location.pathname + window.location.search);
+        setTimeout(() => navigate("/setup", { replace: true }), 0);
       } catch (err) {
         console.error("Auth callback failed:", err);
         navigate("/login", { replace: true });
