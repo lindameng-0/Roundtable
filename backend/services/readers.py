@@ -288,9 +288,10 @@ async def get_reader_inline_reaction(
 
     logger.info(f"[{reader_name}] Section {section_number}: === START ===")
 
-    # Cap section text to 2000 words so prompts stay under ~3000 tokens.
-    # This prevents slow/truncated responses for very large sections.
-    MAX_PROMPT_WORDS = 2000
+    # Send the FULL section so readers can annotate all parts. Sections are capped at 8000 words
+    # (see manuscript.MAX_SECTION_WORDS). Do not truncate — truncation caused annotations to
+    # cluster at the start with none past the first 2000 words.
+    MAX_PROMPT_WORDS = 8000
     total_words = sum(len(pl["text"].split()) for pl in paragraph_lines)
     if total_words > MAX_PROMPT_WORDS:
         running_words = 0
@@ -301,8 +302,8 @@ async def get_reader_inline_reaction(
                 break
             capped_lines.append(pl)
             running_words += pw
-        logger.info(
-            f"[{reader_name}] Section {section_number}: truncated {total_words}w → {running_words}w for prompt"
+        logger.warning(
+            f"[{reader_name}] Section {section_number}: section exceeds {MAX_PROMPT_WORDS}w, sending first {running_words}w (rare edge case)"
         )
     else:
         capped_lines = paragraph_lines
@@ -310,11 +311,11 @@ async def get_reader_inline_reaction(
     # Use capped line_end for prompt so reader only annotates lines they saw
     prompt_line_end = capped_lines[-1]["line"] if capped_lines else line_end
     numbered_text = "\n".join(f"{pl['line']}: {pl['text']}" for pl in capped_lines)
-    # Cap user message size to avoid provider limits and timeouts (~4k tokens)
-    MAX_USER_CHARS = 16000
+    # Allow full section (up to ~60k chars for 8000 words). Do not truncate — readers must see entire section.
+    MAX_USER_CHARS = 60000
     if len(numbered_text) > MAX_USER_CHARS:
         numbered_text = numbered_text[:MAX_USER_CHARS] + "\n[... text truncated ...]"
-        logger.info(f"[{reader_name}] Section {section_number}: user message capped to {MAX_USER_CHARS} chars")
+        logger.warning(f"[{reader_name}] Section {section_number}: user message capped to {MAX_USER_CHARS} chars (section very long)")
 
     # ── Memory retrieval (no asyncio.wait_for — cancelling Motor mid-flight
     # corrupts the connection pool and silently breaks all subsequent DB writes)
