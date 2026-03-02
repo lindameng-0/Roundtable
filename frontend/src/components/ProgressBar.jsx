@@ -39,6 +39,11 @@ export function ProgressBar({
 
         <div className="flex items-center gap-4">
           <div className="hidden sm:flex items-center gap-2 text-xs text-ink-400">
+            {manuscript.model && (
+              <span className="text-ink-500" title="Model used for this reading">
+                {manuscript.model === "gpt-4o-mini" ? "GPT-4o Mini" : "GPT-4o"}
+              </span>
+            )}
             {readingDone ? (
               <span className="text-sage font-medium">Reading complete</span>
             ) : processingSection ? (

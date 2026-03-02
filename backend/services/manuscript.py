@@ -1,12 +1,12 @@
 import re
 from typing import List, Dict, Tuple
 
-# Smart section splitting (Feature 3)
-TARGET_WORDS = 6000
-WINDOW_LOW = 5500
-WINDOW_HIGH = 6500
-MAX_SECTION_WORDS = 8000
-MIN_SECTION_WORDS = 3000
+# Smart section splitting: 2500-4000 word sections for focused reading (was 6k target, 8k max)
+TARGET_WORDS = 3000
+WINDOW_LOW = 2500
+WINDOW_HIGH = 4000
+MAX_SECTION_WORDS = 4500
+MIN_SECTION_WORDS = 1500
 
 # Legacy constants for any callers that expect the old targets
 TARGET_WORDS_PER_SECTION = TARGET_WORDS
@@ -63,8 +63,8 @@ def _parse_paragraphs_with_breaks(raw_text: str) -> List[Tuple[str, str]]:
 def split_manuscript_into_sections(raw_text: str) -> List[Dict]:
     """
     Split manuscript into sections with smart boundaries.
-    Target 6000 words; look for break in 5500-6500 (chapter > scene > paragraph).
-    Never split mid-paragraph; max 8000; min 3000 except last section.
+    Target 3000 words; look for break in 2500-4000 (chapter > scene > paragraph).
+    Never split mid-paragraph; max 4500; min 1500 except last section.
     Returns list of dicts: text, start_paragraph (1-based), end_paragraph (1-based), word_count.
     """
     parsed = _parse_paragraphs_with_breaks(raw_text.strip())
@@ -111,7 +111,7 @@ def split_manuscript_into_sections(raw_text: str) -> List[Dict]:
         best_idx: int | None = None
         best_priority = -1  # chapter=2, scene=1, paragraph=0
 
-        # Prefer chapter break in 3000-8000 range (spec: prefer chapter even if not at 6000)
+        # Prefer chapter break in 2500-4500 range
         for i in range(start_idx, para_count):
             w_after = cum_words[i]
             if w_after > start_words + MAX_SECTION_WORDS:
@@ -136,7 +136,7 @@ def split_manuscript_into_sections(raw_text: str) -> List[Dict]:
             start_idx = end_idx + 1
             continue
 
-        # Look for scene or paragraph break in 5500-6500, then up to 8000
+        # Look for scene or paragraph break in 2500-4000, then up to 4500
         for i in range(start_idx, para_count):
             w_after = cum_words[i]
             if w_after > start_words + MAX_SECTION_WORDS:
@@ -148,7 +148,7 @@ def split_manuscript_into_sections(raw_text: str) -> List[Dict]:
             prio = 1 if break_after == "scene" else 0
             if prio >= best_priority:
                 if best_priority == prio and best_idx is not None:
-                    # Prefer break closer to 6000
+                    # Prefer break closer to 3000
                     best_seg = cum_words[best_idx] - start_words if best_idx is not None else 0
                     if abs(segment_words - TARGET_WORDS) < abs(best_seg - TARGET_WORDS):
                         best_idx = i
@@ -161,7 +161,7 @@ def split_manuscript_into_sections(raw_text: str) -> List[Dict]:
         if best_idx is not None:
             end_idx = best_idx
         else:
-            # Force split at paragraph before exceeding 8000
+            # Force split at paragraph before exceeding 4500
             end_idx = start_idx
             for i in range(start_idx, para_count):
                 if cum_words[i] - start_words > MAX_SECTION_WORDS:

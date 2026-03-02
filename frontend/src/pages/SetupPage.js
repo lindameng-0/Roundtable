@@ -56,6 +56,7 @@ export default function SetupPage() {
   const [loading, setLoading] = useState(false);
   const [manuscript, setManuscript] = useState(null);
   const [genre, setGenre] = useState({});
+  const [model, setModel] = useState("gpt-4o");
   const [comparableInput, setComparableInput] = useState("");
   const [personas, setPersonas] = useState([]);
   const [selectedReaderIds, setSelectedReaderIds] = useState([]);
@@ -125,7 +126,7 @@ export default function SetupPage() {
     try {
       const token = localStorage.getItem("session_token");
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      const payload = { title: title || "Untitled Manuscript", raw_text: text };
+      const payload = { title: title || "Untitled Manuscript", raw_text: text, model: model };
       const payloadStr = JSON.stringify(payload);
       // Use byte length (UTF-8), not string length — so we compare bytes to bytes
       const bodySizeBytes = new TextEncoder().encode(payloadStr).length;
@@ -139,6 +140,7 @@ export default function SetupPage() {
         res = await axios.post(`${API}/manuscripts`, {
           title: title || "Untitled Manuscript",
           raw_text: firstChunk,
+          model: model,
         }, { headers, withCredentials: true });
         const manuscriptId = res?.data?.id;
         if (!manuscriptId) {
@@ -160,6 +162,7 @@ export default function SetupPage() {
         age_range: res.data.age_range,
         comparable_books: res.data.comparable_books || [],
       });
+      setModel(res.data.model || "gpt-4o");
       setStep("genre");
     } catch (err) {
       const status = err.response?.status;
@@ -186,7 +189,7 @@ export default function SetupPage() {
   const saveGenreAndProceed = async () => {
     setLoading(true);
     try {
-      await axios.patch(`${API}/manuscripts/${manuscript.id}/genre`, genre);
+      await axios.patch(`${API}/manuscripts/${manuscript.id}/genre`, { ...genre, model });
       // Generate personas — can take 20-40s for 5 parallel LLM calls
       const res = await axios.get(`${API}/manuscripts/${manuscript.id}/personas`, { timeout: 120000 });
       if (!res.data || res.data.length === 0) {
@@ -525,6 +528,21 @@ export default function SetupPage() {
                       <Plus className="w-4 h-4" strokeWidth={1.5} />
                     </button>
                   </div>
+                </div>
+
+                {/* Reading model */}
+                <div>
+                  <label className="text-xs text-ink-400 uppercase tracking-widest block mb-2">Reading model</label>
+                  <select
+                    data-testid="model-select"
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    className="w-full border border-ink-900/12 px-4 py-2.5 text-sm text-ink-900 focus:outline-none focus:border-clay transition-colors bg-paper"
+                    style={{ borderRadius: "2px" }}
+                  >
+                    <option value="gpt-4o">GPT-4o (Higher quality, slower)</option>
+                    <option value="gpt-4o-mini">GPT-4o Mini (Faster, lower cost)</option>
+                  </select>
                 </div>
 
                 {/* Sections detected */}

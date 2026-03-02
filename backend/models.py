@@ -5,6 +5,7 @@ from typing import List, Optional, Dict, Any
 class ManuscriptCreate(BaseModel):
     title: Optional[str] = "Untitled Manuscript"
     raw_text: str
+    model: Optional[str] = "gpt-4o"
 
 
 class ManuscriptResponse(BaseModel):
@@ -15,6 +16,7 @@ class ManuscriptResponse(BaseModel):
     target_audience: Optional[str] = None
     age_range: Optional[str] = None
     comparable_books: Optional[List[str]] = None
+    model: Optional[str] = None
     sections: Optional[List[Dict]] = None
     total_sections: Optional[int] = None
     total_lines: Optional[int] = None

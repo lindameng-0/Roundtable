@@ -97,10 +97,10 @@ class LiteLLMChat:
         return choice.message.content or ""
 
 
-def make_chat(system_prompt: str, session_id: Optional[str] = None) -> LiteLLMChat:
-    """Build a chat client using the current (potentially runtime-changed) model config."""
+def make_chat(system_prompt: str, session_id: Optional[str] = None, model: Optional[str] = None) -> LiteLLMChat:
+    """Build a chat client. If model is provided (e.g. from manuscript), use it; else use config."""
     chat = LiteLLMChat(system_prompt, session_id=session_id)
-    return chat.with_model(_cfg.LLM_PROVIDER, _cfg.LLM_MODEL)
+    return chat.with_model(_cfg.LLM_PROVIDER, model or _cfg.LLM_MODEL)
 
 
 def now_iso() -> str:

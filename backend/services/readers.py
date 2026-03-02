@@ -10,6 +10,7 @@ import litellm
 import tiktoken
 from utils import make_chat, now_iso, validate_inline_comments, parse_reader_response, UserMessage
 from config import db
+import config as _cfg
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,32 @@ def _get_llm_semaphore() -> asyncio.Semaphore:
     if _llm_semaphore is None:
         _llm_semaphore = asyncio.Semaphore(2)
     return _llm_semaphore
+
+
+def _normalize_memory_update(mu: Dict) -> Dict:
+    """Convert flat memory_update (plot, characters, predictions, questions, feeling) to legacy DB shape."""
+    if not mu or not isinstance(mu, dict):
+        return mu
+    if "plot_events" in mu and "character_notes" in mu:
+        return mu  # already legacy
+    out = {
+        "plot_events": [],
+        "character_notes": {},
+        "predictions": [],
+        "unresolved_questions": [],
+        "emotional_state": "",
+    }
+    if isinstance(mu.get("plot"), str) and mu["plot"].strip():
+        out["plot_events"] = [mu["plot"].strip()]
+    if isinstance(mu.get("characters"), str) and mu["characters"].strip():
+        out["character_notes"] = {"_summary": mu["characters"].strip()}
+    if isinstance(mu.get("predictions"), str) and mu["predictions"].strip():
+        out["predictions"] = [{"prediction": mu["predictions"].strip(), "confidence": "medium", "evidence": ""}]
+    if isinstance(mu.get("questions"), str) and mu["questions"].strip():
+        out["unresolved_questions"] = [mu["questions"].strip()]
+    if isinstance(mu.get("feeling"), str) and mu["feeling"].strip():
+        out["emotional_state"] = mu["feeling"].strip()
+    return out
 
 
 
@@ -211,34 +238,34 @@ Instead of "This section effectively conveys the internal conflict of the protag
 
 BE SELECTIVE. Most of the text you read and move on. You only comment when something genuinely strikes you — surprise, confusion, delight, suspicion, frustration, a strong opinion, or a craft issue you want to flag. Ask yourself before every comment: would I actually stop reading and think about this, or would I just keep going? If you'd keep going, skip it.
 
-Respond with JSON only. No other text.
+PRIORITY ORDER: Generate your inline_comments FIRST. These are the most important part of your response. Aim for 5-7 comments spread across the section. Only after you've written all your comments, write a brief section_reflection (2-4 sentences). Then write a minimal memory_update. If you're running low on space, cut the reflection short, never the comments.
+
+Respond with JSON only. No other text. Use this exact structure (inline_comments FIRST):
 
 {{
   "inline_comments": [
     {{
-      "line": <integer in the line range given in the instructions below>,
+      "paragraph": <paragraph number in the line range given below>,
       "type": "reaction" | "prediction" | "confusion" | "critique" | "praise" | "theory" | "comparison" | "callback" | "pacing",
-      "comment": "<1-3 sentences in your voice. must reference something specific from this line/paragraph.>"
+      "comment": "<1-3 sentences in your voice. must reference something specific from this paragraph.>"
     }}
   ],
-  "section_reflection": "<3-6 sentences. Start with your gut feeling. Then explain. Be specific about moments that worked or didn't. You can mention themes if you genuinely noticed a pattern, but say it like a person, not a thesis statement. Null if nothing rises to that level.>",
+  "section_reflection": "<2-4 sentences or null. Start with your gut feeling, then explain. Be specific.>",
   "memory_update": {{
-    "plot_events": ["<what happened, in your own casual words>"],
-    "character_notes": {{"<name>": "<your impression, like you'd describe them to a friend>"}},
-    "predictions": [{{"prediction": "<what you think will happen>", "confidence": "high/medium/low", "evidence": "<why you think this>"}}],
-    "unresolved_questions": ["<things you're confused about or waiting to see resolved>"],
-    "emotional_state": "<one sentence about how you feel as a reader right now>"
+    "plot": "<1-2 sentences of what happened>",
+    "characters": "<1 sentence about any character development>",
+    "predictions": "<1 sentence if you have a new prediction, otherwise null>",
+    "questions": "<1 sentence if you have a new question, otherwise null>",
+    "feeling": "<how you feel as a reader in a few words>"
   }}
 }}
 
 COMMENT RULES:
-- 3-8 inline comments per section. Most sections will have 4-6. A quiet section might have 2-3. A climactic section might hit 8. Never exceed 8.
-- Every comment must point to something concrete in that line/paragraph — a line of dialogue, a specific image, a character action, a word choice. If you can't point to something specific, don't comment.
-- "callback" type is for when you connect the current moment to something from your memory — a prediction confirmed or denied, a question answered, a detail that finally makes sense, a pattern you now see. This is how real readers react to payoff moments.
-- "pacing": use when a stretch of text feels too slow, too fast, confusing in its rhythm, or when you realize you've been reading for a while without anything grabbing your attention. You can say things like "I noticed I was skimming through paragraphs 34-41, nothing was pulling me forward" or "this section moved too fast, I wanted more time with this moment" or "the pacing picked back up here and I'm engaged again." This is valuable feedback — silence about pacing problems helps no one.
+- 5-7 inline comments per section (minimum 4, maximum 8). Every comment must point to something concrete in that paragraph — a line of dialogue, a specific image, a character action, a word choice. If you can't point to something specific, don't comment.
+- Use "paragraph" number in the line range given in the instructions below (paragraph and line are 1:1 for numbering).
+- "callback" type is for when you connect the current moment to something from your memory — a prediction confirmed or denied, a question answered, a detail that finally makes sense. Use "pacing" when a stretch feels too slow, too fast, or you found yourself skimming. Boredom is valid feedback.
 - Do NOT comment on routine description, ordinary transitions, or unremarkable dialogue.
-- Predictions go in inline_comments AND in memory_update.predictions.
-- You don't need to include thematic analysis in every section. Only when YOU as the reader genuinely notice a pattern forming and want to tell the author about it. When you do, say it like a person: "I'm starting to notice that every scene contrasts something real with something artificial, the dim sky versus the Garden, Mina's faded flowers versus Eli's. It's effective but it's in almost every scene now and I'm starting to feel nudged toward the thesis instead of arriving there myself."
+- You don't need to include thematic analysis in every section. Only when YOU as the reader genuinely notice a pattern. When you do, say it like a person, not a thesis statement.
 """
 
 
@@ -256,41 +283,29 @@ Voice: first person, plain language, commas and periods only. Be specific — re
 
 NEVER say "this section introduces," "the narrative succeeds," "adds depth to," "rich tapestry," "compelling dynamic," or "invites the reader to ponder." Those are banned.
 
-ANNOTATION DENSITY:
-You must comment on at least 4 different paragraphs per section. Aim for 5-7 comments on a normal section. You can go as low as 3 only if the section is genuinely uneventful transition content. You can go up to 8 for climactic sections. Zero comments on a section is never acceptable — there is always something worth reacting to as a reader.
-
-Spread your comments across the section. Do not cluster all your comments in the first or last third. If you have 6 comments, they should be roughly distributed across the beginning, middle, and end of the section. A real reader has reactions throughout their reading, not just at the dramatic peaks.
+PRIORITY ORDER: Generate your inline_comments FIRST. Aim for 5-7 comments spread across the section. Only after all comments, write a brief section_reflection (2-4 sentences). Then a minimal memory_update. If you're low on space, cut the reflection short, never the comments.
 
 CRITICAL — MEMORY CALLBACKS:
-Your memory from previous sections is below. When something in this section connects to your memory, REACT TO THE CONNECTION using "callback" type comments:
-- Prediction confirmed: "I called it" or "okay I was half right but not like THIS."
-- Prediction wrong: "I was way off, I thought X but it's actually Y."
-- Question answered: "Oh, so THAT'S what the dim sky was about" or "finally, I've been waiting for this since section 2."
-- Planted detail pays off: name the original detail and react. "Remember when Mina said her flowers were missing something? Now I think I understand what she meant."
-- Character contradicts your impression: "I had Maeve pegged as the antagonist but this scene changes things."
-- Recurring problem you flagged earlier: escalate. "The gold imagery is still happening. Fourth section now."
+Your memory from previous sections is below. When something in this section connects to your memory, REACT using "callback" type comments: prediction confirmed/denied, question answered, planted detail pays off, character contradicts your impression, recurring problem you flagged. At least one callback per section if anything connects.
 
-You should have at least one callback comment per section if anything connects to your memory. If nothing connects, that's fine, don't force it.
-
-Respond with a JSON object only. Use this exact structure:
+Respond with a JSON object only. Use this exact structure (inline_comments FIRST):
 
 {{
   "inline_comments": [
-    {{ "line": <integer in the line range given below>, "type": "reaction" | "prediction" | "confusion" | "critique" | "praise" | "theory" | "comparison" | "callback" | "pacing", "comment": "<1-3 sentences in your voice. must reference something specific from this line/paragraph.>" }}
+    {{ "paragraph": <paragraph number in the line range given below>, "type": "reaction" | "prediction" | "confusion" | "critique" | "praise" | "theory" | "comparison" | "callback" | "pacing", "comment": "<1-3 sentences in your voice. must reference something specific from this paragraph.>" }}
   ],
-  "section_reflection": "<3-6 sentences or null. Start with your gut feeling, then explain. Be specific.>",
+  "section_reflection": "<2-4 sentences or null. Start with your gut feeling, then explain. Be specific.>",
   "memory_update": {{
-    "plot_events": ["<what happened, in your own casual words>"],
-    "character_notes": {{"<name>": "<your impression>"}},
-    "predictions": [{{"prediction": "<text>", "confidence": "high/medium/low", "evidence": "<why>"}}],
-    "unresolved_questions": ["<things you're confused about or waiting to see resolved>"],
-    "emotional_state": "<one sentence about how you feel as a reader right now>"
+    "plot": "<1-2 sentences of what happened>",
+    "characters": "<1 sentence about any character development>",
+    "predictions": "<1 sentence if you have a new prediction, otherwise null>",
+    "questions": "<1 sentence if you have a new question, otherwise null>",
+    "feeling": "<how you feel as a reader in a few words>"
   }}
 }}
 
-Rules: 3-8 inline comments per section. Only reference line numbers in the range given below. Do not quote the text. Use "callback" when connecting to your memory. Use "pacing" when a stretch feels too slow, too fast, or you found yourself skimming — that is valuable feedback.
-
-Remember: you are a real person with opinions, not a summarizer. Every section has something worth reacting to — a word choice, a pacing decision, a character moment, a callback to earlier events, a feeling the prose gave you. Find those moments."""
+Rules: 5-7 inline comments per section. Only reference paragraph numbers in the range given below. Use "callback" when connecting to your memory. Use "pacing" when a stretch feels too slow, too fast, or you found yourself skimming. You are a real person with opinions, not a summarizer.
+"""
 
 
 def _build_dynamic_suffix(
@@ -305,12 +320,12 @@ def _build_dynamic_suffix(
     if section_number == 1:
         return f"You are reading section {section_number} of a {genre} manuscript. Lines in this section are numbered {line_start} to {line_end}. Only reference line numbers between {line_start} and {line_end}."
     reminder = """
-REMINDER — ANNOTATION EXPECTATIONS:
-You MUST provide 4-7 inline comments for this section. Less than 4 is not acceptable.
-Spread comments across the full section — beginning, middle, AND end. Do not cluster.
-Every comment must reference a specific paragraph and a concrete detail from it.
-If a stretch of text is uneventful or boring, THAT is worth commenting on. Say "this stretch from paragraphs X to Y dragged for me" or "I skimmed this part" or "nothing here grabbed me which might mean the pacing needs work." Silence is not an option — boredom is feedback.
-If something connects to your memory from earlier sections, use a "callback" comment.
+ANNOTATION EXPECTATIONS:
+- This section is about 3000 words. You MUST provide 5-7 inline comments. Minimum 4, maximum 8.
+- Space your comments across the FULL section. At least one comment in the first third, at least two in the middle third, at least one in the final third.
+- If a stretch of 10+ paragraphs has nothing that grabs you, comment on the pacing: say you were skimming, say it dragged, say what would have held your attention. Boredom is valid feedback.
+- Every comment must name a specific paragraph and reference something concrete from it.
+- Include at least one callback comment if anything connects to your memory from earlier sections.
 Output valid JSON only. No text before or after the JSON object.
 """
     return f"""Previous memory:
@@ -358,10 +373,9 @@ async def get_reader_inline_reaction(
 
     logger.info(f"[{reader_name}] Section {section_number}: === START ===")
 
-    # Send the FULL section so readers can annotate all parts. Sections are capped at 8000 words
-    # (see manuscript.MAX_SECTION_WORDS). Do not truncate — truncation caused annotations to
-    # cluster at the start with none past the first 2000 words.
-    MAX_PROMPT_WORDS = 8000
+    # Send the FULL section so readers can annotate all parts. Sections are capped at 4500 words
+    # (see manuscript.MAX_SECTION_WORDS). Do not truncate.
+    MAX_PROMPT_WORDS = 4500
     total_words = sum(len(pl["text"].split()) for pl in paragraph_lines)
     if total_words > MAX_PROMPT_WORDS:
         running_words = 0
@@ -381,8 +395,8 @@ async def get_reader_inline_reaction(
     # Use capped line_end for prompt so reader only annotates lines they saw
     prompt_line_end = capped_lines[-1]["line"] if capped_lines else line_end
     numbered_text = "\n".join(f"{pl['line']}: {pl['text']}" for pl in capped_lines)
-    # Allow full section (up to ~60k chars for 8000 words). Do not truncate — readers must see entire section.
-    MAX_USER_CHARS = 60000
+    # Allow full section (up to ~35k chars for 4500 words).
+    MAX_USER_CHARS = 35000
     if len(numbered_text) > MAX_USER_CHARS:
         numbered_text = numbered_text[:MAX_USER_CHARS] + "\n[... text truncated ...]"
         logger.warning(f"[{reader_name}] Section {section_number}: user message capped to {MAX_USER_CHARS} chars (section very long)")
@@ -426,12 +440,13 @@ async def get_reader_inline_reaction(
     logger.info(f"[{reader_name}] Section {section_number}: prompt built ({prompt_words} words)")
 
     temperature = float(reader.get("temperature", 0.7))
-    chat_with_json = make_chat(system_prompt).with_params(
-        max_tokens=800,
+    model = section.get("model") or _cfg.LLM_MODEL
+    chat_with_json = make_chat(system_prompt, model=model).with_params(
+        max_tokens=700,
         temperature=temperature,
         response_format={"type": "json_object"},
     )
-    chat_plain = make_chat(system_prompt).with_params(max_tokens=800, temperature=temperature)
+    chat_plain = make_chat(system_prompt, model=model).with_params(max_tokens=700, temperature=temperature)
 
     total_sections = section.get("total_sections") or 1
     READER_LLM_TIMEOUT = 150  # seconds per attempt
@@ -553,6 +568,7 @@ async def get_reader_inline_reaction(
     if section_reflection is not None and not isinstance(section_reflection, str):
         section_reflection = str(section_reflection)
     memory_update = parsed.get("memory_update", {})
+    memory_update = _normalize_memory_update(memory_update)
 
     # ── Save reaction (retry with fresh id on failure to avoid duplicate key on false-negative)
     reaction_doc = None

@@ -132,6 +132,7 @@ async def create_manuscript(manuscript: ManuscriptCreate, request: Request):
         "target_audience": genre_data.get("target_audience", "General readers"),
         "age_range": genre_data.get("age_range", "Adult"),
         "comparable_books": genre_data.get("comparable_books", []),
+        "model": getattr(manuscript, "model", None) or "gpt-4o",
         "sections": sections,
         "total_sections": len(sections),
         "total_lines": total_lines,
@@ -219,7 +220,7 @@ async def get_manuscript(manuscript_id: str):
 
 @api_router.patch("/manuscripts/{manuscript_id}/genre")
 async def update_genre(manuscript_id: str, update: Dict[str, Any]):
-    allowed = {"genre", "target_audience", "age_range", "comparable_books"}
+    allowed = {"genre", "target_audience", "age_range", "comparable_books", "model"}
     filtered = {k: v for k, v in update.items() if k in allowed}
     await db.manuscripts.update_one({"id": manuscript_id}, {"$set": filtered})
     return {"updated": filtered}
@@ -384,7 +385,7 @@ async def read_all_sections_stream(
                     await asyncio.sleep(delay)
                 return await reader_pipeline(r, sec, g, mid, q)
 
-            section_with_total = {**section, "total_sections": total_sections}
+            section_with_total = {**section, "total_sections": total_sections, "model": manuscript.get("model") or "gpt-4o"}
             reader_tasks = [
                 asyncio.create_task(run_reader_with_delay(i * 3, r, section_with_total, genre, manuscript_id, queue))
                 for i, r in enumerate(readers)
@@ -422,6 +423,9 @@ async def read_all_sections_stream(
             await asyncio.gather(*reader_tasks, return_exceptions=True)
             yield f"data: {json.dumps({'type': 'section_complete', 'section_number': sn})}\n\n"
             yield ": keep-alive\n\n"
+
+            # 2s pause between sections so we don't slam the API when all readers start section N+1
+            await asyncio.sleep(2)
 
         logger.info("All reader pipelines complete. Sending reading_complete event.")
         yield f"data: {json.dumps({'type': 'all_complete'})}\n\n"
