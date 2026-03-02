@@ -1,0 +1,13 @@
+{
+  "files": {
+    "main.css": "/Roundtable/static/css/main.1a307f97.css",
+    "main.js": "/Roundtable/static/js/main.bd11f699.js",
+    "index.html": "/Roundtable/index.html",
+    "main.1a307f97.css.map": "/Roundtable/static/css/main.1a307f97.css.map",
+    "main.bd11f699.js.map": "/Roundtable/static/js/main.bd11f699.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.1a307f97.css",
+    "static/js/main.bd11f699.js"
+  ]
+}
