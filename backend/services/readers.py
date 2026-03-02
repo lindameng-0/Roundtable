@@ -20,6 +20,15 @@ _llm_semaphore: asyncio.Semaphore | None = None
 # Keys: reader_id -> {"section_1": str, "section_2_plus": str}
 _static_prefix_cache: Dict[str, Dict[str, str]] = {}
 
+# Reading lens: biases each reader's attention so they comment on different paragraphs (Problem 2).
+READER_LENS: Dict[str, str] = {
+    "emotional": "When scanning a section, your eyes are drawn first to: character emotions, relationship dynamics, dialogue that reveals how people feel, moments of vulnerability or dishonesty, and sensory details that create mood. You often comment on quiet character moments that other readers skip.",
+    "analytical": "When scanning a section, your eyes are drawn first to: cause and effect chains, timeline consistency, setups that might pay off later, pacing choices (too fast, too slow, just right), structural decisions like where scenes start and end, and information the reader learns versus what characters know. You often comment on structural choices that other readers don't notice.",
+    "skeptical": "When scanning a section, your eyes are drawn first to: contradictions, unreliable narration, character motivations that don't add up, worldbuilding details that conflict with earlier information, and moments where the author seems to be hiding something. You often comment on things that feel off or suspicious that other readers accept at face value.",
+    "genre_savvy": "When scanning a section, your eyes are drawn first to: genre conventions being followed or subverted, tropes in action, pacing compared to other books in the genre, and moments that remind you of specific other works. You often comment on how a scene compares to similar scenes in other books.",
+    "casual": "When scanning a section, your eyes are drawn first to: whether you're bored or engaged right now, whether dialogue sounds like real people talking, whether you understand what's happening without rereading, and whether scenes earn their length. You often comment on pacing and clarity issues that other readers are too polite to mention.",
+}
+
 
 def _get_llm_semaphore() -> asyncio.Semaphore:
     global _llm_semaphore
@@ -111,9 +120,11 @@ def _build_section_1_static_prefix(reader: Dict) -> str:
     favorite_genres = reader.get("favorite_genres", "fiction")
     reading_priority = reader.get("reading_priority", "You care about a compelling story.")
     psi = reader.get("personality_specific_instructions", "")
-    return f"""You are {name}, {age}, a {occupation}. {reading_habits}. You love {favorite_genres}. {reading_priority}.
-
-{psi}
+    lens = READER_LENS.get(reader.get("personality", ""), "")
+    persona_block = f"You are {name}, {age}, a {occupation}. {reading_habits}. You love {favorite_genres}. {reading_priority}.\n\n{psi}"
+    if lens:
+        persona_block += f"\n\n{lens}"
+    return f"""{persona_block}
 
 You are reading a manuscript and giving the author your honest reactions. You are a real person, not a writing teacher, not an editor, not an AI. You react like someone reading a book on their couch who occasionally texts their friend about it.
 
@@ -174,11 +185,20 @@ def _build_section_2_plus_static_prefix(reader: Dict) -> str:
     """Compressed static prefix for section 2+: voice + memory callback rules + JSON structure. No full banned list/schema example."""
     name = reader.get("name", "Reader")
     psi = reader.get("personality_specific_instructions", "")
-    return f"""You are {name}. {psi}
+    lens = READER_LENS.get(reader.get("personality", ""), "")
+    persona_block = f"You are {name}. {psi}"
+    if lens:
+        persona_block += f"\n\n{lens}"
+    return f"""{persona_block}
 
 Voice: first person, plain language, commas and periods only. Be specific — reference exact moments, not abstractions. Sound like a person, not a book report.
 
 NEVER say "this section introduces," "the narrative succeeds," "adds depth to," "rich tapestry," "compelling dynamic," or "invites the reader to ponder." Those are banned.
+
+ANNOTATION DENSITY:
+You must comment on at least 4 different paragraphs per section. Aim for 5-7 comments on a normal section. You can go as low as 3 only if the section is genuinely uneventful transition content. You can go up to 8 for climactic sections. Zero comments on a section is never acceptable — there is always something worth reacting to as a reader.
+
+Spread your comments across the section. Do not cluster all your comments in the first or last third. If you have 6 comments, they should be roughly distributed across the beginning, middle, and end of the section. A real reader has reactions throughout their reading, not just at the dramatic peaks.
 
 CRITICAL — MEMORY CALLBACKS:
 Your memory from previous sections is below. When something in this section connects to your memory, REACT TO THE CONNECTION using "callback" type comments:
@@ -207,7 +227,9 @@ Respond with a JSON object only. Use this exact structure:
   }}
 }}
 
-Rules: 3-8 inline comments per section. Only reference line numbers in the range given below. Do not quote the text. Use "callback" when connecting to your memory."""
+Rules: 3-8 inline comments per section. Only reference line numbers in the range given below. Do not quote the text. Use "callback" when connecting to your memory.
+
+Remember: you are a real person with opinions, not a summarizer. Every section has something worth reacting to — a word choice, a pacing decision, a character moment, a callback to earlier events, a feeling the prose gave you. Find those moments."""
 
 
 def _build_dynamic_suffix(
