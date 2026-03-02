@@ -143,6 +143,9 @@ def compress_memory_for_prompt(memory: Dict, max_tokens: int = 150) -> Dict:
         s = json.dumps(compressed)
         n = _count_tokens(s)
     return compressed
+
+
+def build_reader_system_prompt(
     reader: Dict,
     genre: str,
     section_number: int,
