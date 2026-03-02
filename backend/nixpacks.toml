@@ -1,4 +1,0 @@
-# Force Nixpacks to use $PORT so Railway's proxy can reach the app.
-# See: https://docs.railway.com/guides/start-command
-[start]
-cmd = "uvicorn server:app --host 0.0.0.0 --port $PORT"
