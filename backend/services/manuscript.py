@@ -1,10 +1,8 @@
 import re
 from typing import List, Dict, Tuple
 
-TARGET_WORDS_PER_SECTION = 6000
-MAX_WORDS_PER_SECTION = 8000
-MIN_WORDS_PER_SECTION = 3000
-SPLIT_THRESHOLD = 8000
+TARGET_WORDS_PER_SECTION = 2000  # target words per section (controls batching + splitting)
+SPLIT_THRESHOLD = 4000           # sub-split chapters exceeding this many words
 
 _scene_break_pattern = re.compile(
     r'\n[ \t]*(?:\*{2,}|\-{2,}|#{2,}|~{2,}|_{2,}|\.{3,})[ \t]*\n|\n{3,}',
@@ -14,9 +12,12 @@ _scene_break_pattern = re.compile(
 
 def split_manuscript(raw_text: str) -> Tuple[List[Dict], int]:
     """
-    Split manuscript into reading sections.
-    Prefer breaks at: chapter boundaries, scene breaks (blank lines or ***/---), paragraph boundaries.
-    Target 6000 words per section, max 8000, min 3000. If last section would be < 3000 words, merge into previous.
+    Split manuscript into reading sections:
+    1. Detect chapter headings
+    2. Batch consecutive short chapters (<2000 words) together
+    3. Sub-split only chapters exceeding 5000 words at paragraph boundaries (~500w chunks)
+    4. Detect scene breaks within chapters before sub-splitting
+    5. Assign continuous global line numbers (paragraph = 1 line)
     """
     chapter_pattern = re.compile(
         r'(?:^|\n)[ \t]*((?:chapter|prologue|epilogue|part|act|scene|section|interlude|coda|preface|introduction|afterword|appendix)'
@@ -39,13 +40,17 @@ def split_manuscript(raw_text: str) -> Tuple[List[Dict], int]:
     if not raw_chapters:
         raw_chapters = [{"title": "Manuscript", "text": raw_text.strip()}]
 
+    # Greedy batching: accumulate consecutive chapters until we reach TARGET_WORDS_PER_SECTION.
+    # Old logic used a size threshold that stopped batching when it hit a "big enough" chapter,
+    # creating many small sections for short-chapter manuscripts (e.g. 20 sections for 50 pages).
     batched: List[Dict] = []
     current_parts: List[Dict] = []
     current_words = 0
 
     for ch in raw_chapters:
         wc = len(ch["text"].split())
-        if wc >= MAX_WORDS_PER_SECTION:
+        if wc >= TARGET_WORDS_PER_SECTION:
+            # This chapter is big enough on its own — flush any pending batch first
             if current_parts:
                 batched.append({
                     "title": " & ".join(p["title"] for p in current_parts),
@@ -53,7 +58,8 @@ def split_manuscript(raw_text: str) -> Tuple[List[Dict], int]:
                 })
                 current_parts, current_words = [], 0
             batched.append(ch)
-        elif current_words + wc > TARGET_WORDS_PER_SECTION and current_parts:
+        elif current_words + wc > TARGET_WORDS_PER_SECTION:
+            # Adding this chapter would exceed target — flush and start fresh
             batched.append({
                 "title": " & ".join(p["title"] for p in current_parts),
                 "text": "\n\n".join(p["text"] for p in current_parts),
@@ -108,22 +114,13 @@ def split_manuscript(raw_text: str) -> Tuple[List[Dict], int]:
         for sc in scenes:
             final_segments.extend(_sub_split(sc["title"], sc["text"]))
 
-    if not final_segments:
-        return [], 0
-
-    while len(final_segments) > 1 and len(final_segments[-1]["text"].split()) < MIN_WORDS_PER_SECTION:
-        last = final_segments.pop()
-        prev = final_segments[-1]
-        combined = prev["text"] + "\n\n" + last["text"]
-        final_segments[-1] = {"title": prev["title"], "text": combined}
-
     sections: List[Dict] = []
     global_line = 1
     section_number = 0
     for seg in final_segments:
         paragraphs = [p.strip() for p in seg["text"].split("\n") if p.strip()]
         if not paragraphs:
-            continue
+            continue  # skip empty segments so line numbering stays valid
         section_number += 1
         line_start = global_line
         paragraph_lines = [{"line": global_line + k, "text": p} for k, p in enumerate(paragraphs)]

@@ -22,7 +22,7 @@ from utils import now_iso, make_chat, UserMessage
 
 from services.manuscript import split_manuscript
 from services.personas import READER_ARCHETYPES, generate_single_persona, generate_all_personas
-from services.readers import reader_pipeline, reader_full_pipeline
+from services.readers import reader_pipeline
 from services.editor import generate_editor_report as _build_editor_report
 from routers.auth import _get_session_user
 
@@ -308,81 +308,76 @@ async def read_all_sections_stream(manuscript_id: str, request: Request):
         total_sections = len(sections)
         yield f"data: {json.dumps({'type': 'start', 'total_sections': total_sections, 'total_readers': len(readers)})}\n\n"
 
-        sections_sorted = sorted(sections, key=lambda s: s["section_number"])
-        sections_to_process = []
-        for section in sections_sorted:
+        for section in sorted(sections, key=lambda s: s["section_number"]):
+            if await request.is_disconnected():
+                logger.info("Client disconnected — pausing read-all stream")
+                return
+
             sn = section["section_number"]
             paragraph_lines = section.get("paragraph_lines") or []
             line_start = section.get("line_start", 0)
             line_end = section.get("line_end", 0)
             if not paragraph_lines or line_start > line_end:
+                logger.warning("Section %s has no paragraph_lines or invalid line range, skipping", sn)
                 yield f"data: {json.dumps({'type': 'section_skipped', 'section_number': sn})}\n\n"
                 continue
+
+            # Skip sections where all readers already have reactions (idempotent on reconnect)
             existing = await db.reader_reactions.count_documents(
                 {"manuscript_id": manuscript_id, "section_number": sn}
             )
             if existing >= len(readers):
                 yield f"data: {json.dumps({'type': 'section_skipped', 'section_number': sn})}\n\n"
                 continue
-            sections_to_process.append(section)
 
-        if not sections_to_process:
-            yield f"data: {json.dumps({'type': 'all_complete'})}\n\n"
-            return
+            yield f"data: {json.dumps({'type': 'section_start', 'section_number': sn, 'total_sections': total_sections})}\n\n"
 
-        queue: asyncio.Queue = asyncio.Queue()
-        reader_tasks = [
-            asyncio.create_task(reader_full_pipeline(r, sections_to_process, genre, manuscript_id, queue))
-            for r in readers
-        ]
-        section_numbers = [s["section_number"] for s in sections_to_process]
-        buffer = {}
-        for sn in section_numbers:
-            buffer[sn] = []
-        current_index = 0
-        total_terminal_needed = len(section_numbers) * len(readers)
-        total_terminal_seen = 0
-        deadline = asyncio.get_event_loop().time() + 600
+            queue: asyncio.Queue = asyncio.Queue()
 
-        yield f"data: {json.dumps({'type': 'section_start', 'section_number': section_numbers[0], 'total_sections': total_sections})}\n\n"
+            # Emit thinking events immediately for all readers (before any await)
+            for reader in readers:
+                rname = (reader.get("name") or "").strip() or f"Reader {reader.get('avatar_index', 0) + 1}"
+                yield f"data: {json.dumps({'type': 'reader_thinking', 'reader_id': reader['id'], 'reader_name': rname, 'avatar_index': reader.get('avatar_index', 0), 'personality': reader.get('personality', ''), 'section_number': sn})}\n\n"
 
-        while total_terminal_seen < total_terminal_needed:
-            if await request.is_disconnected():
-                logger.info("Client disconnected — cancelling reader pipelines")
-                for t in reader_tasks:
-                    t.cancel()
-                await asyncio.gather(*reader_tasks, return_exceptions=True)
-                return
-            remaining = deadline - asyncio.get_event_loop().time()
-            if remaining <= 0:
-                logger.error("Read-all deadline reached")
-                break
-            try:
-                result = await asyncio.wait_for(queue.get(), timeout=min(15, remaining))
-            except asyncio.TimeoutError:
-                yield ": heartbeat\n\n"
-                continue
-            sn = result.get("section_number")
-            if sn is not None:
-                buffer.setdefault(sn, []).append(result)
-            cur_sn = section_numbers[current_index]
-            if sn == cur_sn:
+            # Launch all readers in parallel
+            reader_tasks = [
+                asyncio.create_task(reader_pipeline(r, section, genre, manuscript_id, queue))
+                for r in readers
+            ]
+
+            # Drain queue counting terminal events.
+            # Poll every 15s max so we can send heartbeat pings to keep the SSE
+            # connection alive through nginx and browser proxies.
+            # Overall 120-second section safety net via elapsed time.
+            terminal_count = 0
+            section_deadline = asyncio.get_event_loop().time() + 180
+            while terminal_count < len(readers):
+                if await request.is_disconnected():
+                    logger.info("Client disconnected — cancelling reader tasks for section %s", sn)
+                    for t in reader_tasks:
+                        t.cancel()
+                    await asyncio.gather(*reader_tasks, return_exceptions=True)
+                    return
+
+                remaining = section_deadline - asyncio.get_event_loop().time()
+                if remaining <= 0:
+                    logger.error(f"Section {sn}: section deadline reached — some readers stalled. Moving on.")
+                    yield f"data: {json.dumps({'type': 'section_error', 'section_number': sn, 'message': 'Some readers stalled on this section'})}\n\n"
+                    break
+                try:
+                    result = await asyncio.wait_for(queue.get(), timeout=min(15, remaining))
+                except asyncio.TimeoutError:
+                    # Send heartbeat so nginx / browser proxies know the connection is alive
+                    yield ": heartbeat\n\n"
+                    continue
                 yield f"data: {json.dumps(result)}\n\n"
-            if result.get("type") in ("reader_complete", "reader_error"):
-                total_terminal_seen += 1
-            cur_buf = buffer.get(cur_sn, [])
-            terminal_in_cur = sum(1 for e in cur_buf if e.get("type") in ("reader_complete", "reader_error"))
-            if terminal_in_cur >= len(readers):
-                yield f"data: {json.dumps({'type': 'section_complete', 'section_number': cur_sn})}\n\n"
-                current_index += 1
-                if current_index < len(section_numbers):
-                    next_sn = section_numbers[current_index]
-                    yield f"data: {json.dumps({'type': 'section_start', 'section_number': next_sn, 'total_sections': total_sections})}\n\n"
-                    for ev in buffer.get(next_sn, []):
-                        yield f"data: {json.dumps(ev)}\n\n"
+                if result.get("type") in ("reader_complete", "reader_error"):
+                    terminal_count += 1
 
-        await asyncio.gather(*reader_tasks, return_exceptions=True)
-        yield ": keep-alive\n\n"
+            await asyncio.gather(*reader_tasks, return_exceptions=True)
+            yield f"data: {json.dumps({'type': 'section_complete', 'section_number': sn})}\n\n"
+            yield ": keep-alive\n\n"
+
         logger.info("All reader pipelines complete. Sending reading_complete event.")
         yield f"data: {json.dumps({'type': 'all_complete'})}\n\n"
 
