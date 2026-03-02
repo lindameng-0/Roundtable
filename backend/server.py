@@ -15,10 +15,12 @@ logging.basicConfig(
 app = FastAPI()
 app.include_router(api_router)
 app.include_router(auth_router)
+origins_raw = os.environ.get("CORS_ORIGINS", "https://roundtable.works")
+allow_origins = [o.strip() for o in origins_raw.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
+    allow_origins=allow_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
