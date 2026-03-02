@@ -495,6 +495,14 @@ async def create_editor_report(manuscript_id: str):
     ).sort("section_number", 1).to_list(500)
 
     if not reactions:
+        # Fallback: some Supabase/PostgREST setups return empty when .order() is chained; fetch without sort and sort in Python
+        reactions = await db.reader_reactions.find(
+            {"manuscript_id": manuscript_id}, {"_id": 0}
+        ).to_list(500)
+        if reactions:
+            reactions.sort(key=lambda r: (r.get("section_number") or 0, r.get("reader_name") or ""))
+
+    if not reactions:
         raise HTTPException(400, "No reader reactions found. Read at least one section first.")
 
     # Generate report from whatever reactions we have (partial OK if some readers/sections errored)
