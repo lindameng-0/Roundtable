@@ -20,3 +20,8 @@ GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')  # or GOOGLE_API_KEY for Gemin
 # Mutable — only gpt-4o-mini is used
 LLM_MODEL = os.environ.get('LLM_MODEL', 'gpt-4o-mini')
 LLM_PROVIDER = os.environ.get('LLM_PROVIDER', 'openai')
+
+# Admin emails bypass usage limits (lowercase for comparison)
+ADMIN_EMAILS = [
+    "itsyuko0o1@gmail.com",
+]

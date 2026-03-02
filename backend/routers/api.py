@@ -6,7 +6,7 @@ import logging
 from typing import Dict, Any, List
 
 from fastapi import APIRouter, HTTPException, Request, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 
 import config as _cfg
 from config import db
@@ -34,6 +34,22 @@ from routers.auth import _get_session_user
 
 api_router = APIRouter(prefix="/api")
 logger = logging.getLogger(__name__)
+
+MANUSCRIPT_LIMIT = 2
+
+
+async def _get_usage(request: Request):
+    """Return used count, limit, is_admin. If not authenticated, used=0, limit=2, is_admin=False."""
+    try:
+        user = await _get_session_user(request)
+    except HTTPException:
+        return {"used": 0, "limit": MANUSCRIPT_LIMIT, "is_admin": False}
+    user_id = user["user_id"]
+    email = (user.get("email") or "").strip().lower()
+    admin_emails = [e.strip().lower() for e in getattr(_cfg, "ADMIN_EMAILS", []) if e]
+    is_admin = email in admin_emails
+    used = await db.manuscripts.count_documents({"user_id": user_id})
+    return {"used": used, "limit": MANUSCRIPT_LIMIT, "is_admin": is_admin}
 
 
 # ─── Root & Config ────────────────────────────────────────────────────────────
@@ -68,6 +84,60 @@ async def update_model(req: ModelConfigRequest):
     return {"provider": _cfg.LLM_PROVIDER, "model": _cfg.LLM_MODEL}
 
 
+# ─── User usage (for limit gate) ──────────────────────────────────────────────
+
+@api_router.get("/user/usage")
+async def get_user_usage(request: Request):
+    """Return used manuscript count, limit, and whether user is admin."""
+    return await _get_usage(request)
+
+
+# ─── Waitlist (limit-reached flow) ────────────────────────────────────────────
+
+@api_router.post("/waitlist")
+async def join_waitlist(request: Request):
+    """Add email to waitlist. Optional auth; if logged in, associate user_id."""
+    body = await request.json()
+    email = (body.get("email") or "").strip()
+    if not email or "@" not in email:
+        raise HTTPException(400, "Valid email required")
+    email_lower = email.lower()
+    user_id = None
+    try:
+        user = await _get_session_user(request)
+        user_id = user["user_id"]
+    except HTTPException:
+        pass
+    row = {
+        "id": str(uuid.uuid4()),
+        "email": email_lower,
+        "created_at": now_iso(),
+    }
+    try:
+        existing = await db.waitlist.find_one({"email": email_lower}, None)
+        if existing:
+            return {"status": "already_joined"}
+        await db.waitlist.insert_one(row)
+    except Exception as e:
+        logger.exception("Waitlist insert failed")
+        raise HTTPException(503, f"Database error: {str(e)}")
+    return {"status": "ok"}
+
+
+@api_router.get("/waitlist/status")
+async def waitlist_status(request: Request):
+    """Return whether the current user has joined the waitlist."""
+    try:
+        user = await _get_session_user(request)
+        email = (user.get("email") or "").strip().lower()
+        if not email:
+            return {"joined": False}
+        existing = await db.waitlist.find_one({"email": email}, None)
+        return {"joined": existing is not None}
+    except HTTPException:
+        return {"joined": False}
+
+
 # ─── Manuscripts ──────────────────────────────────────────────────────────────
 
 @api_router.get("/manuscripts")
@@ -98,6 +168,20 @@ async def create_manuscript(manuscript: ManuscriptCreate, request: Request):
         user_id = user["user_id"]
     except HTTPException:
         pass  # anonymous submission still allowed
+
+    # Enforce manuscript limit for authenticated non-admin users
+    if user_id is not None:
+        usage = await _get_usage(request)
+        if not usage["is_admin"] and usage["used"] >= usage["limit"]:
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "error": "limit_reached",
+                    "message": "You've used your 2 free reads.",
+                    "used": usage["used"],
+                    "limit": usage["limit"],
+                },
+            )
 
     doc_id = str(uuid.uuid4())
     sections, total_lines = split_manuscript(raw_text)

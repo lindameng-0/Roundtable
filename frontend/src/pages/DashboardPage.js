@@ -6,7 +6,7 @@ import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import { UserMenu } from "../components/UserMenu";
 
-const API = process.env.REACT_APP_BACKEND_URL + "/api";
+const API = (process.env.REACT_APP_BACKEND_URL || "http://localhost:8000").replace(/\/$/, "") + "/api";
 
 function ManuscriptCard({ ms, onClick }) {
   const totalSections = ms.total_sections || "—";
@@ -56,6 +56,7 @@ export default function DashboardPage() {
   const { user, getAuthHeaders } = useAuth();
   const [manuscripts, setManuscripts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [usage, setUsage] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -69,6 +70,20 @@ export default function DashboardPage() {
         setManuscripts([]);
       } finally {
         setLoading(false);
+      }
+    })();
+  }, [getAuthHeaders]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await axios.get(`${API}/user/usage`, {
+          headers: getAuthHeaders(),
+          withCredentials: true,
+        });
+        setUsage(res.data);
+      } catch {
+        setUsage(null);
       }
     })();
   }, [getAuthHeaders]);
@@ -101,6 +116,11 @@ export default function DashboardPage() {
               Your manuscripts
             </h1>
             {user && <p className="text-sm text-ink-400">Welcome back, {user.name?.split(" ")[0]}.</p>}
+            {usage && (
+              <p className="text-xs text-ink-400 mt-1">
+                {usage.is_admin ? "Admin — unlimited" : `Free reads: ${Math.max(0, usage.limit - usage.used)}/${usage.limit} remaining`}
+              </p>
+            )}
           </div>
           <button
             data-testid="new-manuscript-btn"
