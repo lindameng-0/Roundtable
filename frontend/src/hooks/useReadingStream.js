@@ -84,7 +84,9 @@ export function useReadingStream(manuscriptId) {
     }
     readingStartedRef.current = true;
 
-    const url = `${API_BASE}/api/manuscripts/${ms.id}/read-all`;
+    const url = ps.length > 0
+      ? `${API_BASE}/api/manuscripts/${ms.id}/read-all?reader_ids=${ps.map((p) => p.id).join(",")}`
+      : `${API_BASE}/api/manuscripts/${ms.id}/read-all`;
     let cancelled = false;
     let completedNormally = false; // set true when all_complete arrives
     const controller = new AbortController();

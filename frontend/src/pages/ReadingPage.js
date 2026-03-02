@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import axios from "axios";
@@ -14,6 +14,8 @@ const API = (process.env.REACT_APP_BACKEND_URL || "http://localhost:8000").repla
 export default function ReadingPage() {
   const { manuscriptId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const selectedReaderIdsFromState = location.state?.selectedReaderIds;
 
   // Page-owned state
   const [manuscript, setManuscript] = useState(null);
@@ -49,20 +51,26 @@ export default function ReadingPage() {
       ]);
       const personaList = Array.isArray(pRes.data) ? pRes.data : [];
       setManuscript(mRes.data);
-      setPersonas(personaList);
+      const selectedIds = selectedReaderIdsFromState && selectedReaderIdsFromState.length > 0
+        ? selectedReaderIdsFromState
+        : null;
+      const personaListToUse = selectedIds
+        ? personaList.filter((p) => selectedIds.includes(p.id))
+        : personaList;
+      setPersonas(personaListToUse);
 
       const rRes = await axios.get(`${API}/manuscripts/${manuscriptId}/all-reactions`);
       const totalSecs = mRes.data.total_sections || 0;
       const existing = rRes.data || [];
       const sectionsWithReactions = new Set(existing.map((r) => r.section_number));
-      const allDone = totalSecs > 0 && personaList.length > 0 && sectionsWithReactions.size >= totalSecs && existing.length >= totalSecs * personaList.length;
+      const allDone = totalSecs > 0 && personaListToUse.length > 0 && sectionsWithReactions.size >= totalSecs && existing.length >= totalSecs * personaListToUse.length;
 
-      if (existing.length > 0) loadExistingReactions(existing, personaList);
+      if (existing.length > 0) loadExistingReactions(existing, personaListToUse);
       if (allDone) {
         setTotalSections(mRes.data.total_sections || 0);
         setReadingDone(true);
       } else {
-        startReadingAll(mRes.data, personaList);
+        startReadingAll(mRes.data, personaListToUse);
       }
     } catch (err) {
       const status = err.response?.status;
@@ -76,7 +84,7 @@ export default function ReadingPage() {
     }
   };
 
-  useEffect(() => { loadData(); }, [manuscriptId]);
+  useEffect(() => { loadData(); }, [manuscriptId, selectedReaderIdsFromState]);
 
   const generateReport = async () => {
     setLoadingReport(true);

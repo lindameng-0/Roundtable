@@ -5,7 +5,7 @@ import asyncio
 import logging
 from typing import Dict, Any, List
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Query
 from fastapi.responses import StreamingResponse
 
 import config as _cfg
@@ -21,7 +21,13 @@ from models import (
 from utils import now_iso, make_chat, UserMessage
 
 from services.manuscript import split_manuscript
-from services.personas import READER_ARCHETYPES, generate_single_persona, generate_all_personas
+from services.personas import (
+    READER_ARCHETYPES,
+    DEFAULT_READER_COUNT,
+    generate_single_persona,
+    generate_all_personas,
+    add_one_persona,
+)
 from services.readers import reader_pipeline
 from services.editor import generate_editor_report as _build_editor_report
 from routers.auth import _get_session_user
@@ -229,6 +235,7 @@ async def get_personas(manuscript_id: str):
                 manuscript.get("genre", "Fiction"),
                 manuscript.get("target_audience", "General readers"),
                 manuscript.get("age_range", "Adult"),
+                count=DEFAULT_READER_COUNT,
             )
         except HTTPException:
             raise
@@ -273,14 +280,31 @@ async def regenerate_personas(manuscript_id: str, req: RegenerateRequest):
     else:
         await db.reader_memories.delete_many({"manuscript_id": manuscript_id})
         await db.reader_reactions.delete_many({"manuscript_id": manuscript_id})
-        return await generate_all_personas(manuscript_id, genre, audience, age_range)
+        existing_personas = await db.reader_personas.find({"manuscript_id": manuscript_id}).to_list(10)
+        current_count = len(existing_personas)
+        return await generate_all_personas(
+            manuscript_id, genre, audience, age_range, count=min(current_count, len(READER_ARCHETYPES))
+        )
+
+
+@api_router.post("/manuscripts/{manuscript_id}/personas/add", response_model=ReaderPersonaResponse)
+async def add_persona(manuscript_id: str):
+    """Add the next reader from the preset list (max 5)."""
+    try:
+        return await add_one_persona(manuscript_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 # ─── Reading: SSE Stream ──────────────────────────────────────────────────────
 
 @api_router.get("/manuscripts/{manuscript_id}/read-all")
-async def read_all_sections_stream(manuscript_id: str, request: Request):
-    """SSE: auto-reads all sections sequentially, 5 readers in parallel per section. Pauses when client disconnects."""
+async def read_all_sections_stream(
+    manuscript_id: str,
+    request: Request,
+    reader_ids: str | None = Query(None, description="Comma-separated reader IDs to use; if omitted, all readers are used"),
+):
+    """SSE: auto-reads all sections sequentially, N readers in parallel per section. Pauses when client disconnects."""
     manuscript = await db.manuscripts.find_one({"id": manuscript_id}, {"_id": 0})
     if not manuscript:
         raise HTTPException(404, "Manuscript not found")
@@ -298,9 +322,19 @@ async def read_all_sections_stream(manuscript_id: str, request: Request):
         manuscript["total_lines"] = total_lines
         sections = new_sections
 
-    readers = await db.reader_personas.find({"manuscript_id": manuscript_id}, {"_id": 0}).to_list(10)
-    if not readers:
+    all_readers = await db.reader_personas.find({"manuscript_id": manuscript_id}, {"_id": 0}).to_list(10)
+    if not all_readers:
         raise HTTPException(404, "No readers found. Generate personas first.")
+
+    if reader_ids:
+        id_set = {rid.strip() for rid in reader_ids.split(",") if rid.strip()}
+        readers = [r for r in all_readers if r.get("id") in id_set]
+        if len(readers) != len(id_set):
+            found_ids = {r.get("id") for r in readers}
+            missing = id_set - found_ids
+            logger.warning("read-all: some reader_ids not found for manuscript: %s", missing)
+    else:
+        readers = all_readers
 
     genre = manuscript.get("genre", "Fiction")
 

@@ -11,13 +11,13 @@ from models import ReaderPersonaResponse
 
 logger = logging.getLogger(__name__)
 
-# Fallback full names (diverse) when LLM returns empty or generic "Reader N"
+# Fallback full names; order matches READER_ARCHETYPES: May, James, Lena, Priya, Diego
 FALLBACK_NAMES = [
-    "James Chen",
     "Maya Okonkwo",
+    "James Chen",
+    "Lena Kowalski",
     "Priya Sharma",
     "Diego Reyes",
-    "Lena Kowalski",
 ]
 
 # Target age ranges by manuscript age_range (min, max inclusive)
@@ -51,38 +51,43 @@ def _varied_age_for_reader(min_age: int, max_age: int, avatar_index: int) -> int
     return min_age + offset
 
 
+# Preset order for UI: May (emotional), James (plot), Lena (skeptical), Priya (genre-savvy), Diego (casual).
+# Default 3 readers = indices 0, 1, 2.
 READER_ARCHETYPES = [
     {
-        "archetype": "analytical",
-        "description": "Focuses on plot logic, narrative structure, and consistency. (James-style.)",
-        "temperature": 0.5,
-        "default_instructions": "You focus on plot logic and narrative structure. You notice when cause and effect disconnect, when timelines feel off, when a decision contradicts established character behavior. You track setups and payoffs closely. You're the reader who notices the gun on the mantelpiece in act one. You respect tight plotting and get annoyed by convenience or coincidence that lets characters off the hook. You're direct and dry.",
-    },
-    {
         "archetype": "emotional",
-        "description": "Reacts to emotional resonance, character relationships, and feeling. (May-style.)",
+        "description": "Reads for emotional connection",
         "temperature": 0.9,
         "default_instructions": "You read for emotional connection first. You track how characters make you feel and whether the story earns its emotional beats. You notice when a character choice feels true or false to who they are. You compare moments to other books when it genuinely clicks. You catch when something feels manipulative versus genuinely moving. You're warm but you don't sugarcoat. You might say things like \"that line hit me\" or \"I don't buy this reaction from her.\"",
     },
     {
+        "archetype": "analytical",
+        "description": "Focuses on plot and structure",
+        "temperature": 0.5,
+        "default_instructions": "You focus on plot logic and narrative structure. You notice when cause and effect disconnect, when timelines feel off, when a decision contradicts established character behavior. You track setups and payoffs closely. You're the reader who notices the gun on the mantelpiece in act one. You respect tight plotting and get annoyed by convenience or coincidence that lets characters off the hook. You're direct and dry.",
+    },
+    {
+        "archetype": "skeptical",
+        "description": "Questions everything",
+        "temperature": 0.6,
+        "default_instructions": "You don't trust easily. Not the narrator, not the author, not the other characters. You question motivations, look for inconsistencies, and assume nothing is accidental. You catch plot holes, timeline errors, and moments where characters act out of convenience rather than logic. You're the reader who says \"wait, didn't they say the opposite three chapters ago?\" You give credit when the text earns your trust.",
+    },
+    {
         "archetype": "genre_savvy",
-        "description": "Deeply familiar with genre conventions. Compares to published books. (Priya-style.)",
+        "description": "Deeply familiar with genre",
         "temperature": 0.7,
         "default_instructions": "You've read hundreds of books in this genre. You constantly compare to other works, notice tropes being used well or poorly, and can usually tell when a twist is coming because you've seen the setup before. You appreciate subversion and get bored when a story follows the template too closely. You reference specific books and authors by name. You're not snobby, you just have a lot of context.",
     },
     {
         "archetype": "casual",
-        "description": "Reads for pure entertainment and vibes. (Diego-style.)",
+        "description": "Reads for entertainment",
         "temperature": 0.85,
         "default_instructions": "You read for fun and don't overthink it. You care about pacing, entertainment, and whether characters feel like real people. You lose interest fast if things drag. You're the reader who says \"just get to the point\" during slow exposition. When something lands, you're fully in. You don't use literary terminology. You say what worked and what didn't in the most direct way possible.",
     },
-    {
-        "archetype": "skeptical",
-        "description": "Hard to please. Questions everything. (Lena-style.)",
-        "temperature": 0.6,
-        "default_instructions": "You don't trust easily. Not the narrator, not the author, not the other characters. You question motivations, look for inconsistencies, and assume nothing is accidental. You catch plot holes, timeline errors, and moments where characters act out of convenience rather than logic. You're the reader who says \"wait, didn't they say the opposite three chapters ago?\" You give credit when the text earns your trust.",
-    },
 ]
+
+DEFAULT_READER_COUNT = 3
+MAX_READERS = 5
 
 
 async def generate_single_persona(
@@ -212,14 +217,42 @@ Return ONLY this JSON (no other text):
 
 
 async def generate_all_personas(
-    manuscript_id: str, genre: str, audience: str, age_range: str = "Adult"
+    manuscript_id: str,
+    genre: str,
+    audience: str,
+    age_range: str = "Adult",
+    count: int = 5,
 ) -> List[ReaderPersonaResponse]:
+    """Generate up to `count` reader personas (default 5). Uses first `count` from READER_ARCHETYPES."""
+    if count < 1 or count > MAX_READERS:
+        count = DEFAULT_READER_COUNT
     await db.reader_personas.delete_many({"manuscript_id": manuscript_id})
+    archetypes = READER_ARCHETYPES[:count]
     tasks = [
         generate_single_persona(a, genre, audience, age_range or "Adult", i, manuscript_id)
-        for i, a in enumerate(READER_ARCHETYPES)
+        for i, a in enumerate(archetypes)
     ]
     personas = await asyncio.gather(*tasks)
     if personas:
         await db.reader_personas.insert_many([{**p} for p in personas])
     return [ReaderPersonaResponse(**p) for p in personas]
+
+
+async def add_one_persona(manuscript_id: str) -> ReaderPersonaResponse:
+    """Add the next reader from the preset list. Returns 400 if already 5 readers."""
+    existing = await db.reader_personas.find({"manuscript_id": manuscript_id}, {"_id": 0}).to_list(10)
+    if len(existing) >= MAX_READERS:
+        raise ValueError(f"Maximum {MAX_READERS} readers allowed.")
+    manuscript = await db.manuscripts.find_one({"id": manuscript_id}, {"_id": 0})
+    if not manuscript:
+        raise ValueError("Manuscript not found")
+    genre = manuscript.get("genre", "Fiction")
+    audience = manuscript.get("target_audience", "General readers")
+    age_range = manuscript.get("age_range", "Adult")
+    avatar_index = len(existing)
+    archetype = READER_ARCHETYPES[avatar_index]
+    persona = await generate_single_persona(
+        archetype, genre, audience, age_range, avatar_index, manuscript_id
+    )
+    await db.reader_personas.insert_one({**persona})
+    return ReaderPersonaResponse(**persona)

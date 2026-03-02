@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { UserMenu } from "../components/UserMenu";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
-import { Upload, FileText, ChevronRight, RefreshCw, X, Plus, BookOpen } from "lucide-react";
+import { Upload, FileText, ChevronRight, RefreshCw, X, Plus, BookOpen, Trash2 } from "lucide-react";
 import axios from "axios";
 import ModelSelector from "../components/ModelSelector";
 
@@ -32,6 +32,16 @@ const PERSONALITY_COLORS = {
   genre_savvy: "#2D2A26",
 };
 
+// One-line reading style per archetype (matches backend READER_ARCHETYPES order)
+const ARCHETYPE_DESCRIPTIONS = {
+  emotional: "Reads for emotional connection",
+  analytical: "Focuses on plot and structure",
+  skeptical: "Questions everything",
+  genre_savvy: "Deeply familiar with genre",
+  casual: "Reads for entertainment",
+};
+const MAX_READERS = 5;
+
 function getReaderDisplayName(p, index) {
   const n = p?.name;
   if (n != null && String(n).trim()) return String(n).trim();
@@ -48,6 +58,7 @@ export default function SetupPage() {
   const [genre, setGenre] = useState({});
   const [comparableInput, setComparableInput] = useState("");
   const [personas, setPersonas] = useState([]);
+  const [selectedReaderIds, setSelectedReaderIds] = useState([]);
   const [regeneratingId, setRegeneratingId] = useState(null);
   const [dragOver, setDragOver] = useState(false);
 
@@ -182,6 +193,7 @@ export default function SetupPage() {
         throw new Error("No personas returned");
       }
       setPersonas(res.data);
+      setSelectedReaderIds(res.data.map((p) => p.id));
       setStep("readers");
     } catch (err) {
       const detail = err.response?.data?.detail ?? err.response?.data?.message;
@@ -213,6 +225,7 @@ export default function SetupPage() {
     try {
       const res = await axios.post(`${API}/manuscripts/${manuscript.id}/personas/regenerate`, {});
       setPersonas(res.data);
+      setSelectedReaderIds(res.data.map((p) => p.id));
       toast.success("All readers regenerated");
     } catch (err) {
       toast.error("Failed to regenerate readers");
@@ -221,8 +234,30 @@ export default function SetupPage() {
     }
   };
 
+  const addReader = async () => {
+    if (selectedReaderIds.length >= MAX_READERS) return;
+    setLoading(true);
+    try {
+      const res = await axios.post(`${API}/manuscripts/${manuscript.id}/personas/add`);
+      const newPersona = res.data;
+      setPersonas((prev) => [...prev, newPersona]);
+      setSelectedReaderIds((prev) => [...prev, newPersona.id]);
+      toast.success(`${getReaderDisplayName(newPersona)} added to the panel`);
+    } catch (err) {
+      const msg = err.response?.data?.detail ?? err.response?.data?.message ?? err.message;
+      toast.error(msg || "Failed to add reader");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const removeReader = (readerId) => {
+    if (selectedReaderIds.length <= 1) return;
+    setSelectedReaderIds((prev) => prev.filter((id) => id !== readerId));
+  };
+
   const startReading = () => {
-    navigate(`/read/${manuscript.id}`);
+    navigate(`/read/${manuscript.id}`, { state: { selectedReaderIds } });
   };
 
   const addComparable = () => {
@@ -551,7 +586,7 @@ export default function SetupPage() {
                     Your reading panel
                   </h2>
                   <p className="text-ink-600 text-base">
-                    Five readers, each with their own perspective. Regenerate any you'd like to change.
+                    Choose 1–5 readers. Each brings a different perspective. Regenerate any you'd like to change.
                   </p>
                 </div>
                 <button
@@ -566,93 +601,124 @@ export default function SetupPage() {
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mb-8">
-                {personas.map((p, i) => (
-                  <motion.div
-                    key={p.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.08 }}
-                    data-testid={`reader-card-${i}`}
-                    className="bg-white border border-ink-900/8 p-6 relative group hover:shadow-md transition-all duration-300"
-                    style={{ borderRadius: "2px" }}
-                  >
-                    {/* Regen button */}
-                    <button
-                      data-testid={`regen-reader-${i}`}
-                      onClick={() => regenerateReader(p.id)}
-                      disabled={regeneratingId === p.id}
-                      className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity text-ink-400 hover:text-clay"
-                    >
-                      <RefreshCw
-                        className={`w-3.5 h-3.5 ${regeneratingId === p.id ? "animate-spin" : ""}`}
-                        strokeWidth={1.5}
-                      />
-                    </button>
-
-                    {/* Avatar + name */}
-                    <div className="flex items-start gap-3 mb-4">
-                      <div className="w-12 h-12 overflow-hidden flex-shrink-0" style={{ borderRadius: "2px" }}>
-                        <img
-                          src={READER_AVATAR_URLS[p.avatar_index % READER_AVATAR_URLS.length]}
-                          alt={getReaderDisplayName(p, i)}
-                          className="w-full h-full object-cover"
-                          onError={(e) => {
-                            e.target.style.display = "none";
-                            e.target.parentElement.style.background = "#F5F2EB";
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <h3 className="font-medium text-ink-900 text-base">{getReaderDisplayName(p, i)}</h3>
-                        <p className="text-xs text-ink-400">
-                          {p.age} · {p.occupation}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Personality badge */}
-                    <div className="mb-3">
-                      <span
-                        className="text-xs uppercase tracking-widest font-semibold px-2 py-1"
-                        style={{
-                          color: PERSONALITY_COLORS[p.personality] || "#5C5855",
-                          backgroundColor: `${PERSONALITY_COLORS[p.personality] || "#5C5855"}15`,
-                          borderRadius: "2px",
-                        }}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mb-6">
+                <AnimatePresence mode="popLayout">
+                  {personas
+                    .filter((p) => selectedReaderIds.includes(p.id))
+                    .sort((a, b) => selectedReaderIds.indexOf(a.id) - selectedReaderIds.indexOf(b.id))
+                    .map((p, i) => (
+                      <motion.div
+                        key={p.id}
+                        layout
+                        initial={{ opacity: 0, y: 12 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, x: -20 }}
+                        transition={{ duration: 0.25 }}
+                        data-testid={`reader-card-${i}`}
+                        className="bg-white border border-ink-900/8 p-6 relative group hover:shadow-md transition-all duration-300"
+                        style={{ borderRadius: "2px" }}
                       >
-                        {p.personality}
-                      </span>
-                    </div>
+                        {selectedReaderIds.length > 1 && (
+                          <button
+                            type="button"
+                            data-testid={`remove-reader-${p.id}`}
+                            onClick={() => removeReader(p.id)}
+                            className="absolute top-4 right-4 text-ink-400 hover:text-clay transition-colors"
+                            aria-label={`Remove ${getReaderDisplayName(p, i)}`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
+                          </button>
+                        )}
+                        <button
+                          data-testid={`regen-reader-${i}`}
+                          onClick={() => regenerateReader(p.id)}
+                          disabled={regeneratingId === p.id}
+                          className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity text-ink-400 hover:text-clay flex items-center gap-1"
+                          style={selectedReaderIds.length > 1 ? { right: "2.5rem" } : {}}
+                          aria-label="Regenerate this reader"
+                        >
+                          <RefreshCw
+                            className={`w-3.5 h-3.5 ${regeneratingId === p.id ? "animate-spin" : ""}`}
+                            strokeWidth={1.5}
+                          />
+                        </button>
 
-                    {/* Reading habits */}
-                    <p className="text-xs text-ink-600 mb-3 leading-relaxed">{p.reading_habits}</p>
+                        <div className="flex items-start gap-3 mb-3">
+                          <div className="w-12 h-12 overflow-hidden flex-shrink-0" style={{ borderRadius: "2px" }}>
+                            <img
+                              src={READER_AVATAR_URLS[p.avatar_index % READER_AVATAR_URLS.length]}
+                              alt={getReaderDisplayName(p, i)}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                e.target.style.display = "none";
+                                e.target.parentElement.style.background = "#F5F2EB";
+                              }}
+                            />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-medium text-ink-900 text-base">{getReaderDisplayName(p, i)}</h3>
+                            <p className="text-xs text-ink-500">
+                              {ARCHETYPE_DESCRIPTIONS[p.personality] || p.personality}
+                            </p>
+                          </div>
+                        </div>
 
-                    {/* Quote */}
-                    <blockquote
-                      className="text-sm text-ink-600 border-l-2 border-clay pl-3 mt-3"
-                      style={{ fontFamily: "'Cormorant Garamond', serif", fontStyle: "italic", fontSize: "0.95rem" }}
-                    >
-                      "{p.quote}"
-                    </blockquote>
-
-                    {/* Tropes */}
-                    <div className="mt-4 pt-3 border-t border-ink-900/6">
-                      <div className="flex flex-wrap gap-1">
-                        {(p.liked_tropes || []).slice(0, 2).map((t, ti) => (
-                          <span key={ti} className="text-xs text-sage bg-sage/10 px-2 py-0.5" style={{ borderRadius: "2px" }}>
-                            + {t}
+                        <div className="mb-3">
+                          <span
+                            className="text-xs uppercase tracking-widest font-semibold px-2 py-1"
+                            style={{
+                              color: PERSONALITY_COLORS[p.personality] || "#5C5855",
+                              backgroundColor: `${PERSONALITY_COLORS[p.personality] || "#5C5855"}15`,
+                              borderRadius: "2px",
+                            }}
+                          >
+                            {p.personality}
                           </span>
-                        ))}
-                        {(p.disliked_tropes || []).slice(0, 1).map((t, ti) => (
-                          <span key={ti} className="text-xs text-clay/80 bg-clay/10 px-2 py-0.5" style={{ borderRadius: "2px" }}>
-                            − {t}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </motion.div>
-                ))}
+                        </div>
+
+                        <p className="text-xs text-ink-600 mb-3 leading-relaxed">{p.reading_habits}</p>
+
+                        <blockquote
+                          className="text-sm text-ink-600 border-l-2 border-clay pl-3 mt-3"
+                          style={{ fontFamily: "'Cormorant Garamond', serif", fontStyle: "italic", fontSize: "0.95rem" }}
+                        >
+                          "{p.quote}"
+                        </blockquote>
+
+                        <div className="mt-4 pt-3 border-t border-ink-900/6">
+                          <div className="flex flex-wrap gap-1">
+                            {(p.liked_tropes || []).slice(0, 2).map((t, ti) => (
+                              <span key={ti} className="text-xs text-sage bg-sage/10 px-2 py-0.5" style={{ borderRadius: "2px" }}>
+                                + {t}
+                              </span>
+                            ))}
+                            {(p.disliked_tropes || []).slice(0, 1).map((t, ti) => (
+                              <span key={ti} className="text-xs text-clay/80 bg-clay/10 px-2 py-0.5" style={{ borderRadius: "2px" }}>
+                                − {t}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </motion.div>
+                    ))}
+                </AnimatePresence>
+              </div>
+
+              <div className="mb-8">
+                <button
+                  data-testid="add-reader-btn"
+                  onClick={addReader}
+                  disabled={loading || selectedReaderIds.length >= MAX_READERS}
+                  title={selectedReaderIds.length >= MAX_READERS ? "Maximum 5 readers." : "Add another reader"}
+                  className="flex items-center gap-2 border border-ink-900/12 hover:border-clay text-ink-600 hover:text-clay px-5 py-2.5 text-sm font-medium transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-ink-900/12 disabled:hover:text-ink-600"
+                  style={{ borderRadius: "2px" }}
+                >
+                  <Plus className="w-4 h-4" strokeWidth={1.5} />
+                  Add Reader
+                </button>
+                {selectedReaderIds.length >= MAX_READERS && (
+                  <p className="text-xs text-ink-400 mt-1.5">Maximum 5 readers.</p>
+                )}
               </div>
 
               <div className="flex justify-between">
@@ -666,7 +732,7 @@ export default function SetupPage() {
                 <button
                   data-testid="start-reading-btn"
                   onClick={startReading}
-                  disabled={personas.length === 0}
+                  disabled={personas.length === 0 || selectedReaderIds.length === 0}
                   className="flex items-center gap-2 bg-clay hover:bg-clay-hover text-white px-8 py-3 text-sm font-semibold transition-all duration-200 disabled:opacity-40"
                   style={{ borderRadius: "2px" }}
                 >

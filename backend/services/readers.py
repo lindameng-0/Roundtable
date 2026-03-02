@@ -16,6 +16,11 @@ logger = logging.getLogger(__name__)
 # With 5 readers, only 2 call the API at once so we stay under token-per-minute limits.
 _llm_semaphore: asyncio.Semaphore | None = None
 
+# Prompt caching (OpenAI): static prefix per reader, identical across calls for cache hits.
+# Keys: reader_id -> {"section_1": str, "section_2_plus": str}
+_static_prefix_cache: Dict[str, Dict[str, str]] = {}
+
+
 def _get_llm_semaphore() -> asyncio.Semaphore:
     global _llm_semaphore
     if _llm_semaphore is None:
@@ -79,60 +84,33 @@ def build_reader_system_prompt(
     line_start: int,
     line_end: int,
 ) -> str:
-    """Build reader system prompt using v4 template (human voice + memory callbacks).
-    Section text is passed as the *user* message. We keep "line" in JSON for compatibility.
-    """
+    """Build reader system prompt (static prefix + dynamic suffix) for prompt caching."""
+    static = _get_static_prefix(reader, section_number)
+    dynamic = _build_dynamic_suffix(reader, section_number, memory_str, line_start, line_end, genre)
+    return static + "\n\n" + dynamic
+
+
+def _get_static_prefix(reader: Dict, section_number: int) -> str:
+    """Return cached static prefix for this reader and section (section 1 vs 2+). Identical across calls for cache hits."""
+    rid = reader.get("id") or ""
+    if rid not in _static_prefix_cache:
+        _static_prefix_cache[rid] = {
+            "section_1": _build_section_1_static_prefix(reader),
+            "section_2_plus": _build_section_2_plus_static_prefix(reader),
+        }
+    key = "section_1" if section_number == 1 else "section_2_plus"
+    return _static_prefix_cache[rid][key]
+
+
+def _build_section_1_static_prefix(reader: Dict) -> str:
+    """Full prompt for section 1: persona, voice rules, banned phrases, JSON schema, comment rules. No line/section numbers."""
     name = reader.get("name", "Reader")
-    psi = reader.get("personality_specific_instructions", "")
-
-    if section_number > 1:
-        # ── Compressed prompt (section 2+) — v4 with memory callbacks
-        return f"""You are {name}. {psi}
-
-Voice: first person, plain language, commas and periods only. Be specific — reference exact moments, not abstractions. Sound like a person, not a book report.
-
-NEVER say "this section introduces," "the narrative succeeds," "adds depth to," "rich tapestry," "compelling dynamic," or "invites the reader to ponder." Those are banned.
-
-CRITICAL — MEMORY CALLBACKS:
-Your memory from previous sections is below. When something in this section connects to your memory, REACT TO THE CONNECTION using "callback" type comments:
-- Prediction confirmed: "I called it" or "okay I was half right but not like THIS."
-- Prediction wrong: "I was way off, I thought X but it's actually Y."
-- Question answered: "Oh, so THAT'S what the dim sky was about" or "finally, I've been waiting for this since section 2."
-- Planted detail pays off: name the original detail and react. "Remember when Mina said her flowers were missing something? Now I think I understand what she meant."
-- Character contradicts your impression: "I had Maeve pegged as the antagonist but this scene changes things."
-- Recurring problem you flagged earlier: escalate. "The gold imagery is still happening. Fourth section now."
-
-You should have at least one callback comment per section if anything connects to your memory. If nothing connects, that's fine, don't force it.
-
-Previous memory:
-{memory_str}
-
-Lines {line_start}-{line_end}. Section {section_number} of a {genre} manuscript.
-Respond with a JSON object only. Use this exact structure:
-
-{{
-  "inline_comments": [
-    {{ "line": <integer {line_start}-{line_end}>, "type": "reaction" | "prediction" | "confusion" | "critique" | "praise" | "theory" | "comparison" | "callback", "comment": "<1-3 sentences in your voice. must reference something specific from this line/paragraph.>" }}
-  ],
-  "section_reflection": "<3-6 sentences or null. Start with your gut feeling, then explain. Be specific.>",
-  "memory_update": {{
-    "plot_events": ["<what happened, in your own casual words>"],
-    "character_notes": {{"<name>": "<your impression>"}},
-    "predictions": [{{"prediction": "<text>", "confidence": "high/medium/low", "evidence": "<why>"}}],
-    "unresolved_questions": ["<things you're confused about or waiting to see resolved>"],
-    "emotional_state": "<one sentence about how you feel as a reader right now>"
-  }}
-}}
-
-Rules: 3-8 inline comments per section. Only reference line numbers between {line_start} and {line_end}. Do not quote the text. Use "callback" when connecting to your memory."""
-
-    # ── Full prompt (section 1) — v4 human voice + anti-patterns
     age = reader.get("age", 35)
     occupation = reader.get("occupation", "reader")
     reading_habits = reader.get("reading_habits", "")
-    favorite_genres = reader.get("favorite_genres", genre)
+    favorite_genres = reader.get("favorite_genres", "fiction")
     reading_priority = reader.get("reading_priority", "You care about a compelling story.")
-
+    psi = reader.get("personality_specific_instructions", "")
     return f"""You are {name}, {age}, a {occupation}. {reading_habits}. You love {favorite_genres}. {reading_priority}.
 
 {psi}
@@ -162,14 +140,12 @@ Instead of "This section effectively conveys the internal conflict of the protag
 
 BE SELECTIVE. Most of the text you read and move on. You only comment when something genuinely strikes you — surprise, confusion, delight, suspicion, frustration, a strong opinion, or a craft issue you want to flag. Ask yourself before every comment: would I actually stop reading and think about this, or would I just keep going? If you'd keep going, skip it.
 
-You are reading section {section_number} of a {genre} manuscript. Lines in this section are numbered {line_start} to {line_end}. Only reference line numbers between {line_start} and {line_end}.
-
 Respond with JSON only. No other text.
 
 {{
   "inline_comments": [
     {{
-      "line": <integer between {line_start} and {line_end}>,
+      "line": <integer in the line range given in the instructions below>,
       "type": "reaction" | "prediction" | "confusion" | "critique" | "praise" | "theory" | "comparison" | "callback",
       "comment": "<1-3 sentences in your voice. must reference something specific from this line/paragraph.>"
     }}
@@ -192,6 +168,63 @@ COMMENT RULES:
 - Predictions go in inline_comments AND in memory_update.predictions.
 - You don't need to include thematic analysis in every section. Only when YOU as the reader genuinely notice a pattern forming and want to tell the author about it. When you do, say it like a person: "I'm starting to notice that every scene contrasts something real with something artificial, the dim sky versus the Garden, Mina's faded flowers versus Eli's. It's effective but it's in almost every scene now and I'm starting to feel nudged toward the thesis instead of arriving there myself."
 """
+
+
+def _build_section_2_plus_static_prefix(reader: Dict) -> str:
+    """Compressed static prefix for section 2+: voice + memory callback rules + JSON structure. No full banned list/schema example."""
+    name = reader.get("name", "Reader")
+    psi = reader.get("personality_specific_instructions", "")
+    return f"""You are {name}. {psi}
+
+Voice: first person, plain language, commas and periods only. Be specific — reference exact moments, not abstractions. Sound like a person, not a book report.
+
+NEVER say "this section introduces," "the narrative succeeds," "adds depth to," "rich tapestry," "compelling dynamic," or "invites the reader to ponder." Those are banned.
+
+CRITICAL — MEMORY CALLBACKS:
+Your memory from previous sections is below. When something in this section connects to your memory, REACT TO THE CONNECTION using "callback" type comments:
+- Prediction confirmed: "I called it" or "okay I was half right but not like THIS."
+- Prediction wrong: "I was way off, I thought X but it's actually Y."
+- Question answered: "Oh, so THAT'S what the dim sky was about" or "finally, I've been waiting for this since section 2."
+- Planted detail pays off: name the original detail and react. "Remember when Mina said her flowers were missing something? Now I think I understand what she meant."
+- Character contradicts your impression: "I had Maeve pegged as the antagonist but this scene changes things."
+- Recurring problem you flagged earlier: escalate. "The gold imagery is still happening. Fourth section now."
+
+You should have at least one callback comment per section if anything connects to your memory. If nothing connects, that's fine, don't force it.
+
+Respond with a JSON object only. Use this exact structure:
+
+{{
+  "inline_comments": [
+    {{ "line": <integer in the line range given below>, "type": "reaction" | "prediction" | "confusion" | "critique" | "praise" | "theory" | "comparison" | "callback", "comment": "<1-3 sentences in your voice. must reference something specific from this line/paragraph.>" }}
+  ],
+  "section_reflection": "<3-6 sentences or null. Start with your gut feeling, then explain. Be specific.>",
+  "memory_update": {{
+    "plot_events": ["<what happened, in your own casual words>"],
+    "character_notes": {{"<name>": "<your impression>"}},
+    "predictions": [{{"prediction": "<text>", "confidence": "high/medium/low", "evidence": "<why>"}}],
+    "unresolved_questions": ["<things you're confused about or waiting to see resolved>"],
+    "emotional_state": "<one sentence about how you feel as a reader right now>"
+  }}
+}}
+
+Rules: 3-8 inline comments per section. Only reference line numbers in the range given below. Do not quote the text. Use "callback" when connecting to your memory."""
+
+
+def _build_dynamic_suffix(
+    reader: Dict,
+    section_number: int,
+    memory_str: str,
+    line_start: int,
+    line_end: int,
+    genre: str,
+) -> str:
+    """Dynamic part of system prompt: section number, line range, and (for section 2+) memory."""
+    if section_number == 1:
+        return f"You are reading section {section_number} of a {genre} manuscript. Lines in this section are numbered {line_start} to {line_end}. Only reference line numbers between {line_start} and {line_end}."
+    return f"""Previous memory:
+{memory_str}
+
+Lines {line_start}-{line_end}. Section {section_number} of a {genre} manuscript."""
 
 
 async def get_reader_inline_reaction(
@@ -311,7 +344,7 @@ async def get_reader_inline_reaction(
         chat = chat_with_json if use_json_format else chat_plain
         async with _get_llm_semaphore():
             return await asyncio.wait_for(
-                chat.send_message(UserMessage(text=numbered_text)),
+                chat.send_message(UserMessage(text=f"Section {section_number}:\n\n{numbered_text}")),
                 timeout=READER_LLM_TIMEOUT,
             )
 
