@@ -25,9 +25,3 @@ LLM_PROVIDER = os.environ.get('LLM_PROVIDER', 'openai')
 ADMIN_EMAILS = [
     "itsyuko0o1@gmail.com",
 ]
-
-# Google OAuth (redirect flow) — used when not using Emergent
-GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
-GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
-FRONTEND_URL = (os.environ.get("FRONTEND_URL") or "http://localhost:3000").rstrip("/")
-BACKEND_URL = (os.environ.get("BACKEND_URL") or os.environ.get("REACT_APP_BACKEND_URL") or "http://localhost:8000").rstrip("/")
