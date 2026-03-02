@@ -7,7 +7,8 @@ import logging
 from typing import Dict, List
 
 import litellm
-from utils import make_chat, now_iso, validate_inline_comments, UserMessage
+import tiktoken
+from utils import make_chat, now_iso, validate_inline_comments, parse_reader_response, UserMessage
 from config import db
 
 logger = logging.getLogger(__name__)
@@ -85,7 +86,63 @@ def compress_memory(memories: List[Dict], personality: str) -> Dict:
     return combined
 
 
-def build_reader_system_prompt(
+def _count_tokens(text: str) -> int:
+    """Approximate token count for OpenAI models (cl100k_base)."""
+    try:
+        enc = tiktoken.get_encoding("cl100k_base")
+        return len(enc.encode(text))
+    except Exception:
+        return len(text.split()) * 2  # fallback rough estimate
+
+
+def compress_memory_for_prompt(memory: Dict, max_tokens: int = 150) -> Dict:
+    """
+    Hard-compress combined memory for injection into the prompt. Never exceed max_tokens when serialized.
+    Returns dict with keys: plot, characters, predictions, questions, feeling.
+    """
+    if not memory or not isinstance(memory, dict):
+        return {}
+    plot_events = memory.get("plot_events", [])[-3:]
+    char_notes = memory.get("character_notes", {})
+    preds = memory.get("predictions", [])
+    questions = memory.get("unresolved_questions", [])[-2:]
+    feeling = memory.get("emotional_state", "engaged")
+    if not isinstance(feeling, str):
+        feeling = "engaged"
+    compressed = {
+        "plot": plot_events,
+        "characters": {},
+        "predictions": [],
+        "questions": questions,
+        "feeling": feeling[:80] if len(feeling) > 80 else feeling,
+    }
+    for name in list(char_notes.keys())[:3]:
+        note = char_notes.get(name)
+        if isinstance(note, str):
+            words = note.split()
+            compressed["characters"][name] = " ".join(words[:15])
+    for p in preds[-2:]:
+        if isinstance(p, dict):
+            pred_text = p.get("prediction", "")
+            if isinstance(pred_text, str):
+                compressed["predictions"].append({
+                    "prediction": " ".join(pred_text.split()[:12]),
+                    "confidence": p.get("confidence", "medium"),
+                })
+    s = json.dumps(compressed)
+    n = _count_tokens(s)
+    if n > max_tokens:
+        compressed["plot"] = memory.get("plot_events", [])[-2:]
+        compressed["predictions"] = []
+        for p in preds[-1:]:
+            if isinstance(p, dict) and isinstance(p.get("prediction"), str):
+                compressed["predictions"].append({
+                    "prediction": " ".join(p.get("prediction", "").split()[:8]),
+                    "confidence": p.get("confidence", "medium"),
+                })
+        s = json.dumps(compressed)
+        n = _count_tokens(s)
+    return compressed
     reader: Dict,
     genre: str,
     section_number: int,
@@ -157,7 +214,7 @@ Respond with JSON only. No other text.
   "inline_comments": [
     {{
       "line": <integer in the line range given in the instructions below>,
-      "type": "reaction" | "prediction" | "confusion" | "critique" | "praise" | "theory" | "comparison" | "callback",
+      "type": "reaction" | "prediction" | "confusion" | "critique" | "praise" | "theory" | "comparison" | "callback" | "pacing",
       "comment": "<1-3 sentences in your voice. must reference something specific from this line/paragraph.>"
     }}
   ],
@@ -175,6 +232,7 @@ COMMENT RULES:
 - 3-8 inline comments per section. Most sections will have 4-6. A quiet section might have 2-3. A climactic section might hit 8. Never exceed 8.
 - Every comment must point to something concrete in that line/paragraph — a line of dialogue, a specific image, a character action, a word choice. If you can't point to something specific, don't comment.
 - "callback" type is for when you connect the current moment to something from your memory — a prediction confirmed or denied, a question answered, a detail that finally makes sense, a pattern you now see. This is how real readers react to payoff moments.
+- "pacing": use when a stretch of text feels too slow, too fast, confusing in its rhythm, or when you realize you've been reading for a while without anything grabbing your attention. You can say things like "I noticed I was skimming through paragraphs 34-41, nothing was pulling me forward" or "this section moved too fast, I wanted more time with this moment" or "the pacing picked back up here and I'm engaged again." This is valuable feedback — silence about pacing problems helps no one.
 - Do NOT comment on routine description, ordinary transitions, or unremarkable dialogue.
 - Predictions go in inline_comments AND in memory_update.predictions.
 - You don't need to include thematic analysis in every section. Only when YOU as the reader genuinely notice a pattern forming and want to tell the author about it. When you do, say it like a person: "I'm starting to notice that every scene contrasts something real with something artificial, the dim sky versus the Garden, Mina's faded flowers versus Eli's. It's effective but it's in almost every scene now and I'm starting to feel nudged toward the thesis instead of arriving there myself."
@@ -215,7 +273,7 @@ Respond with a JSON object only. Use this exact structure:
 
 {{
   "inline_comments": [
-    {{ "line": <integer in the line range given below>, "type": "reaction" | "prediction" | "confusion" | "critique" | "praise" | "theory" | "comparison" | "callback", "comment": "<1-3 sentences in your voice. must reference something specific from this line/paragraph.>" }}
+    {{ "line": <integer in the line range given below>, "type": "reaction" | "prediction" | "confusion" | "critique" | "praise" | "theory" | "comparison" | "callback" | "pacing", "comment": "<1-3 sentences in your voice. must reference something specific from this line/paragraph.>" }}
   ],
   "section_reflection": "<3-6 sentences or null. Start with your gut feeling, then explain. Be specific.>",
   "memory_update": {{
@@ -227,7 +285,7 @@ Respond with a JSON object only. Use this exact structure:
   }}
 }}
 
-Rules: 3-8 inline comments per section. Only reference line numbers in the range given below. Do not quote the text. Use "callback" when connecting to your memory.
+Rules: 3-8 inline comments per section. Only reference line numbers in the range given below. Do not quote the text. Use "callback" when connecting to your memory. Use "pacing" when a stretch feels too slow, too fast, or you found yourself skimming — that is valuable feedback.
 
 Remember: you are a real person with opinions, not a summarizer. Every section has something worth reacting to — a word choice, a pacing decision, a character moment, a callback to earlier events, a feeling the prose gave you. Find those moments."""
 
@@ -240,12 +298,21 @@ def _build_dynamic_suffix(
     line_end: int,
     genre: str,
 ) -> str:
-    """Dynamic part of system prompt: section number, line range, and (for section 2+) memory."""
+    """Dynamic part of system prompt: section number, line range, and (for section 2+) memory + REMINDER."""
     if section_number == 1:
         return f"You are reading section {section_number} of a {genre} manuscript. Lines in this section are numbered {line_start} to {line_end}. Only reference line numbers between {line_start} and {line_end}."
+    reminder = """
+REMINDER — ANNOTATION EXPECTATIONS:
+You MUST provide 4-7 inline comments for this section. Less than 4 is not acceptable.
+Spread comments across the full section — beginning, middle, AND end. Do not cluster.
+Every comment must reference a specific paragraph and a concrete detail from it.
+If a stretch of text is uneventful or boring, THAT is worth commenting on. Say "this stretch from paragraphs X to Y dragged for me" or "I skimmed this part" or "nothing here grabbed me which might mean the pacing needs work." Silence is not an option — boredom is feedback.
+If something connects to your memory from earlier sections, use a "callback" comment.
+Output valid JSON only. No text before or after the JSON object.
+"""
     return f"""Previous memory:
 {memory_str}
-
+{reminder}
 Lines {line_start}-{line_end}. Section {section_number} of a {genre} manuscript."""
 
 
@@ -342,8 +409,10 @@ async def get_reader_inline_reaction(
     memories = valid_memories
 
     compressed_memory = compress_memory(memories, reader.get("personality", ""))
-    memory_str = json.dumps(compressed_memory, indent=2) if compressed_memory else "No previous sections read yet."
-    logger.info(f"[{reader_name}] Section {section_number}: memory fetch complete ({len(memory_str)} chars)")
+    compressed_for_prompt = compress_memory_for_prompt(compressed_memory)
+    memory_str = json.dumps(compressed_for_prompt) if compressed_for_prompt else "No previous sections read yet."
+    memory_tokens = _count_tokens(memory_str)
+    logger.info(f"[{reader_name}] Section {section_number}: memory fetch complete (injected {memory_tokens} tokens)")
 
     # ── Build prompt ──────────────────────────────────────────────────────────
     system_prompt = build_reader_system_prompt(
@@ -361,13 +430,17 @@ async def get_reader_inline_reaction(
     )
     chat_plain = make_chat(system_prompt).with_params(max_tokens=800, temperature=temperature)
 
+    total_sections = section.get("total_sections") or 1
     READER_LLM_TIMEOUT = 150  # seconds per attempt
 
     async def _call_llm(use_json_format: bool):
         chat = chat_with_json if use_json_format else chat_plain
         async with _get_llm_semaphore():
+            user_text = (
+                f"Section {section_number} of {total_sections}. This section deserves the same depth of feedback as section 1. Read carefully.\n\n{numbered_text}"
+            )
             return await asyncio.wait_for(
-                chat.send_message(UserMessage(text=f"Section {section_number}:\n\n{numbered_text}")),
+                chat.send_message(UserMessage(text=user_text)),
                 timeout=READER_LLM_TIMEOUT,
             )
 
@@ -439,62 +512,12 @@ async def get_reader_inline_reaction(
     elapsed = time.monotonic() - t0
     logger.info(f"[{reader_name}] Section {section_number}: OpenAI call complete ({len(response)} chars, {elapsed*1000:.0f}ms)")
 
-    # ── JSON parsing with fallback ────────────────────────────────────────────
-    parsed = {}
-    parse_warning = False
-    try:
-        clean = re.sub(r'```[a-z]*\n?', '', response).strip().rstrip('`')
-        # Repair common LLM formatting mistakes
-        clean = re.sub(r',(\s*[}\]])', r'\1', clean)        # trailing commas
-        clean = re.sub(r'"(\w+)"=', r'"\1":', clean)        # "key"= → "key":
-        parsed = json.loads(clean)
-        logger.info(f"[{reader_name}] Section {section_number}: JSON parsed")
-    except (json.JSONDecodeError, KeyError, TypeError):
-        try:
-            start = response.find('{')
-            end = response.rfind('}') + 1
-            if start >= 0 and end > start:
-                fragment = response[start:end]
-                fragment = re.sub(r',(\s*[}\]])', r'\1', fragment)
-                fragment = re.sub(r'"(\w+)"=', r'"\1":', fragment)
-                parsed = json.loads(fragment)
-                logger.info(f"[{reader_name}] Section {section_number}: JSON extracted via substring search")
-            else:
-                raise ValueError("No JSON object found in response")
-        except Exception as e:
-            logger.warning(f"[{reader_name}] Section {section_number}: JSON parse FAILED: {e}. Using fallback.")
-            parsed = {
-                "inline_comments": [],
-                "section_reflection": None,   # never store raw broken JSON in section_reflection
-                "memory_update": {},
-            }
-            parse_warning = True
-            # Try to salvage inline_comments from raw response (e.g. truncated or malformed JSON)
-            try:
-                idx = response.find('"inline_comments"')
-                if idx >= 0:
-                    bracket = response.find('[', idx)
-                    if bracket >= 0:
-                        depth = 1
-                        i = bracket + 1
-                        while i < len(response) and depth > 0:
-                            if response[i] == '[':
-                                depth += 1
-                            elif response[i] == ']':
-                                depth -= 1
-                            i += 1
-                        if depth == 0:
-                            arr_str = response[bracket:i]
-                            arr = json.loads(arr_str)
-                            if isinstance(arr, list):
-                                parsed["inline_comments"] = arr
-                                logger.info(f"[{reader_name}] Section {section_number}: recovered {len(arr)} comments from raw response")
-            except Exception:
-                pass
-
+    # ── Parse and validate response (repair malformed JSON, validate structure)
+    parsed = parse_reader_response(response, previous_memory=compressed_for_prompt)
+    parse_warning = bool(parsed.pop("_used_fallback", False))
+    if parse_warning:
+        logger.warning(f"[{reader_name}] Section {section_number}: used fallback response (JSON repair or validation)")
     raw_comments = parsed.get("inline_comments", [])
-    if not isinstance(raw_comments, list):
-        raw_comments = []
     inline_comments = validate_inline_comments(raw_comments, line_start, prompt_line_end)
     section_reflection = parsed.get("section_reflection")
     if section_reflection is not None and not isinstance(section_reflection, str):
@@ -538,8 +561,13 @@ async def get_reader_inline_reaction(
         raise RuntimeError("Failed to save reaction")
     logger.info(f"[{reader_name}] Section {section_number}: stored to DB")
 
-    # ── Save memory update (retry with fresh id on failure; on duplicate key, skip to avoid double insert)
-    if memory_update and isinstance(memory_update, dict):
+    # ── Save memory update (only if we got valid reader output; skip when fallback was used)
+    if (
+        memory_update
+        and isinstance(memory_update, dict)
+        and not parse_warning
+        and ("plot_events" in memory_update or "character_notes" in memory_update or "predictions" in memory_update)
+    ):
         for db_attempt in range(2):
             mem_doc = {
                 "id": str(uuid.uuid4()),

@@ -374,8 +374,9 @@ async def read_all_sections_stream(
                 yield f"data: {json.dumps({'type': 'reader_thinking', 'reader_id': reader['id'], 'reader_name': rname, 'avatar_index': reader.get('avatar_index', 0), 'personality': reader.get('personality', ''), 'section_number': sn})}\n\n"
 
             # Launch all readers in parallel
+            section_with_total = {**section, "total_sections": total_sections}
             reader_tasks = [
-                asyncio.create_task(reader_pipeline(r, section, genre, manuscript_id, queue))
+                asyncio.create_task(reader_pipeline(r, section_with_total, genre, manuscript_id, queue))
                 for r in readers
             ]
 

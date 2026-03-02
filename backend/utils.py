@@ -1,4 +1,6 @@
 import uuid
+import json
+import re
 import logging
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
@@ -106,8 +108,113 @@ def now_iso() -> str:
 
 
 VALID_COMMENT_TYPES = (
-    "reaction", "prediction", "confusion", "critique", "praise", "theory", "comparison", "callback"
+    "reaction", "prediction", "confusion", "critique", "praise", "theory", "comparison", "callback", "pacing"
 )
+
+
+def parse_reader_response(raw_text: str, previous_memory: Optional[Dict] = None) -> Dict:
+    """
+    Parse and validate reader LLM response JSON. Repairs common malformations.
+    Returns dict with inline_comments, section_reflection, memory_update.
+    On total failure returns fallback with previous_memory carried forward.
+    """
+    fallback = {
+        "inline_comments": [],
+        "section_reflection": "Reader encountered a formatting issue for this section.",
+        "memory_update": previous_memory if isinstance(previous_memory, dict) else {},
+    }
+    if not raw_text or not isinstance(raw_text, str):
+        logger.info("parse_reader_response: empty or non-string input, using fallback")
+        return fallback
+
+    text = raw_text.strip()
+    repaired = False
+
+    # 1) Direct parse
+    try:
+        parsed = json.loads(text)
+        return _validate_reader_parsed(parsed, fallback)
+    except json.JSONDecodeError:
+        pass
+
+    # 2) Strip before first { and after last }
+    start = text.find("{")
+    end = text.rfind("}") + 1
+    if start >= 0 and end > start:
+        text = text[start:end]
+        repaired = True
+        try:
+            parsed = json.loads(text)
+            logger.info("parse_reader_response: parsed after stripping outer text")
+            return _validate_reader_parsed(parsed, fallback)
+        except json.JSONDecodeError:
+            pass
+
+    # 3) Remove markdown code fences
+    text = re.sub(r"^```\w*\n?", "", text)
+    text = re.sub(r"\n?```\s*$", "", text)
+    text = text.strip()
+
+    # 4) Fix trailing commas before } or ]
+    text = re.sub(r",(\s*[}\]])", r"\1", text)
+    try:
+        parsed = json.loads(text)
+        if repaired:
+            logger.info("parse_reader_response: parsed after trailing-comma fix")
+        return _validate_reader_parsed(parsed, fallback)
+    except json.JSONDecodeError:
+        pass
+
+    # 5) Try "key"= -> "key":
+    text_alt = re.sub(r'"(\w+)"\s*=', r'"\1":', text)
+    try:
+        parsed = json.loads(text_alt)
+        logger.info("parse_reader_response: parsed after key= fix")
+        return _validate_reader_parsed(parsed, fallback)
+    except json.JSONDecodeError:
+        pass
+
+    logger.warning("parse_reader_response: all repair attempts failed, using fallback")
+    fallback["_used_fallback"] = True
+    return fallback
+
+
+def _validate_reader_parsed(parsed: Dict, fallback: Dict) -> Dict:
+    """Validate and normalize parsed reader response. Drop invalid comments."""
+    if not isinstance(parsed, dict):
+        return fallback
+    out = {
+        "inline_comments": [],
+        "section_reflection": parsed.get("section_reflection"),
+        "memory_update": parsed.get("memory_update") if isinstance(parsed.get("memory_update"), dict) else fallback["memory_update"],
+    }
+    raw_comments = parsed.get("inline_comments")
+    if isinstance(raw_comments, list):
+        for c in raw_comments:
+            if not isinstance(c, dict):
+                continue
+            line = c.get("line") is not None and c.get("line") or c.get("paragraph")
+            if line is None:
+                continue
+            try:
+                line = int(float(line))
+            except (TypeError, ValueError):
+                continue
+            comment_type = c.get("type")
+            if not isinstance(comment_type, str):
+                comment_type = "reaction"
+            if comment_type not in VALID_COMMENT_TYPES:
+                comment_type = "reaction"
+            comment_val = c.get("comment")
+            if comment_val is not None and not isinstance(comment_val, str):
+                comment_val = str(comment_val)
+            else:
+                comment_val = comment_val or ""
+            out["inline_comments"].append({"line": line, "type": comment_type, "comment": comment_val})
+    if out["section_reflection"] is not None and not isinstance(out["section_reflection"], str):
+        out["section_reflection"] = str(out["section_reflection"])
+    return out
+
 
 def validate_inline_comments(
     comments: List[Dict], line_start: int, line_end: int
