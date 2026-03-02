@@ -320,11 +320,12 @@ def _build_dynamic_suffix(
     if section_number == 1:
         return f"You are reading section {section_number} of a {genre} manuscript. Lines in this section are numbered {line_start} to {line_end}. Only reference line numbers between {line_start} and {line_end}."
     reminder = """
-ANNOTATION EXPECTATIONS:
-- This section is about 3000 words. You MUST provide 5-7 inline comments. Minimum 4, maximum 8.
+ANNOTATION EXPECTATIONS (same for every section, including 2, 3, 4 and beyond):
+- You MUST provide 5-7 inline comments for THIS section. Minimum 4, maximum 8. Do NOT reduce density in later sections.
+- This section is ~3000 words. Treat it like section 1: same depth, same number of comments. No summarizing or wrapping up early.
 - Space your comments across the FULL section. At least one comment in the first third, at least two in the middle third, at least one in the final third.
-- If a stretch of 10+ paragraphs has nothing that grabs you, comment on the pacing: say you were skimming, say it dragged, say what would have held your attention. Boredom is valid feedback.
-- Every comment must name a specific paragraph and reference something concrete from it.
+- If a stretch has nothing that grabs you, comment on the pacing: say you were skimming, say it dragged. Boredom is valid feedback.
+- Every comment must name a specific paragraph/line and reference something concrete from it.
 - Include at least one callback comment if anything connects to your memory from earlier sections.
 Output valid JSON only. No text before or after the JSON object.
 """
@@ -457,6 +458,11 @@ async def get_reader_inline_reaction(
             user_text = (
                 f"Section {section_number} of {total_sections}. This section deserves the same depth of feedback as section 1. Read carefully.\n\n{numbered_text}"
             )
+            if section_number >= 2:
+                user_text = (
+                    "Same annotation density as section 1: give 5-7 inline comments for this section. Do not summarize or reduce comments in later sections.\n\n"
+                    + user_text
+                )
             if section_number == total_sections:
                 user_text = (
                     "This is the final section of the manuscript. It deserves the same annotation density as every other section — endings are where the most important payoffs happen. Do not wrap up early or summarize. React to specific moments like you did in section 1.\n\n"

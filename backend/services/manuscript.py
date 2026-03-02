@@ -28,9 +28,11 @@ def _parse_paragraphs_with_breaks(raw_text: str) -> List[Tuple[str, str]]:
     """
     Split text into paragraphs and classify the break type after each paragraph.
     Returns list of (paragraph_text, break_after) where break_after is "chapter" | "scene" | "paragraph".
+    Uses line-level granularity: each non-empty line is one entry, so we have enough break points to
+    hit 3000-word targets even when the manuscript has few blank lines (e.g. 5 long chapters).
     """
     lines = raw_text.split("\n")
-    paragraphs: List[Tuple[str, str]] = []
+    blocks: List[Tuple[str, str]] = []
     current: List[str] = []
     blank_lines_before = 0
 
@@ -40,27 +42,34 @@ def _parse_paragraphs_with_breaks(raw_text: str) -> List[Tuple[str, str]]:
                 prev_text = "\n".join(current).strip()
                 if prev_text:
                     break_after = "chapter" if blank_lines_before >= 3 else "scene"
-                    paragraphs.append((prev_text, break_after))
+                    blocks.append((prev_text, break_after))
                 current = []
             current.append(line.strip())
             blank_lines_before = 0
         else:
             blank_lines_before += 1
-            # Keep current; we'll flush when we see next non-empty (then we know break type)
 
     if current:
         prev_text = "\n".join(current).strip()
         if prev_text:
-            paragraphs.append((prev_text, "paragraph"))
+            blocks.append((prev_text, "paragraph"))
 
-    # Override: if a paragraph is a chapter heading, the break before it is chapter
-    result: List[Tuple[str, str]] = []
-    for i, (para_text, break_after) in enumerate(paragraphs):
+    # Override: if a block starts with a chapter heading, the break before it is chapter
+    result_blocks: List[Tuple[str, str]] = []
+    for i, (para_text, break_after) in enumerate(blocks):
         if i > 0 and (_chapter_heading_re.match(para_text.split("\n")[0].strip()) or _scene_marker_re.match(para_text.strip())):
-            result[-1] = (result[-1][0], "chapter")
-        result.append((para_text, break_after))
+            result_blocks[-1] = (result_blocks[-1][0], "chapter")
+        result_blocks.append((para_text, break_after))
 
-    return result
+    # Expand to line-level so we have a break point every line (enables 3000-word splits when blocks are huge)
+    paragraphs: List[Tuple[str, str]] = []
+    for block_text, break_after in result_blocks:
+        block_lines = [ln.strip() for ln in block_text.split("\n") if ln.strip()]
+        for line in block_lines:
+            paragraphs.append((line, "paragraph"))
+        if paragraphs:
+            paragraphs[-1] = (paragraphs[-1][0], break_after)
+    return paragraphs
 
 
 def split_manuscript_into_sections(raw_text: str) -> List[Dict]:
