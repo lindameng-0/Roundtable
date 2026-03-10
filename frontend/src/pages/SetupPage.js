@@ -65,7 +65,7 @@ export default function SetupPage() {
 
   const [uploadedFileName, setUploadedFileName] = useState(null);
 
-  const [usage, setUsage] = useState(null);
+  const [usage, setUsage] = useState({ used: 0, limit: 2, is_admin: false });
   const [usageLoading, setUsageLoading] = useState(true);
 
   const limitReached = usage && !usage.is_admin && usage.words_used >= usage.words_limit;
