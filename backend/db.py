@@ -178,6 +178,10 @@ class _SupabaseDb:
     def waitlist(self) -> _SupabaseTable:
         return _SupabaseTable(self._client, "waitlist")
 
+    @property
+    def feedback(self) -> _SupabaseTable:
+        return _SupabaseTable(self._client, "feedback")
+
 
 def get_db(url: str, key: str) -> _SupabaseDb:
     return _SupabaseDb(url, key)

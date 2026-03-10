@@ -80,3 +80,7 @@ class AppendTextRequest(BaseModel):
 
 class WaitlistRequest(BaseModel):
     email: str
+
+
+class FeedbackRequest(BaseModel):
+    message: str
