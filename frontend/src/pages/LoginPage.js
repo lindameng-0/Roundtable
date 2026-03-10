@@ -1,7 +1,10 @@
 import React from "react";
 import { BookOpen } from "lucide-react";
+import { getApiBase } from "../apiConfig";
 
-const EMERGENT_GOOGLE_AUTH_URL = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(window.location.origin + "/auth/callback")}`;
+// REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
+// The Google login URL points to the backend endpoint which initiates the OAuth flow.
+const GOOGLE_LOGIN_URL = getApiBase() + "/api/auth/google/login";
 
 export default function LoginPage() {
   return (
@@ -41,7 +44,7 @@ export default function LoginPage() {
           </p>
 
           <a
-            href={EMERGENT_GOOGLE_AUTH_URL}
+            href={GOOGLE_LOGIN_URL}
             data-testid="google-signin-btn"
             className="flex items-center justify-center gap-3 w-full border border-ink-900/12 bg-white hover:bg-paper text-ink-700 px-4 py-3 text-sm font-medium transition-all"
             style={{ borderRadius: "2px" }}

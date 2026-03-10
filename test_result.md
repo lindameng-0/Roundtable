@@ -101,3 +101,97 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: "Replace Emergent-managed Google Auth with the user's own Google OAuth 2.0 credentials (Authorization Code Flow). Client ID and Secret provided. Redirect URIs registered: http://roundtable.works/api/auth/google/callback and http://localhost:8000/api/auth/google/callback."
+
+backend:
+  - task: "Native Google OAuth - /api/auth/google/login endpoint"
+    implemented: true
+    working: "NA"
+    file: "backend/routers/auth.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented GET /api/auth/google/login - generates state token, builds Google OAuth URL with GOOGLE_CLIENT_ID, GOOGLE_REDIRECT_URI from env, returns 302 redirect to Google."
+
+  - task: "Native Google OAuth - /api/auth/google/callback endpoint"
+    implemented: true
+    working: "NA"
+    file: "backend/routers/auth.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented GET /api/auth/google/callback - exchanges code for tokens via Google, fetches userinfo, upserts user in DB, creates session_token, redirects browser to FRONTEND_URL/auth/callback?session_token=<token>."
+
+  - task: "Google OAuth env vars in config.py"
+    implemented: true
+    working: "NA"
+    file: "backend/config.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Added GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI, FRONTEND_URL to config.py loaded from .env. Created backend/.env with the provided Google credentials."
+
+frontend:
+  - task: "LoginPage - use backend Google login URL instead of Emergent URL"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/pages/LoginPage.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Changed href from hardcoded Emergent URL to getApiBase()+'/api/auth/google/login' (uses REACT_APP_BACKEND_URL)."
+
+  - task: "AuthCallback - read session_token from query params instead of session_id from hash"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/pages/AuthCallback.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Rewrote AuthCallback to read ?session_token= from URL search params, store in localStorage, call /api/auth/me to get user, then navigate to /setup."
+
+  - task: "AuthContext - fix loading-skip logic for new callback format"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/context/AuthContext.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Changed hash check (session_id=) to query-param check (session_token= on /auth/callback path)."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.0"
+  test_sequence: 0
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "Native Google OAuth - /api/auth/google/login endpoint"
+    - "Native Google OAuth - /api/auth/google/callback endpoint"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "Replaced Emergent Google Auth with native Google OAuth 2.0. Backend has two new endpoints: /api/auth/google/login (redirects to Google) and /api/auth/google/callback (exchanges code, creates session, redirects to frontend). Frontend LoginPage now points to the backend login URL; AuthCallback reads session_token from query params. NOTE: Full OAuth flow requires Supabase credentials in backend/.env and the correct GOOGLE_REDIRECT_URI matching what's registered in Google Cloud Console. The redirect URI http://roundtable.works/api/auth/google/callback is registered and configured."

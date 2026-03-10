@@ -5,41 +5,59 @@ import { Loader2 } from "lucide-react";
 import axios from "axios";
 import { getApi } from "../apiConfig";
 
+// REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
+
 const API = getApi();
 
 /**
- * Handles the OAuth redirect: reads session_id from URL hash,
- * exchanges it for a session, then redirects to /setup (manuscript page).
+ * Handles the redirect from the backend after Google OAuth.
+ *
+ * The backend sends the browser here as:
+ *   /auth/callback?session_token=<token>
+ *
+ * We read the token from the query string, store it in localStorage,
+ * call /api/auth/me to get the user object, then navigate to /setup.
  */
 export default function AuthCallback() {
   const navigate = useNavigate();
   const { login } = useAuth();
 
   useEffect(() => {
-    const hash = window.location.hash;
-    const params = new URLSearchParams(hash.replace("#", "?"));
-    const sessionId = params.get("session_id");
+    const params = new URLSearchParams(window.location.search);
+    const sessionToken = params.get("session_token");
+    const error = params.get("error");
 
-    if (!sessionId) {
+    if (error) {
+      console.error("Auth error from Google OAuth:", error);
+      navigate("/login?error=" + encodeURIComponent(error), { replace: true });
+      return;
+    }
+
+    if (!sessionToken) {
       navigate("/login", { replace: true });
       return;
     }
 
     (async () => {
       try {
-        const res = await axios.post(
-          `${API}/auth/session`,
-          { session_id: sessionId },
-          { withCredentials: true }
-        );
-        const { user, session_token } = res.data;
-        if (session_token) localStorage.setItem("session_token", session_token);
-        login(user, session_token);
-        // Clear hash and redirect after state is committed so /setup sees logged-in user
-        window.history.replaceState(null, "", window.location.pathname + window.location.search);
+        // Store the session token
+        localStorage.setItem("session_token", sessionToken);
+
+        // Fetch the current user using the new token
+        const res = await axios.get(`${API}/auth/me`, {
+          headers: { Authorization: `Bearer ${sessionToken}` },
+          withCredentials: true,
+        });
+
+        const user = res.data;
+        login(user, sessionToken);
+
+        // Clean up the URL and redirect
+        window.history.replaceState(null, "", window.location.pathname);
         setTimeout(() => navigate("/setup", { replace: true }), 0);
       } catch (err) {
         console.error("Auth callback failed:", err);
+        localStorage.removeItem("session_token");
         navigate("/login", { replace: true });
       }
     })();

@@ -24,9 +24,13 @@ export function AuthProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    // CRITICAL: If returning from OAuth callback, skip the /me check.
-    // AuthCallback will exchange the session_id and establish the session first.
-    if (window.location.hash?.includes('session_id=')) {
+    // CRITICAL: If returning from the OAuth callback page (/auth/callback?session_token=…),
+    // skip the /me check here — AuthCallback.js will read the token and call login() directly.
+    // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
+    const isCallback =
+      window.location.pathname === "/auth/callback" &&
+      new URLSearchParams(window.location.search).has("session_token");
+    if (isCallback) {
       setLoading(false);
       return;
     }
