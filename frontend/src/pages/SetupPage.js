@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { UserMenu } from "../components/UserMenu";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
-import { Upload, FileText, ChevronRight, RefreshCw, X, Plus, BookOpen, Trash2 } from "lucide-react";
+import { Upload, FileText, ChevronRight, RefreshCw, X, Plus, BookOpen, Trash2, CheckCircle } from "lucide-react";
 import axios from "axios";
 import { getApi } from "../apiConfig";
 
@@ -67,6 +67,12 @@ export default function SetupPage() {
 
   const [usage, setUsage] = useState(null);
   const [usageLoading, setUsageLoading] = useState(true);
+  const [feedbackMessage, setFeedbackMessage] = useState("");
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+  const [waitlistEmail, setWaitlistEmail] = useState("");
+  const [waitlistSubmitting, setWaitlistSubmitting] = useState(false);
+  const [waitlistSaved, setWaitlistSaved] = useState(false);
 
   const limitReached = usage && !usage.is_admin && usage.words_used >= usage.words_limit;
 
@@ -76,6 +82,7 @@ export default function SetupPage() {
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
       const res = await axios.get(`${API}/user/usage`, { headers, withCredentials: true });
       setUsage(res.data);
+      if (res.data.email) setWaitlistEmail(res.data.email);
     } catch {
       setUsage({ words_used: 0, words_limit: 30000, is_admin: false });
     } finally {
@@ -86,6 +93,44 @@ export default function SetupPage() {
   useEffect(() => {
     fetchUsage();
   }, [fetchUsage]);
+
+  const handleFeedbackSubmit = async (e) => {
+    e.preventDefault();
+    const msg = feedbackMessage.trim();
+    if (!msg) return;
+    setFeedbackSubmitting(true);
+    try {
+      const token = localStorage.getItem("session_token");
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      await axios.post(`${API}/feedback`, { message: msg }, { headers, withCredentials: true });
+      setFeedbackSubmitted(true);
+    } catch {
+      toast.error("Failed to submit — please try again");
+    } finally {
+      setFeedbackSubmitting(false);
+    }
+  };
+
+  const handleWaitlistSave = async (e) => {
+    e.preventDefault();
+    const email = waitlistEmail.trim();
+    if (!email || !email.includes("@")) {
+      toast.error("Please enter a valid email");
+      return;
+    }
+    setWaitlistSubmitting(true);
+    try {
+      const token = localStorage.getItem("session_token");
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      await axios.post(`${API}/waitlist`, { email }, { headers, withCredentials: true });
+      setWaitlistSaved(true);
+      toast.success("You're on the list!");
+    } catch {
+      toast.error("Failed to save — please try again");
+    } finally {
+      setWaitlistSubmitting(false);
+    }
+  };
 
   const handleFileUpload = async (file) => {
     if (!file) return;
@@ -331,8 +376,7 @@ export default function SetupPage() {
               <p className="text-xs text-ink-400 mt-1">
                 {(usage.words_used || 0).toLocaleString()} / {(usage.words_limit || 30000).toLocaleString()} words used
               </p>
-            )}
-          </div>
+            )}          </div>
           <div className="flex items-center gap-4">
             <UserMenu />
           </div>
@@ -375,7 +419,7 @@ export default function SetupPage() {
 
       <div className="max-w-5xl mx-auto px-8 pb-20">
         <AnimatePresence mode="wait">
-          {/* ── Limit reached: simple message card ── */}
+          {/* ── Limit reached card ── */}
           {limitReached && (
             <motion.div
               key="limit-reached"
@@ -383,15 +427,82 @@ export default function SetupPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -16 }}
               transition={{ duration: 0.35 }}
-              className="bg-white border border-ink-900/8 p-8"
+              className="bg-white border border-ink-900/8 p-8 space-y-8"
               style={{ borderRadius: "2px" }}
             >
-              <h2 className="font-serif text-3xl text-ink-900 mb-3" style={{ fontFamily: "'Cormorant Garamond', serif" }}>
+              <h2 className="font-serif text-3xl text-ink-900" style={{ fontFamily: "'Cormorant Garamond', serif" }}>
                 You've used your free reads.
               </h2>
-              <p className="text-ink-600 text-base">
-                Paid plans coming soon.
-              </p>
+
+              {/* Feedback */}
+              <div className="border-t border-ink-900/8 pt-6">
+                {feedbackSubmitted ? (
+                  <div className="flex items-center gap-3 text-ink-600 text-sm">
+                    <CheckCircle className="w-4 h-4 text-sage flex-shrink-0" strokeWidth={1.5} />
+                    Thanks — your feedback helps us build Roundtable.
+                  </div>
+                ) : (
+                  <form onSubmit={handleFeedbackSubmit} className="space-y-3">
+                    <label className="text-xs text-ink-400 uppercase tracking-widest block">
+                      What would make you pay for Roundtable?
+                    </label>
+                    <input
+                      type="text"
+                      value={feedbackMessage}
+                      onChange={(e) => setFeedbackMessage(e.target.value)}
+                      placeholder="e.g. More readers, longer manuscripts, cheaper price…"
+                      className="w-full border border-ink-900/12 bg-white px-4 py-3 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none focus:border-clay transition-colors"
+                      style={{ borderRadius: "2px" }}
+                    />
+                    <button
+                      type="submit"
+                      disabled={feedbackSubmitting || !feedbackMessage.trim()}
+                      className="flex items-center gap-2 bg-clay hover:bg-clay-hover text-white px-5 py-2.5 text-sm font-medium transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                      style={{ borderRadius: "2px" }}
+                    >
+                      {feedbackSubmitting ? (
+                        <><RefreshCw className="w-4 h-4 animate-spin" strokeWidth={1.5} />Submitting…</>
+                      ) : "Submit"}
+                    </button>
+                  </form>
+                )}
+              </div>
+
+              {/* Waitlist */}
+              <div className="border-t border-ink-900/8 pt-6">
+                {waitlistSaved ? (
+                  <div className="flex items-center gap-3 text-ink-600 text-sm">
+                    <CheckCircle className="w-4 h-4 text-sage flex-shrink-0" strokeWidth={1.5} />
+                    We'll let you know when paid plans launch.
+                  </div>
+                ) : (
+                  <form onSubmit={handleWaitlistSave} className="space-y-3">
+                    <label className="text-xs text-ink-400 uppercase tracking-widest block">
+                      Notify me when paid plans launch
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="email"
+                        value={waitlistEmail}
+                        onChange={(e) => setWaitlistEmail(e.target.value)}
+                        placeholder="you@example.com"
+                        className="flex-1 border border-ink-900/12 bg-white px-4 py-3 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none focus:border-clay transition-colors"
+                        style={{ borderRadius: "2px" }}
+                      />
+                      <button
+                        type="submit"
+                        disabled={waitlistSubmitting || !waitlistEmail.trim()}
+                        className="flex items-center gap-2 border border-ink-900/12 hover:border-clay text-ink-700 hover:text-clay px-5 py-2.5 text-sm font-medium transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed bg-white"
+                        style={{ borderRadius: "2px" }}
+                      >
+                        {waitlistSubmitting ? (
+                          <RefreshCw className="w-4 h-4 animate-spin" strokeWidth={1.5} />
+                        ) : "Save"}
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
             </motion.div>
           )}
 
@@ -453,10 +564,16 @@ export default function SetupPage() {
                 )}
               </div>
 
-              {/* Word usage progress bar — shown for non-admin authenticated users */}
+              {/* Word usage progress bar */}
               {usage && !usage.is_admin && (
-                <div className="mb-4">
-                  <div className="w-full h-1 bg-ink-900/8 overflow-hidden" style={{ borderRadius: "2px" }}>
+                <div className="mb-5 bg-white border border-ink-900/8 px-4 py-3" style={{ borderRadius: "2px" }}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs text-ink-500 font-medium">Free word budget</span>
+                    <span className="text-xs text-ink-500 tabular-nums">
+                      {(usage.words_used || 0).toLocaleString()} / {(usage.words_limit || 30000).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="w-full h-2 bg-ink-900/8 overflow-hidden" style={{ borderRadius: "2px" }}>
                     <div
                       className="h-full transition-all duration-500"
                       style={{
@@ -465,9 +582,6 @@ export default function SetupPage() {
                       }}
                     />
                   </div>
-                  <p className="text-xs text-ink-400 mt-1.5">
-                    {(usage.words_used || 0).toLocaleString()} / {(usage.words_limit || 30000).toLocaleString()} words used
-                  </p>
                 </div>
               )}
 

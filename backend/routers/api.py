@@ -18,6 +18,7 @@ from models import (
     ModelConfigRequest,
     AppendTextRequest,
     WaitlistRequest,
+    FeedbackRequest,
 )
 from utils import now_iso, make_chat, UserMessage
 
@@ -161,6 +162,23 @@ async def waitlist_status(request: Request):
         if row:
             return {"joined": True}
     return {"joined": False}
+
+
+@api_router.post("/feedback")
+async def submit_feedback(request: Request, body: FeedbackRequest):
+    """Store free-text feedback from a limit-reached user."""
+    message = (body.message or "").strip()
+    if not message:
+        raise HTTPException(400, "Message is required")
+    user = await _get_optional_user(request)
+    user_id = user.get("user_id") if user else None
+    await db.feedback.insert_one({
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "message": message,
+        "created_at": now_iso(),
+    })
+    return {"ok": True}
 
 
 # ─── Manuscripts ──────────────────────────────────────────────────────────────

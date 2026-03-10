@@ -133,8 +133,14 @@ export default function DashboardPage() {
 
         {/* Word usage progress bar — non-admin users only */}
         {usage && !usage.is_admin && (
-          <div className="mb-8">
-            <div className="w-full h-1 bg-ink-900/8 overflow-hidden" style={{ borderRadius: "2px" }}>
+          <div className="mb-8 bg-white border border-ink-900/8 px-4 py-3" style={{ borderRadius: "2px" }}>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-ink-500 font-medium">Free word budget</span>
+              <span className="text-xs text-ink-500 tabular-nums">
+                {(usage.words_used || 0).toLocaleString()} / {(usage.words_limit || 30000).toLocaleString()}
+              </span>
+            </div>
+            <div className="w-full h-2 bg-ink-900/8 overflow-hidden" style={{ borderRadius: "2px" }}>
               <div
                 className="h-full transition-all duration-500"
                 style={{
@@ -143,9 +149,22 @@ export default function DashboardPage() {
                 }}
               />
             </div>
-            <p className="text-xs text-ink-400 mt-1.5">
-              {(usage.words_used || 0).toLocaleString()} / {(usage.words_limit || 30000).toLocaleString()} words used
-            </p>
+          </div>
+        )}
+
+        {/* Limit reached banner */}
+        {usage && !usage.is_admin && usage.words_used >= usage.words_limit && (
+          <div
+            className="mb-8 flex items-center justify-between px-4 py-3 border border-clay/20 bg-clay/5 text-sm text-clay"
+            style={{ borderRadius: "2px" }}
+          >
+            <span>You've used your free reads. Paid plans coming soon.</span>
+            <a
+              href="/setup"
+              className="text-xs text-clay underline underline-offset-2 hover:no-underline transition-all ml-4 flex-shrink-0"
+            >
+              View details
+            </a>
           </div>
         )}
 
