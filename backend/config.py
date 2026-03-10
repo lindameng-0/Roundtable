@@ -35,6 +35,18 @@ FRONTEND_URL = os.environ.get(
     os.environ.get('APP_URL', 'http://localhost:3000'),
 )
 
+# Log at startup so Railway logs show whether Google OAuth env vars are present
+import logging
+_log = logging.getLogger(__name__)
+if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+    _log.warning(
+        "Google OAuth: GOOGLE_CLIENT_ID=%s GOOGLE_CLIENT_SECRET=%s (set both in env for OAuth)",
+        "set" if GOOGLE_CLIENT_ID else "MISSING",
+        "set" if GOOGLE_CLIENT_SECRET else "MISSING",
+    )
+else:
+    _log.info("Google OAuth: credentials loaded from env")
+
 # Admin users bypass usage limits
 ADMIN_EMAILS = [
     "itsyuko0o1@gmail.com",
