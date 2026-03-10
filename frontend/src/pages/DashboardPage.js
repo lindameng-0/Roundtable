@@ -108,7 +108,7 @@ export default function DashboardPage() {
 
       {/* Body */}
       <div className="max-w-3xl mx-auto px-6 py-12">
-        <div className="flex items-end justify-between mb-8">
+        <div className="flex items-end justify-between mb-4">
           <div>
             <h1
               className="font-serif text-3xl text-ink-900 mb-1"
@@ -119,11 +119,6 @@ export default function DashboardPage() {
             {user && <p className="text-sm text-ink-400">Welcome back, {user.name?.split(" ")[0]}.</p>}
           </div>
           <div className="flex items-center gap-4">
-            {usage != null && (
-              <p className="text-xs text-ink-400">
-                {usage.is_admin ? "Admin — unlimited" : `Free reads: ${Math.max(0, usage.limit - usage.used)}/${usage.limit} remaining`}
-              </p>
-            )}
             <button
             data-testid="new-manuscript-btn"
             onClick={() => navigate("/setup")}
@@ -135,6 +130,24 @@ export default function DashboardPage() {
           </button>
           </div>
         </div>
+
+        {/* Word usage progress bar — non-admin users only */}
+        {usage && !usage.is_admin && (
+          <div className="mb-8">
+            <div className="w-full h-1 bg-ink-900/8 overflow-hidden" style={{ borderRadius: "2px" }}>
+              <div
+                className="h-full transition-all duration-500"
+                style={{
+                  width: `${Math.min(100, Math.round(((usage.words_used || 0) / (usage.words_limit || 30000)) * 100))}%`,
+                  backgroundColor: ((usage.words_used || 0) / (usage.words_limit || 30000)) >= 0.8 ? "#C86B56" : "#8da399",
+                }}
+              />
+            </div>
+            <p className="text-xs text-ink-400 mt-1.5">
+              {(usage.words_used || 0).toLocaleString()} / {(usage.words_limit || 30000).toLocaleString()} words used
+            </p>
+          </div>
+        )}
 
         {loading ? (
           <div className="flex items-center justify-center py-24">

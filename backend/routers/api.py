@@ -36,7 +36,12 @@ from routers.auth import _get_session_user
 api_router = APIRouter(prefix="/api")
 logger = logging.getLogger(__name__)
 
-MANUSCRIPT_LIMIT = 2
+WORDS_LIMIT = 30_000
+
+
+def _count_words(text: str) -> int:
+    """Count words the same way the frontend does: split on whitespace, ignore empty."""
+    return len(text.split()) if text else 0
 
 
 async def _get_optional_user(request: Request):
@@ -83,18 +88,35 @@ async def update_model(req: ModelConfigRequest):
     return {"provider": _cfg.LLM_PROVIDER, "model": _cfg.LLM_MODEL}
 
 
-# ─── User usage (for manuscript limit) ───────────────────────────────────────
+# ─── User usage (word-budget limit) ──────────────────────────────────────────
 
 @api_router.get("/user/usage")
 async def get_user_usage(request: Request):
-    """Return used/manuscript limit and is_admin. Unauthenticated => used 0, limit 2, is_admin false."""
+    """
+    Return cumulative word usage for the current user.
+    Response: { words_used, words_limit, is_admin }
+    Unauthenticated → words_used 0, words_limit WORDS_LIMIT, is_admin false.
+    """
     user = await _get_optional_user(request)
     if not user:
-        return {"used": 0, "limit": MANUSCRIPT_LIMIT, "is_admin": False}
+        return {"words_used": 0, "words_limit": WORDS_LIMIT, "is_admin": False}
     email = (user.get("email") or "").strip()
     is_admin = _is_admin(email)
-    used = await db.manuscripts.count_documents({"user_id": user["user_id"]})
-    return {"used": used, "limit": MANUSCRIPT_LIMIT, "is_admin": is_admin, "email": email or None}
+    words_used = 0
+    if not is_admin:
+        manuscripts = await db.manuscripts.find(
+            {"user_id": user["user_id"]}, None
+        ).to_list(1000)
+        words_used = sum(
+            _count_words(m.get("raw_text") or "")
+            for m in manuscripts
+        )
+    return {
+        "words_used": words_used,
+        "words_limit": WORDS_LIMIT,
+        "is_admin": is_admin,
+        "email": email or None,
+    }
 
 
 # ─── Waitlist (when user hits manuscript limit) ─────────────────────────────────
@@ -173,19 +195,28 @@ async def create_manuscript(manuscript: ManuscriptCreate, request: Request):
     except HTTPException:
         pass  # anonymous submission still allowed
 
-    # Usage limit: non-admin users get 2 free manuscripts total
+    # Usage limit: non-admin authenticated users get WORDS_LIMIT total words
     if user_id and user:
         if not _is_admin(user.get("email") or ""):
-            used = await db.manuscripts.count_documents({"user_id": user_id})
-            if used >= MANUSCRIPT_LIMIT:
+            manuscript_words = _count_words(raw_text)
+            manuscripts = await db.manuscripts.find(
+                {"user_id": user_id}, None
+            ).to_list(1000)
+            current_words_used = sum(
+                _count_words(m.get("raw_text") or "")
+                for m in manuscripts
+            )
+            words_remaining = max(0, WORDS_LIMIT - current_words_used)
+            if current_words_used + manuscript_words > WORDS_LIMIT:
                 from fastapi.responses import JSONResponse
                 return JSONResponse(
                     status_code=403,
                     content={
                         "error": "limit_reached",
-                        "message": "You've used your 2 free reads.",
-                        "used": used,
-                        "limit": MANUSCRIPT_LIMIT,
+                        "words_used": current_words_used,
+                        "words_limit": WORDS_LIMIT,
+                        "words_remaining": words_remaining,
+                        "manuscript_words": manuscript_words,
                     },
                 )
 

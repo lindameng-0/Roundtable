@@ -43,21 +43,6 @@ GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 _oauth_states: dict = {}
 
 
-# ─── Diagnostics (no secrets) ─────────────────────────────────────────────────
-
-@auth_router.get("/oauth-status")
-async def oauth_status():
-    """
-    Report whether Google OAuth env vars are present. Use this to verify
-    Railway (or local) env is loaded. Does not expose any secret values.
-    """
-    return {
-        "google_oauth_configured": bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET),
-        "redirect_uri_set": bool(GOOGLE_REDIRECT_URI),
-        "frontend_url_set": bool(FRONTEND_URL),
-    }
-
-
 # ─── Shared session helper ────────────────────────────────────────────────────
 
 async def _get_session_user(request: Request) -> dict:
