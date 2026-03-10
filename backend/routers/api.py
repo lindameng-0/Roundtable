@@ -108,7 +108,7 @@ async def get_user_usage(request: Request):
             {"user_id": user["user_id"]}, None
         ).to_list(1000)
         words_used = sum(
-            m.get("word_count") or _count_words(m.get("raw_text") or "")
+            _count_words(m.get("raw_text") or "")
             for m in manuscripts
         )
     return {
@@ -203,7 +203,7 @@ async def create_manuscript(manuscript: ManuscriptCreate, request: Request):
                 {"user_id": user_id}, None
             ).to_list(1000)
             current_words_used = sum(
-                m.get("word_count") or _count_words(m.get("raw_text") or "")
+                _count_words(m.get("raw_text") or "")
                 for m in manuscripts
             )
             words_remaining = max(0, WORDS_LIMIT - current_words_used)
@@ -222,7 +222,6 @@ async def create_manuscript(manuscript: ManuscriptCreate, request: Request):
 
     doc_id = str(uuid.uuid4())
     sections, total_lines = split_manuscript(raw_text)
-    manuscript_word_count = _count_words(raw_text)
 
     # Genre detection via LLM — fall back to defaults if key missing or API fails
     genre_data: Dict = {"genre": "Fiction", "target_audience": "General readers", "age_range": "Adult", "comparable_books": []}
@@ -250,7 +249,6 @@ async def create_manuscript(manuscript: ManuscriptCreate, request: Request):
         "title": manuscript.title or "Untitled Manuscript",
         "user_id": user_id,
         "raw_text": raw_text,
-        "word_count": manuscript_word_count,
         "genre": genre_data.get("genre", "Fiction"),
         "target_audience": genre_data.get("target_audience", "General readers"),
         "age_range": genre_data.get("age_range", "Adult"),
