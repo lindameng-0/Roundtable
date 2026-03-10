@@ -65,7 +65,7 @@ export default function SetupPage() {
 
   const [uploadedFileName, setUploadedFileName] = useState(null);
 
-  const [usage, setUsage] = useState(null);
+  const [usage, setUsage] = useState({ used: 0, limit: 2, is_admin: false });
   const [usageLoading, setUsageLoading] = useState(true);
   const [waitlistJoined, setWaitlistJoined] = useState(false);
   const [waitlistEmail, setWaitlistEmail] = useState("");
@@ -363,7 +363,7 @@ export default function SetupPage() {
               Roundtable
             </h1>
             <p className="text-xs text-ink-400 tracking-widest uppercase mt-0.5">A panel of readers for your story</p>
-            {!usageLoading && usage && step === "manuscript" && !limitReached && (
+            {usage && step === "manuscript" && !limitReached && (
               <p className="text-xs text-ink-400 mt-1">
                 {usage.is_admin ? "Admin — unlimited" : `${usage.used} of ${usage.limit} free reads used`}
               </p>
