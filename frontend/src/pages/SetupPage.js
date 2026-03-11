@@ -67,6 +67,7 @@ export default function SetupPage() {
 
   const [usage, setUsage] = useState({ used: 0, limit: 2, is_admin: false });
   const [usageLoading, setUsageLoading] = useState(true);
+  const [hardLimitHit, setHardLimitHit] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState("");
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
@@ -74,7 +75,8 @@ export default function SetupPage() {
   const [waitlistSubmitting, setWaitlistSubmitting] = useState(false);
   const [waitlistSaved, setWaitlistSaved] = useState(false);
 
-  const limitReached = usage && !usage.is_admin && usage.words_used >= usage.words_limit;
+  // Show limit card if fully used OR if a submission was rejected due to budget
+  const limitReached = hardLimitHit || (usage && !usage.is_admin && usage.words_used >= usage.words_limit);
 
   const fetchUsage = useCallback(async () => {
     try {
@@ -166,6 +168,7 @@ export default function SetupPage() {
         if (err.response?.status === 403 && err.response?.data?.error === "limit_reached") {
           const d = err.response.data;
           setUsage({ words_used: d.words_used ?? 30000, words_limit: d.words_limit ?? 30000, is_admin: false });
+          setHardLimitHit(true);
           const mw = d.manuscript_words?.toLocaleString?.() ?? "";
           const wr = (d.words_remaining ?? 0).toLocaleString();
           toast.error(mw ? `This manuscript is ${mw} words but you only have ${wr} free words remaining.` : "You've reached your free word limit.");
@@ -244,6 +247,7 @@ export default function SetupPage() {
       const data = err.response?.data;
       if (status === 403 && data?.error === "limit_reached") {
         setUsage({ words_used: data.words_used ?? 30000, words_limit: data.words_limit ?? 30000, is_admin: false });
+        setHardLimitHit(true);
         const mw = data.manuscript_words?.toLocaleString?.() ?? "";
         const wr = (data.words_remaining ?? 0).toLocaleString();
         toast.error(mw ? `This manuscript is ${mw} words but you only have ${wr} free words remaining.` : "You've reached your free word limit.");
