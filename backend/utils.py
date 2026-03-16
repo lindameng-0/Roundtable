@@ -314,13 +314,54 @@ def parse_reader_response(raw_text: str, previous_memory: Optional[Dict] = None)
     checking_in = _extract_string_field(repaired, "checking_in")
     reading_journal = _extract_string_field(repaired, "reading_journal") or _extract_string_field(repaired, "section_reflection")
     what_doing = _extract_string_field(repaired, "what_i_think_the_writer_is_doing")
+    # Try to extract moments array so we don't lose them when full parse fails (e.g. newlines in strings)
+    recovered_moments: List[Dict] = []
+    for array_key in ("moments", "inline_comments"):
+        mom_match = re.search(r'"' + re.escape(array_key) + r'"\s*:\s*\[', repaired)
+        if not mom_match:
+            continue
+        start = mom_match.end() - 1  # include the [
+        depth = 0
+        end = -1
+        for i in range(start, len(repaired)):
+            if repaired[i] == "[":
+                depth += 1
+            elif repaired[i] == "]":
+                depth -= 1
+                if depth == 0:
+                    end = i + 1
+                    break
+        if end > start:
+            try:
+                arr_str = repaired[start:end]
+                arr_str = re.sub(r",\s*([}\]])", r"\1", arr_str)
+                comments = json.loads(arr_str)
+                for c in comments:
+                    if not isinstance(c, dict):
+                        continue
+                    para = c.get("paragraph") or c.get("line")
+                    if para is None:
+                        continue
+                    try:
+                        para = int(float(para))
+                    except (TypeError, ValueError):
+                        continue
+                    ct = c.get("type", "reaction")
+                    if not isinstance(ct, str) or ct not in VALID_MOMENT_TYPES:
+                        ct = "reaction"
+                    comment_val = c.get("comment")
+                    comment_val = str(comment_val).strip() if comment_val else ""
+                    recovered_moments.append({"paragraph": para, "type": ct, "comment": comment_val})
+            except (json.JSONDecodeError, ValueError):
+                pass
+            break
     if reading_journal or checking_in:
-        logger.info("parse_reader_response: recovered from truncated JSON (checking_in/reading_journal)")
+        logger.info("parse_reader_response: recovered from truncated JSON (checking_in/reading_journal)%s", f", {len(recovered_moments)} moments" if recovered_moments else "")
         return {
             "checking_in": checking_in,
             "reading_journal": reading_journal or "Reader response was truncated; partial content recovered.",
             "what_i_think_the_writer_is_doing": what_doing,
-            "moments": [],
+            "moments": recovered_moments,
             "questions_for_writer": [],
             "memory_update": _normalize_memory_update_parsed(previous_memory) if isinstance(previous_memory, dict) else {"facts": "", "impressions": "", "watching_for": "", "feeling": ""},
         }
