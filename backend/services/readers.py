@@ -9,7 +9,7 @@ from typing import Dict, List
 
 from google import genai
 import tiktoken
-from utils import now_iso, validate_moments, parse_reader_response
+from utils import now_iso, validate_moments
 from config import db
 import config as _cfg
 
@@ -308,18 +308,34 @@ def _reader_json_schema_block() -> str:
     return "{}"
 
 
-# Concrete JSON example used in the user message so Gemini can mimic the structure reliably.
-_READER_JSON_EXAMPLE = '''{
+# Concrete JSON examples used in the user message so Gemini can mimic the structures reliably.
+_READER_JSON_EXAMPLE_CALL1 = '''{
   "checking_in": "I'm curious to see how this world works after that opening image.",
   "reading_journal": "The rain imagery went on longer than I needed. I got the point by paragraph 3 but it kept going. When Eli finally found the boy I perked up — that interaction has weight. But I'm not sure what the flower at the end means yet. Overall this is setup and I'm waiting to see where it goes.",
   "what_i_think_the_writer_is_doing": "Setting up Eli as someone who makes promises he might not keep, using atmosphere to establish tone over plot.",
-  "moments": [
-    {"paragraph": 8, "type": "confusion", "comment": "I don't understand how Eli's light works. Is it magic? Technology? The story doesn't say and I can't tell if that's intentional."},
-    {"paragraph": 22, "type": "craft", "comment": "The phrase 'silence it broke' reads oddly — the syntax tripped me up and I had to reread."},
-    {"paragraph": 36, "type": "reaction", "comment": "The flower appearing where the boy sat is a strong image but I'm not sure if the boy is dead or just gone. Big difference."}
-  ],
   "questions_for_writer": [
     "Is the boy dead at the end? The flower makes me think so but the text is ambiguous."
+  ]
+}'''
+
+
+_READER_JSON_EXAMPLE_CALL2 = '''{
+  "moments": [
+    {
+      "paragraph": 8,
+      "type": "confusion",
+      "comment": "I don't understand how Eli's light works. Is it magic? Technology? The story doesn't say and I can't tell if that's intentional."
+    },
+    {
+      "paragraph": 22,
+      "type": "craft",
+      "comment": "The phrase 'silence it broke' reads oddly — the syntax tripped me up and I had to reread."
+    },
+    {
+      "paragraph": 36,
+      "type": "reaction",
+      "comment": "The flower appearing where the boy sat is a strong image but I'm not sure if the boy is dead or just gone. Big difference."
+    }
   ],
   "memory_update": {
     "facts": "After the Cataclysm, Eli found a boy in the rain, showed him light, left, came back to find him gone. A flower grew where he sat.",
@@ -467,6 +483,20 @@ def _build_dynamic_suffix(
 Lines {line_start}-{line_end}. Section {section_number} of a {genre} manuscript."""
 
 
+def _build_memory_system_prompt(reader: Dict, genre: str) -> str:
+    """
+    Minimal system prompt for Call 2 (moments + memory).
+    Includes persona name, attention mode reminder, and task description.
+    """
+    reader_name = (reader.get("name") or "").strip() or f"Reader {reader.get('avatar_index', 0) + 1}"
+    attention = _get_attention_mode_block(reader)
+    return (
+        f"{reader_name}\n"
+        f"{attention}\n\n"
+        "You just read a section of a manuscript. Based on your reading, generate specific moments you reacted to and update your memory."
+    )
+
+
 async def get_reader_inline_reaction(
     reader: Dict,
     section: Dict,
@@ -574,13 +604,14 @@ async def get_reader_inline_reaction(
     memory_tokens = _count_tokens(memory_str)
     logger.info(f"[{reader_name}] Section {section_number}: memory fetch complete (injected {memory_tokens} tokens)")
 
-    # ── Build prompt ──────────────────────────────────────────────────────────
-    system_prompt = build_reader_system_prompt(
+    # ── Build prompts ─────────────────────────────────────────────────────────
+    system_prompt_call1 = build_reader_system_prompt(
         reader, genre, section_number, memory_str, line_start, prompt_line_end
     )
+    system_prompt_call2 = _build_memory_system_prompt(reader, genre)
 
-    prompt_words = len(system_prompt.split())
-    logger.info(f"[{reader_name}] Section {section_number}: prompt built ({prompt_words} words)")
+    prompt_words = len(system_prompt_call1.split())
+    logger.info(f"[{reader_name}] Section {section_number}: Call1 prompt built ({prompt_words} words)")
 
     # Temperature: reader override or default by avatar (0.7–1.0 spread for divergence)
     avatar_idx = reader.get("avatar_index", 0)
@@ -599,55 +630,64 @@ async def get_reader_inline_reaction(
 
     client = _get_genai_client()
 
-    generation_config = genai.types.GenerateContentConfig(
-        system_instruction=system_prompt,
+    generation_config_call1 = genai.types.GenerateContentConfig(
+        system_instruction=system_prompt_call1,
+        temperature=temperature,
+        top_p=0.95,
+        max_output_tokens=2500,
+        response_mime_type="application/json",
+    )
+    generation_config_call2 = genai.types.GenerateContentConfig(
+        system_instruction=system_prompt_call2,
         temperature=temperature,
         top_p=0.95,
         max_output_tokens=2500,
         response_mime_type="application/json",
     )
 
-    # JSON format instructions and concrete example go at the BEGINNING of the user message.
-    json_instructions = (
-        "Generate ALL fields in this exact order. Do not skip any field. Complete the entire JSON object before stopping.\n"
-        "Respond with ONLY valid JSON matching this structure. No explanations, no commentary outside the JSON.\n"
-        "Use this example as the structure (these values are just an example, not a template to copy):\n"
-        f"{_READER_JSON_EXAMPLE}\n\n"
+    # ── Call 1: reading reaction (checking_in, journal, intent, questions) ───
+    json_instructions_call1 = (
+        "Respond with ONLY valid JSON in this exact flat structure (no nested arrays of objects). "
+        "Do not skip any field. Complete the entire JSON object before stopping.\n"
+        "Schema:\n"
+        '{ "checking_in": string, "reading_journal": string, "what_i_think_the_writer_is_doing": string, "questions_for_writer": string[] }\n'
+        "Here is an example of the structure (values are just an example, do NOT copy the wording):\n"
+        f"{_READER_JSON_EXAMPLE_CALL1}\n\n"
     )
 
-    user_text = json_instructions + f"Section {section_number} of {total_sections}.\n\n{numbered_text}"
+    user_text_call1 = json_instructions_call1 + f"Section {section_number} of {total_sections}.\n\n{numbered_text}"
     if section_number == total_sections:
-        user_text = (
+        user_text_call1 = (
             "This is the final section. Read it like finishing a book — notice what pays off, what doesn't, what you're left with. React honestly to the ending.\n\n"
-            + user_text
+            + user_text_call1
         )
 
-    async def _call_gemini_async():
-        """Async wrapper around client.aio.models.generate_content."""
+    async def _call_gemini_async_call1():
+        """Async wrapper around client.aio.models.generate_content for Call 1."""
         return await client.aio.models.generate_content(
             model=READER_MODEL,
-            contents=user_text,
-            config=generation_config,
+            contents=user_text_call1,
+            config=generation_config_call1,
         )
 
-    # ── Gemini API call with retries for transient failures
-    logger.info(f"[{reader_name}] Section {section_number}: Gemini call started (temp={temperature})")
+    # ── Gemini Call 1 with retries for transient failures
+    logger.info(f"[{reader_name}] Section {section_number}: Gemini Call1 started (temp={temperature})")
     t0 = time.monotonic()
-    response_text = None
-    gemini_response = None
+    response_call1_text = None
+    gemini_response_call1 = None
     last_error = None
     max_attempts = 4
     for attempt in range(max_attempts):
         try:
             async with _get_llm_semaphore():
-                gemini_response = await asyncio.wait_for(
-                    _call_gemini_async(),
+                gemini_response_call1 = await asyncio.wait_for(
+                    _call_gemini_async_call1(),
                     timeout=READER_LLM_TIMEOUT,
                 )
             # Handle SAFETY block: Gemini may return no text when content is blocked
-            if not gemini_response or not getattr(gemini_response, "candidates", None):
+            if not gemini_response_call1 or not getattr(gemini_response_call1, "candidates", None):
                 logger.warning(
-                    f"[{reader_name}] Section {section_number}: Gemini returned no candidates (possible SAFETY block)"
+                    f"[{reader_name}] Section {section_number}: Gemini Call1 returned no candidates (possible SAFETY block)"
                 )
                 last_error = RuntimeError("Gemini returned no content (possible safety block)")
                 if attempt < max_attempts - 1:
@@ -655,24 +695,24 @@ async def get_reader_inline_reaction(
                     continue
                 raise last_error
             # New SDK: response.text gives the aggregated text.
-            response_text = getattr(gemini_response, "text", None) or ""
-            candidate = gemini_response.candidates[0]
+            response_call1_text = getattr(gemini_response_call1, "text", None) or ""
+            candidate = gemini_response_call1.candidates[0]
             finish_reason = getattr(candidate, "finish_reason", None)
             logger.info(
-                f"[{reader_name}] Section {section_number}: Gemini finish_reason={finish_reason}, raw_text_len={len(response_text)}"
+                f"[{reader_name}] Section {section_number}: Gemini Call1 finish_reason={finish_reason}, raw_text_len={len(response_call1_text)}"
             )
-            if not (response_text and response_text.strip()):
+            if not (response_call1_text and response_call1_text.strip()):
                 last_error = RuntimeError("Gemini returned empty text")
                 if attempt < max_attempts - 1:
                     await asyncio.sleep(2)
                     continue
                 raise last_error
             # Log usage for cost monitoring (new SDK fields)
-            um = getattr(gemini_response, "usage_metadata", None)
+            um = getattr(gemini_response_call1, "usage_metadata", None)
             if um:
                 pt = getattr(um, "prompt_token_count", None) or 0
                 ct = getattr(um, "candidates_token_count", None) or 0
-                logger.info(f"[{reader_name}] Section {section_number}: tokens prompt={pt} output={ct}")
+                logger.info(f"[{reader_name}] Section {section_number}: Call1 tokens prompt={pt} output={ct}")
             break
         except asyncio.TimeoutError as e:
             last_error = e
@@ -703,32 +743,185 @@ async def get_reader_inline_reaction(
             if attempt < max_attempts - 1:
                 await asyncio.sleep(2)
                 continue
-    if response_text is None:
-        raise last_error or RuntimeError("No response from Gemini")
+    if response_call1_text is None:
+        raise last_error or RuntimeError("No response from Gemini (Call1)")
 
     elapsed = time.monotonic() - t0
     logger.info(
-        f"[{reader_name}] Section {section_number}: Gemini call complete ({len(response_text)} chars, {elapsed*1000:.0f}ms)"
+        f"[{reader_name}] Section {section_number}: Gemini Call1 complete ({len(response_call1_text)} chars, {elapsed*1000:.0f}ms)"
     )
 
-    # ── Parse and validate response (repair malformed JSON, validate structure)
-    # Use compressed_memory as previous_memory so fallback carries forward last good memory
-    last_good_memory = compressed_memory if isinstance(compressed_memory, dict) else {}
-    parsed = parse_reader_response(response_text, previous_memory=last_good_memory)
-    parse_warning = bool(parsed.pop("_used_fallback", False))
+    # ── Parse Call 1 (simple flat JSON) ───────────────────────────────────────
+    try:
+        parsed_call1 = json.loads(response_call1_text)
+        if not isinstance(parsed_call1, dict):
+            raise ValueError("Call1 JSON is not an object")
+    except Exception as e:
+        logger.error(
+            f"[{reader_name}] Section {section_number}: failed to parse Call1 JSON: {e}. Raw: {response_call1_text[:500]}"
+        )
+        raise
 
-    if parse_warning:
-        logger.warning(f"[{reader_name}] Section {section_number}: used fallback response (JSON repair or validation)")
-    raw_moments = parsed.get("moments", [])
-    moments = validate_moments(raw_moments, line_start, prompt_line_end)
-    checking_in = parsed.get("checking_in")
-    reading_journal = parsed.get("reading_journal")
-    what_i_think_the_writer_is_doing = parsed.get("what_i_think_the_writer_is_doing")
-    questions_for_writer = parsed.get("questions_for_writer", [])
+    checking_in = parsed_call1.get("checking_in")
+    reading_journal = parsed_call1.get("reading_journal")
+    what_i_think_the_writer_is_doing = parsed_call1.get("what_i_think_the_writer_is_doing")
+    questions_for_writer = parsed_call1.get("questions_for_writer", [])
     if not isinstance(questions_for_writer, list):
         questions_for_writer = []
-    memory_update = parsed.get("memory_update", {})
-    memory_update = _normalize_memory_update(memory_update)
+
+    # ── Call 2: moments + memory_update ──────────────────────────────────────
+    json_instructions_call2 = (
+        "Respond with ONLY valid JSON matching this structure. "
+        "Do not skip any field. Complete the entire JSON object before stopping.\n"
+        "Schema:\n"
+        '{ "moments": [ { "paragraph": number, "type": string, "comment": string } ], '
+        '"memory_update": { "facts": string, "impressions": string, "watching_for": string, "feeling": string } }\n'
+        "Here is an example of the structure (values are illustrative only):\n"
+        f"{_READER_JSON_EXAMPLE_CALL2}\n\n"
+    )
+
+    user_text_call2 = (
+        json_instructions_call2
+        + "Here's what you wrote in your reading journal (Call 1 output):\n"
+        + json.dumps(
+            {
+                "checking_in": checking_in,
+                "reading_journal": reading_journal,
+                "what_i_think_the_writer_is_doing": what_i_think_the_writer_is_doing,
+                "questions_for_writer": questions_for_writer,
+            },
+            ensure_ascii=False,
+        )
+        + "\n\nNow identify the specific moments in the text that prompted your reactions, and update your memory.\n\n"
+        f"Numbered manuscript text for this section (you must reference these paragraph numbers):\n{numbered_text}"
+    )
+
+    async def _call_gemini_async_call2():
+        """Async wrapper around client.aio.models.generate_content for Call 2."""
+        return await client.aio.models.generate_content(
+            model=READER_MODEL,
+            contents=user_text_call2,
+            config=generation_config_call2,
+        )
+
+    logger.info(f"[{reader_name}] Section {section_number}: Gemini Call2 started (temp={temperature})")
+    t1 = time.monotonic()
+    response_call2_text = None
+    gemini_response_call2 = None
+    last_error_call2 = None
+
+    for attempt in range(max_attempts):
+        try:
+            async with _get_llm_semaphore():
+                gemini_response_call2 = await asyncio.wait_for(
+                    _call_gemini_async_call2(),
+                    timeout=READER_LLM_TIMEOUT,
+                )
+            if not gemini_response_call2 or not getattr(gemini_response_call2, "candidates", None):
+                logger.warning(
+                    f"[{reader_name}] Section {section_number}: Gemini Call2 returned no candidates (possible SAFETY block)"
+                )
+                last_error_call2 = RuntimeError("Gemini Call2 returned no content (possible safety block)")
+                if attempt < max_attempts - 1:
+                    await asyncio.sleep(2)
+                    continue
+                raise last_error_call2
+
+            response_call2_text = getattr(gemini_response_call2, "text", None) or ""
+            candidate2 = gemini_response_call2.candidates[0]
+            finish_reason2 = getattr(candidate2, "finish_reason", None)
+            logger.info(
+                f"[{reader_name}] Section {section_number}: Gemini Call2 finish_reason={finish_reason2}, raw_text_len={len(response_call2_text)}"
+            )
+            if not (response_call2_text and response_call2_text.strip()):
+                last_error_call2 = RuntimeError("Gemini Call2 returned empty text")
+                if attempt < max_attempts - 1:
+                    await asyncio.sleep(2)
+                    continue
+                raise last_error_call2
+
+            um2 = getattr(gemini_response_call2, "usage_metadata", None)
+            if um2:
+                pt2 = getattr(um2, "prompt_token_count", None) or 0
+                ct2 = getattr(um2, "candidates_token_count", None) or 0
+                logger.info(f"[{reader_name}] Section {section_number}: Call2 tokens prompt={pt2} output={ct2}")
+            break
+        except asyncio.TimeoutError as e:
+            last_error_call2 = e
+            elapsed2 = time.monotonic() - t1
+            logger.warning(
+                f"[{reader_name}] Section {section_number}: Call2 attempt {attempt + 1} TIMED OUT after {elapsed2:.1f}s"
+            )
+            if attempt < max_attempts - 1:
+                await asyncio.sleep(2)
+                continue
+            # On total timeout, fall back to partial data (no moments/memory)
+            response_call2_text = None
+            break
+        except Exception as e:
+            last_error_call2 = e
+            err_str2 = str(e).lower()
+            logger.warning(
+                f"[{reader_name}] Section {section_number}: Call2 attempt {attempt + 1} failed: {type(e).__name__}: {e}"
+            )
+            is_socket2 = (
+                isinstance(e, OSError) and getattr(e, "winerror", None) == 10035
+            ) or "10035" in str(e)
+            if is_socket2 and attempt < max_attempts - 1:
+                await asyncio.sleep(2)
+                continue
+            if "rate limit" in err_str2 or "ratelimit" in err_str2:
+                wait_sec2 = 5.0
+                logger.warning(
+                    f"[{reader_name}] Section {section_number}: Call2 rate limited, waiting {wait_sec2}s (attempt {attempt + 1}/{max_attempts})"
+                )
+                await asyncio.sleep(wait_sec2)
+                if attempt < max_attempts - 1:
+                    continue
+            if attempt < max_attempts - 1:
+                await asyncio.sleep(2)
+                continue
+            # On final failure, fall back to partial data (no moments/memory)
+            response_call2_text = None
+            break
+
+    elapsed2_total = time.monotonic() - t1
+    logger.info(
+        f"[{reader_name}] Section {section_number}: Gemini Call2 complete (len={len(response_call2_text) if response_call2_text else 0}, {elapsed2_total*1000:.0f}ms)"
+    )
+
+    # ── Parse Call 2 (moments + memory_update), with graceful fallback ───────
+    parse_warning = False
+    moments = []
+    memory_update = {}
+
+    if response_call2_text:
+        try:
+            parsed_call2 = json.loads(response_call2_text)
+            if not isinstance(parsed_call2, dict):
+                raise ValueError("Call2 JSON is not an object")
+            raw_moments = parsed_call2.get("moments", [])
+            if not isinstance(raw_moments, list):
+                raw_moments = []
+            moments = validate_moments(raw_moments, line_start, prompt_line_end)
+            memory_update_raw = parsed_call2.get("memory_update", {})
+            if isinstance(memory_update_raw, dict):
+                memory_update = _normalize_memory_update(memory_update_raw)
+            else:
+                memory_update = {}
+        except Exception as e:
+            logger.error(
+                f"[{reader_name}] Section {section_number}: failed to parse Call2 JSON, falling back to partial data: {e}. Raw: {response_call2_text[:500]}"
+            )
+            parse_warning = True
+            moments = []
+            memory_update = {}
+    else:
+        if last_error_call2:
+            logger.error(
+                f"[{reader_name}] Section {section_number}: Call2 failed, using partial data (no moments/memory): {last_error_call2}"
+            )
+        parse_warning = True
 
     # Legacy shape for DB: inline_comments = moments with "line" key; section_reflection = reading_journal
     inline_comments = [{"line": m["paragraph"], "type": m["type"], "comment": m["comment"]} for m in moments]
