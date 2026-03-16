@@ -286,31 +286,34 @@ Your intent read should be something the OTHER readers might NOT say. It should 
 
 def _reader_json_schema_block() -> str:
     """Shared JSON schema for reader response (section 1 and 2+)."""
-    return '''{
-  "checking_in": "1-2 sentences. Before reading: what are you feeling about the story so far? What are you watching for? (Section 1: just say what you're expecting going in based on the genre/opening.)",
-  "reading_journal": "3-5 sentences. Stream of thought about what you just experienced. What hit you, what confused you, what you're chewing on. Write like you're journaling on the couch after putting the book down, not like you're grading a paper.",
-  "what_i_think_the_writer_is_doing": "1 sentence. Not plot summary. What you think the purpose of this section is — what the writer wants you to feel, understand, or question.",
+    # Kept for backward compatibility; no longer used in the live prompts.
+    return "{}"
+
+
+# Concrete JSON example used in the user message so Gemini can mimic the structure reliably.
+_READER_JSON_EXAMPLE = '''{
+  "checking_in": "I'm curious to see how this world works after that opening image.",
+  "reading_journal": "The rain imagery went on longer than I needed. I got the point by paragraph 3 but it kept going. When Eli finally found the boy I perked up — that interaction has weight. But I'm not sure what the flower at the end means yet. Overall this is setup and I'm waiting to see where it goes.",
+  "what_i_think_the_writer_is_doing": "Setting up Eli as someone who makes promises he might not keep, using atmosphere to establish tone over plot.",
   "moments": [
-    {
-      "paragraph": 14,
-      "type": "reaction | confusion | question | craft | callback",
-      "comment": "1-2 sentences max."
-    }
+    {"paragraph": 8, "type": "confusion", "comment": "I don't understand how Eli's light works. Is it magic? Technology? The story doesn't say and I can't tell if that's intentional."},
+    {"paragraph": 22, "type": "craft", "comment": "The phrase 'silence it broke' reads oddly — the syntax tripped me up and I had to reread."},
+    {"paragraph": 36, "type": "reaction", "comment": "The flower appearing where the boy sat is a strong image but I'm not sure if the boy is dead or just gone. Big difference."}
   ],
   "questions_for_writer": [
-    "A natural question you genuinely want answered. Phrased like a person, not an interviewer."
+    "Is the boy dead at the end? The flower makes me think so but the text is ambiguous."
   ],
   "memory_update": {
-    "facts": "1-2 sentences. What happened.",
-    "impressions": "1-2 sentences. What you think about what happened. Your interpretations, suspicions, feelings about characters.",
-    "watching_for": "1 sentence. What you're going to be paying attention to going forward.",
-    "feeling": "A few words. Your emotional state as a reader right now."
+    "facts": "After the Cataclysm, Eli found a boy in the rain, showed him light, left, came back to find him gone. A flower grew where he sat.",
+    "impressions": "Eli makes big promises to strangers. The boy felt more like a symbol than a person so far. Not sure if that's intentional.",
+    "watching_for": "Whether the boy appears again and whether Eli's promises actually hold.",
+    "feeling": "cautiously interested"
   }
 }'''
 
 
 def _build_section_1_static_prefix(reader: Dict) -> str:
-    """Full prompt for section 1: persona, voice rules, CRITICAL HONESTY, banned phrases, JSON schema. Optimized for Gemini 2.5 Flash."""
+    """Full prompt for section 1: persona, voice rules, CRITICAL HONESTY, banned phrases. Optimized for Gemini 2.5 Flash."""
     persona_block = _get_persona_block(reader)
     prefix = f"""{persona_block}
 
@@ -392,16 +395,12 @@ Other readers are also reading this manuscript. You don't know what they'll say,
 - Your value is in noticing what others might miss, not confirming what's obviously working.
 - Dig past the surface. There's usually a quieter moment, a word choice, a structural decision, something in the subtext that only you would catch with your particular reading tendency.
 
-=== RESPONSE FORMAT ===
-
-Respond with valid JSON only. The generation config enforces JSON output.
-
 """
-    return prefix + "\n" + _reader_json_schema_block()
+    return prefix
 
 
 def _build_section_2_plus_static_prefix(reader: Dict) -> str:
-    """Compressed static prefix for section 2+: persona, memory-primed reading, voice reminder, JSON schema. Optimized for Gemini."""
+    """Compressed static prefix for section 2+: persona, memory-primed reading, voice reminder. Optimized for Gemini."""
     persona_block = _get_persona_block(reader)
     prefix = f"""{persona_block}
 
@@ -430,10 +429,8 @@ When referencing your memory, don't say "as I noted previously." React naturally
 YOU ARE ONE READER, NOT THE ONLY READER:
 Other readers are also reading this. Focus on what YOUR specific reading tendency catches, not the obvious standout moments everyone would notice.
 
-Respond with valid JSON only.
-
 """
-    return prefix + "\n" + _reader_json_schema_block()
+    return prefix
 
 
 def _build_dynamic_suffix(
@@ -600,8 +597,19 @@ async def get_reader_inline_reaction(
         },
         system_instruction=system_prompt,
     )
+    logger.debug(
+        f"[{reader_name}] Section {section_number}: Gemini generation_config={model.generation_config}"
+    )
 
-    user_text = f"Section {section_number} of {total_sections}.\n\n{numbered_text}"
+    # JSON format instructions and concrete example go at the BEGINNING of the user message.
+    json_instructions = (
+        "Generate ALL fields in this exact order. Do not skip any field. Complete the entire JSON object before stopping.\n"
+        "Respond with ONLY valid JSON matching this structure. No explanations, no commentary outside the JSON.\n"
+        "Use this example as the structure (these values are just an example, not a template to copy):\n"
+        f"{_READER_JSON_EXAMPLE}\n\n"
+    )
+
+    user_text = json_instructions + f"Section {section_number} of {total_sections}.\n\n{numbered_text}"
     if section_number == total_sections:
         user_text = (
             "This is the final section. Read it like finishing a book — notice what pays off, what doesn't, what you're left with. React honestly to the ending.\n\n"
