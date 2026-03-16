@@ -678,9 +678,9 @@ async def get_reader_inline_reaction(
             ) or "10035" in str(e)
             if is_socket and attempt < max_attempts - 1:
                 await asyncio.sleep(2)
-                    continue
+                continue
             if "rate limit" in err_str or "ratelimit" in err_str:
-                    wait_sec = 5.0
+                wait_sec = 5.0
                 logger.warning(
                     f"[{reader_name}] Section {section_number}: rate limited, waiting {wait_sec}s (attempt {attempt + 1}/{max_attempts})"
                 )
