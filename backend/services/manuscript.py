@@ -91,7 +91,7 @@ def _segment_words(cum_words: List[int], start_idx: int, end_idx: int) -> int:
     """Word count for segment [start_idx, end_idx] (inclusive)."""
     if start_idx > end_idx:
         return 0
-    before = cum_words[start_idx - 1] if start_idx > 0 else 0
+    before = cum_words[min(start_idx - 1, len(cum_words) - 1)] if start_idx > 0 else 0
     return cum_words[min(end_idx, len(cum_words) - 1)] - before
 
 
@@ -110,28 +110,30 @@ def _subsplit_range(
     if words <= MAX_SECTION_WORDS:
         return [(start_idx, end_idx)]
 
-    start_words = cum_words[start_idx - 1] if start_idx > 0 else 0
-    end_words = cum_words[end_idx]
+    start_words = cum_words[min(start_idx - 1, len(cum_words) - 1)] if start_idx > 0 else 0
+    end_words = cum_words[min(end_idx, len(cum_words) - 1)]
     mid_target = start_words + (end_words - start_words) // 2
 
     best_k: int | None = None
     best_dist = float("inf")
     for k in range(start_idx, end_idx):
-        first_words = cum_words[k] - start_words
-        second_words = end_words - cum_words[k]
+        ck = cum_words[min(k, len(cum_words) - 1)]
+        first_words = ck - start_words
+        second_words = end_words - ck
         if first_words < MIN_SECTION_WORDS or second_words < MIN_SECTION_WORDS:
             continue
         if first_words > MAX_SECTION_WORDS or second_words > MAX_SECTION_WORDS:
             continue
-        dist = abs((cum_words[k]) - mid_target)
+        dist = abs(ck - mid_target)
         if dist < best_dist:
             best_dist = dist
             best_k = k
     if best_k is None:
         # No valid split that keeps both >= 500 and <= 2500; force at midpoint anyway to avoid huge section
         for k in range(start_idx, end_idx):
-            first_words = cum_words[k] - start_words
-            second_words = end_words - cum_words[k]
+            ck = cum_words[min(k, len(cum_words) - 1)]
+            first_words = ck - start_words
+            second_words = end_words - ck
             if first_words >= MIN_SECTION_WORDS and second_words >= MIN_SECTION_WORDS:
                 best_k = k
                 break
