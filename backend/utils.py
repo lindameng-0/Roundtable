@@ -125,6 +125,42 @@ def _normalize_memory_update_parsed(mu: Any) -> Dict:
     return out
 
 
+def _escape_newlines_in_json_strings(s: str) -> str:
+    """Escape literal newlines inside double-quoted JSON string values so json.loads can parse."""
+    result = []
+    i = 0
+    in_string = False
+    escape_next = False
+    while i < len(s):
+        c = s[i]
+        if escape_next:
+            result.append(c)
+            escape_next = False
+            i += 1
+            continue
+        if c == "\\" and in_string:
+            result.append(c)
+            escape_next = True
+            i += 1
+            continue
+        if c == '"':
+            in_string = not in_string
+            result.append(c)
+            i += 1
+            continue
+        if in_string and c == "\n":
+            result.append("\\n")
+            i += 1
+            continue
+        if in_string and c == "\r":
+            result.append("\\r")
+            i += 1
+            continue
+        result.append(c)
+        i += 1
+    return "".join(result)
+
+
 def _validate_reader_parsed(parsed: Dict, fallback: Dict) -> Dict:
     """Validate and normalize parsed reader response. New schema: checking_in, reading_journal, what_i_think_the_writer_is_doing, moments, questions_for_writer, memory_update."""
     if not isinstance(parsed, dict):
@@ -233,18 +269,22 @@ def parse_reader_response(raw_text: str, previous_memory: Optional[Dict] = None)
     except json.JSONDecodeError:
         pass
 
-    # Step 3: Fix common JSON issues
-    repaired = cleaned
+    # Step 2b: Gemini often returns literal newlines inside string values; escape them so JSON is valid
+    cleaned_escaped = _escape_newlines_in_json_strings(cleaned)
+    try:
+        parsed = json.loads(cleaned_escaped)
+        if _parse_validate(parsed):
+            logger.info("parse_reader_response: parsed after escaping newlines in strings")
+            return _validate_reader_parsed(parsed, fallback)
+    except json.JSONDecodeError:
+        pass
+
+    # Step 3: Fix other common JSON issues
+    repaired = cleaned_escaped
     repaired = repaired.replace("\u201c", '"').replace("\u201d", '"')
     repaired = repaired.replace("\u2018", "'").replace("\u2019", "'")
     repaired = re.sub(r",\s*([}\]])", r"\1", repaired)
     repaired = re.sub(r"//.*?\n", "\n", repaired)
-    # Fix unescaped newlines inside string values (section_reflection)
-    repaired = re.sub(
-        r'(?<=": ")([^"]*)\n([^"]*")',
-        lambda m: m.group(0).replace("\n", "\\n"),
-        repaired,
-    )
 
     try:
         parsed = json.loads(repaired)
@@ -258,9 +298,10 @@ def parse_reader_response(raw_text: str, previous_memory: Optional[Dict] = None)
     moments_match = re.search(r'"moments"\s*:\s*\[(.+?)\]', repaired, re.DOTALL)
     if not moments_match:
         moments_match = re.search(r'"inline_comments"\s*:\s*\[(.+?)\]', repaired, re.DOTALL)
-    reflection_match = re.search(r'"reading_journal"\s*:\s*"(.+?)"', repaired, re.DOTALL)
+    # Match reading_journal value; may contain \n (already escaped) so use non-greedy until ", then allow \"
+    reflection_match = re.search(r'"reading_journal"\s*:\s*"((?:[^"\\]|\\.)*)"', repaired)
     if not reflection_match:
-        reflection_match = re.search(r'"section_reflection"\s*:\s*"(.+?)"', repaired, re.DOTALL)
+        reflection_match = re.search(r'"section_reflection"\s*:\s*"((?:[^"\\]|\\.)*)"', repaired)
 
     if moments_match:
         try:
@@ -307,12 +348,16 @@ def parse_reader_response(raw_text: str, previous_memory: Optional[Dict] = None)
 
 
 def _parse_validate(result: Dict) -> bool:
-    """Check that the result has the expected structure (new schema: moments, or legacy inline_comments)."""
+    """Accept if we have moments (list), inline_comments (list), or reading_journal/section_reflection (str)."""
     if not isinstance(result, dict):
         return False
     if "moments" in result and isinstance(result["moments"], list):
         return True
     if "inline_comments" in result and isinstance(result["inline_comments"], list):
+        return True
+    if "reading_journal" in result and isinstance(result["reading_journal"], str):
+        return True
+    if "section_reflection" in result and isinstance(result["section_reflection"], str):
         return True
     return False
 
