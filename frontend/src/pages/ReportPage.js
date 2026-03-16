@@ -2,41 +2,23 @@ import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
-import { ArrowLeft, TrendingUp, Users, BookOpen, Target, Lightbulb, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
-import axios from "axios";
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
-} from "recharts";
-
+  ArrowLeft,
+  BookOpen,
+  Target,
+  Loader2,
+  HelpCircle,
+  MessageSquare,
+  TrendingDown,
+  Sparkles,
+  Users,
+} from "lucide-react";
+import axios from "axios";
 import { getApi } from "../apiConfig";
 
 const API = getApi();
 
-const PRIORITY_COLORS = {
-  high: "#C86B56",
-  medium: "#D4Af37",
-  low: "#8da399",
-};
-
-const SENTIMENT_ICONS = {
-  positive: CheckCircle2,
-  negative: AlertCircle,
-  mixed: Target,
-};
-
-const SENTIMENT_COLORS = {
-  positive: "#8da399",
-  negative: "#C86B56",
-  mixed: "#D4Af37",
-};
-
-function Section({ icon: Icon, title, children, delay = 0, testId }) {
+function Section({ icon: Icon, title, children, delay = 0, testId, accent }) {
   return (
     <motion.section
       initial={{ opacity: 0, y: 20 }}
@@ -46,8 +28,11 @@ function Section({ icon: Icon, title, children, delay = 0, testId }) {
       className="mb-10"
     >
       <div className="flex items-center gap-3 mb-5">
-        <div className="w-8 h-8 flex items-center justify-center bg-clay/10" style={{ borderRadius: "2px" }}>
-          <Icon className="w-4 h-4 text-clay" strokeWidth={1.5} />
+        <div
+          className="w-8 h-8 flex items-center justify-center"
+          style={{ borderRadius: "2px", background: accent ? `${accent}15` : "rgba(200,107,86,0.1)" }}
+        >
+          <Icon className="w-4 h-4" strokeWidth={1.5} style={{ color: accent || "#C86B56" }} />
         </div>
         <h2
           className="font-serif text-2xl text-ink-900"
@@ -62,18 +47,6 @@ function Section({ icon: Icon, title, children, delay = 0, testId }) {
     </motion.section>
   );
 }
-
-const CustomTooltip = ({ active, payload, label }) => {
-  if (active && payload && payload.length) {
-    return (
-      <div className="bg-white border border-ink-900/10 shadow-lg px-3 py-2" style={{ borderRadius: "2px", fontFamily: "'Manrope', sans-serif" }}>
-        <p className="text-xs text-ink-400">Section {label}</p>
-        <p className="text-sm font-semibold text-ink-900">{payload[0].value}% engagement</p>
-      </div>
-    );
-  }
-  return null;
-};
 
 export default function ReportPage() {
   const { manuscriptId } = useParams();
@@ -141,14 +114,6 @@ export default function ReportPage() {
     );
   }
 
-  const engagementData = (report?.engagement_by_section || []).map((s) => ({
-    section: s.section,
-    score: s.engagement_score,
-    note: s.note,
-  }));
-
-  const maxEngagement = Math.max(...engagementData.map((d) => d.score), 1);
-
   return (
     <div className="min-h-screen bg-paper" style={{ fontFamily: "'Manrope', sans-serif" }}>
       {/* Header */}
@@ -194,12 +159,6 @@ export default function ReportPage() {
           </div>
         </motion.div>
 
-        {report?.coverage_note && (
-          <div className="mb-8 px-4 py-3 bg-amber-50 border border-amber-200 text-amber-800 text-sm" style={{ borderRadius: "2px" }}>
-            {report.coverage_note}
-          </div>
-        )}
-
         {!report ? (
           <div className="text-center py-20 border border-ink-900/8 bg-white" style={{ borderRadius: "2px" }}>
             <BookOpen className="w-8 h-8 text-ink-400 mx-auto mb-4" strokeWidth={1.5} />
@@ -226,181 +185,66 @@ export default function ReportPage() {
           </div>
         ) : (
           <>
-            {/* Executive Summary */}
-            <Section icon={BookOpen} title="Executive Summary" delay={0.1} testId="executive-summary-section">
-              <div className="space-y-4">
-                {(report.executive_summary || []).map((para, i) => (
-                  <p
-                    key={i}
-                    className="text-base text-ink-600 leading-relaxed"
-                    style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.05rem", lineHeight: "1.8" }}
-                  >
-                    {para}
-                  </p>
-                ))}
-              </div>
+            {/* 1. Did it land? */}
+            <Section
+              icon={Target}
+              title="Did it land?"
+              delay={0.1}
+              testId="did-it-land-section"
+              accent="#C86B56"
+            >
+              <DidItLandContent didItLand={report.did_it_land} />
             </Section>
 
-            {/* Engagement Heatmap */}
-            {engagementData.length > 0 && (
-              <Section icon={TrendingUp} title="Engagement by Section" delay={0.15} testId="engagement-chart-section">
-                <p className="text-xs text-ink-400 mb-4">
-                  Based on volume and intensity of reader reactions per section.
-                </p>
-                <ResponsiveContainer width="100%" height={180}>
-                  <BarChart data={engagementData} margin={{ top: 4, right: 4, left: -24, bottom: 4 }}>
-                    <XAxis
-                      dataKey="section"
-                      tick={{ fontSize: 11, fill: "#8C8885", fontFamily: "Manrope" }}
-                      tickLine={false}
-                      axisLine={{ stroke: "#E8E5E0" }}
-                      label={{ value: "Section", position: "insideBottom", offset: -2, fontSize: 10, fill: "#8C8885" }}
-                    />
-                    <YAxis
-                      tick={{ fontSize: 11, fill: "#8C8885", fontFamily: "Manrope" }}
-                      tickLine={false}
-                      axisLine={false}
-                      domain={[0, 100]}
-                    />
-                    <Tooltip content={<CustomTooltip />} cursor={{ fill: "rgba(45,42,38,0.04)" }} />
-                    <Bar dataKey="score" radius={[1, 1, 0, 0]}>
-                      {engagementData.map((entry, index) => (
-                        <Cell
-                          key={index}
-                          fill={entry.score === maxEngagement ? "#C86B56" : entry.score > 60 ? "#D4Af37" : "#8da399"}
-                        />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-                <div className="flex items-center gap-4 mt-3 text-xs text-ink-400">
-                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 inline-block" style={{ background: "#C86B56", borderRadius: "1px" }} />Highest engagement</span>
-                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 inline-block" style={{ background: "#D4Af37", borderRadius: "1px" }} />Good engagement</span>
-                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 inline-block" style={{ background: "#8da399", borderRadius: "1px" }} />Lower engagement</span>
-                </div>
+            {/* 2. Where did engagement drop? */}
+            {(report.engagement_drop || []).length > 0 && (
+              <Section
+                icon={TrendingDown}
+                title="Where did engagement drop?"
+                delay={0.15}
+                testId="engagement-drop-section"
+                accent="#8C8885"
+              >
+                <EngagementDropContent items={report.engagement_drop} />
               </Section>
             )}
 
-            {/* Consensus Findings */}
-            {(report.consensus_findings || []).length > 0 && (
-              <Section icon={Users} title="Consensus Findings" delay={0.2} testId="consensus-findings-section">
-                <div className="space-y-4">
-                  {report.consensus_findings.map((finding, i) => {
-                    const Icon = SENTIMENT_ICONS[finding.sentiment] || Target;
-                    const color = SENTIMENT_COLORS[finding.sentiment] || "#5C5855";
-                    return (
-                      <div key={i} className="flex gap-4 pb-4 border-b border-ink-900/6 last:border-0 last:pb-0">
-                        <Icon className="w-4 h-4 mt-0.5 flex-shrink-0" strokeWidth={1.5} style={{ color }} />
-                        <div>
-                          <p className="text-sm text-ink-900 leading-relaxed mb-1">{finding.finding}</p>
-                          <p className="text-xs text-ink-400">
-                            {finding.reader_count} of 5 readers ·
-                            {finding.sections?.length > 0 && ` Sections ${finding.sections.join(", ")}`}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+            {/* 3. What readers disagree about */}
+            {(report.what_readers_disagree_about || []).length > 0 && (
+              <Section
+                icon={Users}
+                title="What readers disagree about"
+                delay={0.2}
+                testId="disagreements-section"
+                accent="#D4Af37"
+              >
+                <DisagreementsContent items={report.what_readers_disagree_about} />
               </Section>
             )}
 
-            {/* Character Impressions */}
-            {(report.character_impressions || []).length > 0 && (
-              <Section icon={Users} title="Character Impressions" delay={0.25} testId="character-impressions-section">
-                <div className="space-y-5">
-                  {report.character_impressions.map((char, i) => (
-                    <div key={i} className="pb-5 border-b border-ink-900/6 last:border-0 last:pb-0">
-                      <h4
-                        className="font-serif text-lg text-ink-900 mb-2"
-                        style={{ fontFamily: "'Cormorant Garamond', serif" }}
-                      >
-                        {char.character}
-                      </h4>
-                      <p className="text-sm text-ink-600 mb-3 italic" style={{ fontFamily: "'Cormorant Garamond', serif" }}>
-                        {char.overall}
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        {(char.impressions || []).map((imp, j) => (
-                          <span key={j} className="chip text-xs">{imp}</span>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+            {/* 4. Open questions */}
+            {(report.open_questions || []).length > 0 && (
+              <Section
+                icon={HelpCircle}
+                title="Open questions"
+                delay={0.25}
+                testId="open-questions-section"
+                accent="#5C9B8E"
+              >
+                <OpenQuestionsContent items={report.open_questions} />
               </Section>
             )}
 
-            {/* Prediction Accuracy */}
-            {(report.prediction_accuracy || []).length > 0 && (
-              <Section icon={Target} title="Prediction Accuracy" delay={0.3} testId="prediction-accuracy-section">
-                <div className="space-y-3">
-                  {report.prediction_accuracy.map((pred, i) => (
-                    <div key={i} className="flex gap-3 items-start p-3 bg-paper" style={{ borderRadius: "2px" }}>
-                      <span
-                        className="text-xs font-semibold uppercase px-2 py-0.5 flex-shrink-0 mt-0.5"
-                        style={{
-                          borderRadius: "2px",
-                          background:
-                            pred.outcome === "confirmed"
-                              ? "#8da39920"
-                              : pred.outcome === "denied"
-                              ? "#C86B5620"
-                              : "#D4Af3720",
-                          color:
-                            pred.outcome === "confirmed"
-                              ? "#8da399"
-                              : pred.outcome === "denied"
-                              ? "#C86B56"
-                              : "#D4Af37",
-                        }}
-                      >
-                        {pred.outcome}
-                      </span>
-                      <div>
-                        <p className="text-sm text-ink-900">{pred.prediction}</p>
-                        {pred.note && (
-                          <p className="text-xs text-ink-400 mt-1">{pred.note}</p>
-                        )}
-                        {pred.readers?.length > 0 && (
-                          <p className="text-xs text-ink-400 mt-0.5">By: {pred.readers.join(", ")}</p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </Section>
-            )}
-
-            {/* Recommendations */}
-            {(report.recommendations || []).length > 0 && (
-              <Section icon={Lightbulb} title="Actionable Recommendations" delay={0.35} testId="recommendations-section">
-                <div className="space-y-4">
-                  {report.recommendations.map((rec, i) => (
-                    <div key={i} className="flex gap-4">
-                      <div
-                        className="w-1.5 flex-shrink-0 mt-1"
-                        style={{
-                          background: PRIORITY_COLORS[rec.priority] || "#8C8885",
-                          borderRadius: "1px",
-                          minHeight: "40px",
-                        }}
-                      />
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <h4 className="text-sm font-semibold text-ink-900">{rec.title}</h4>
-                          <span
-                            className="text-xs uppercase tracking-widest"
-                            style={{ color: PRIORITY_COLORS[rec.priority] || "#8C8885" }}
-                          >
-                            {rec.priority}
-                          </span>
-                        </div>
-                        <p className="text-sm text-ink-600 leading-relaxed">{rec.detail}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+            {/* 5. Strongest moments */}
+            {(report.strongest_moments || []).length > 0 && (
+              <Section
+                icon={Sparkles}
+                title="Strongest moments"
+                delay={0.3}
+                testId="strongest-moments-section"
+                accent="#8da399"
+              >
+                <StrongestMomentsContent items={report.strongest_moments} />
               </Section>
             )}
 
@@ -424,6 +268,173 @@ export default function ReportPage() {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+/* ─── Section content components ─────────────────────────────────────────── */
+
+function DidItLandContent({ didItLand }) {
+  if (!didItLand) {
+    return <p className="text-sm text-ink-400">No intent data collected from readers.</p>;
+  }
+  // didItLand is a string (possibly multi-paragraph)
+  const paragraphs = typeof didItLand === "string"
+    ? didItLand.split(/\n{2,}/).filter(Boolean)
+    : [String(didItLand)];
+
+  return (
+    <div className="space-y-4">
+      {paragraphs.map((para, i) => (
+        <p
+          key={i}
+          className="text-base text-ink-600 leading-relaxed"
+          style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.05rem", lineHeight: "1.8" }}
+        >
+          {para}
+        </p>
+      ))}
+    </div>
+  );
+}
+
+function EngagementDropContent({ items }) {
+  if (!items || items.length === 0) {
+    return (
+      <p className="text-sm text-ink-400">
+        No sections with significantly lower engagement identified.
+      </p>
+    );
+  }
+  return (
+    <div className="space-y-2">
+      {items.map((item, i) => (
+        <div
+          key={i}
+          className="flex items-start gap-3 py-2.5 border-b border-ink-900/5 last:border-0"
+        >
+          <span
+            className="text-xs font-semibold px-2 py-0.5 flex-shrink-0 mt-0.5"
+            style={{
+              background: "rgba(140,136,133,0.12)",
+              color: "#5C5855",
+              borderRadius: "2px",
+            }}
+          >
+            §{item.section}
+          </span>
+          <p className="text-sm text-ink-600 leading-relaxed">
+            {item.note || "Lower reader engagement noted."}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DisagreementsContent({ items }) {
+  if (!items || items.length === 0) {
+    return <p className="text-sm text-ink-400">No significant disagreements between readers.</p>;
+  }
+  return (
+    <div className="space-y-4">
+      {items.map((item, i) => (
+        <div
+          key={i}
+          className="flex gap-3 pb-4 border-b border-ink-900/5 last:border-0 last:pb-0"
+        >
+          <div
+            className="w-1 flex-shrink-0 mt-1.5"
+            style={{ background: "#D4Af37", borderRadius: "1px", minHeight: "32px" }}
+          />
+          <p
+            className="text-sm text-ink-600 leading-relaxed"
+            style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1rem", lineHeight: "1.7" }}
+          >
+            {item}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function OpenQuestionsContent({ items }) {
+  if (!items || items.length === 0) {
+    return <p className="text-sm text-ink-400">No open questions from readers.</p>;
+  }
+  return (
+    <div className="space-y-3">
+      {items.map((item, i) => {
+        const question = typeof item === "string" ? item : item.question;
+        const multiple = typeof item === "object" ? item.asked_by_multiple : false;
+        return (
+          <div
+            key={i}
+            className="flex items-start gap-3 p-3"
+            style={{
+              background: multiple ? "rgba(200, 107, 86, 0.06)" : "#FAFAF9",
+              borderLeft: multiple ? "2px solid #C86B56" : "2px solid rgba(45,42,38,0.08)",
+              borderRadius: "0 2px 2px 0",
+            }}
+          >
+            <HelpCircle
+              className="w-3.5 h-3.5 flex-shrink-0 mt-0.5"
+              strokeWidth={1.5}
+              style={{ color: multiple ? "#C86B56" : "#8C8885" }}
+            />
+            <div className="flex-1 min-w-0">
+              <p
+                className="text-sm text-ink-700 leading-relaxed"
+                style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1rem", fontStyle: "italic" }}
+              >
+                {question}
+              </p>
+              {multiple && (
+                <p className="text-xs text-clay mt-1">Asked by multiple readers</p>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function StrongestMomentsContent({ items }) {
+  if (!items || items.length === 0) {
+    return <p className="text-sm text-ink-400">No standout moments curated.</p>;
+  }
+  return (
+    <div className="space-y-4">
+      {items.map((item, i) => (
+        <div
+          key={i}
+          className="pb-4 border-b border-ink-900/5 last:border-0 last:pb-0"
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <span
+              className="text-xs px-2 py-0.5 font-medium"
+              style={{
+                background: "rgba(141,163,153,0.15)",
+                color: "#4a7a6b",
+                borderRadius: "2px",
+              }}
+            >
+              {item.reader}
+            </span>
+            {item.section && (
+              <span className="text-xs text-ink-400">§{item.section}</span>
+            )}
+          </div>
+          <p
+            className="text-sm text-ink-700 leading-relaxed"
+            style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.05rem", lineHeight: "1.75" }}
+          >
+            {item.quote_or_summary}
+          </p>
+        </div>
+      ))}
     </div>
   );
 }

@@ -5,12 +5,14 @@ import { getApiBase } from "../apiConfig";
 
 /**
  * Manages the SSE reading stream, all real-time state, and stall detection.
- * State formats are preserved exactly from the original ReadingPage to avoid
- * breaking component consumers.
+ *
+ * New schema from backend reader_complete events:
+ *   checking_in, reading_journal, what_i_think_the_writer_is_doing,
+ *   moments [{paragraph, type, comment}], questions_for_writer [string]
  *
  * commentsByLine: { [line]: [{readerId, readerName, comment: {line, type, comment}}] }
  * allComments:   [{readerId, readerName, comment: {line, type, comment}}]
- * reflections:   [{readerId, section_number, reflection}]
+ * reflections:   [{readerId, section_number, reading_journal, what_i_think_the_writer_is_doing, questions_for_writer, checking_in}]
  * readerStatus:  { [readerId]: {currentSection, done, totalComments} }
  * thinkingReaders: Map<readerId, {reader_name, avatar_index, personality, section_number}>
  */
@@ -44,6 +46,14 @@ export function useReadingStream(manuscriptId) {
     return () => clearInterval(interval);
   }, [readingDone]);
 
+  /** Helper: convert a moments array [{paragraph,type,comment}] to comment format [{line,type,comment}]. */
+  const _momentsToComments = (moments) =>
+    (moments || []).map((m) => ({
+      line: m.paragraph ?? m.line,
+      type: m.type,
+      comment: m.comment,
+    }));
+
   /** Load reactions that already exist in the DB (for resumed sessions). */
   const loadExistingReactions = useCallback((reactionsData, personasData) => {
     const newCommentsByLine = {};
@@ -51,15 +61,40 @@ export function useReadingStream(manuscriptId) {
     const newReflections = [];
 
     reactionsData.forEach((r) => {
-      const { reader_id, reader_name, inline_comments = [], section_reflection, section_number } = r;
-      inline_comments.forEach((comment) => {
+      const { reader_id, reader_name, section_number } = r;
+      const rj = r.response_json || {};
+
+      // Prefer new moments from response_json, fall back to legacy inline_comments
+      const rawMoments = (rj.moments || []).length > 0 ? rj.moments : [];
+      const legacyComments = r.inline_comments || [];
+
+      const commentsSource =
+        rawMoments.length > 0
+          ? _momentsToComments(rawMoments)
+          : legacyComments.map((c) => ({ line: c.line, type: c.type, comment: c.comment }));
+
+      commentsSource.forEach((comment) => {
         const line = comment.line;
         if (!newCommentsByLine[line]) newCommentsByLine[line] = [];
         newCommentsByLine[line].push({ readerId: reader_id, readerName: reader_name, comment });
         newAllComments.push({ readerId: reader_id, readerName: reader_name, comment });
       });
-      if (section_reflection) {
-        newReflections.push({ readerId: reader_id, section_number, reflection: section_reflection });
+
+      // New reflection shape — pull from response_json first, fall back to top-level fields
+      const reading_journal = rj.reading_journal || r.section_reflection || null;
+      const what_i_think_the_writer_is_doing = rj.what_i_think_the_writer_is_doing || null;
+      const questions_for_writer = Array.isArray(rj.questions_for_writer) ? rj.questions_for_writer : [];
+      const checking_in = rj.checking_in || null;
+
+      if (reading_journal || what_i_think_the_writer_is_doing || questions_for_writer.length > 0) {
+        newReflections.push({
+          readerId: reader_id,
+          section_number,
+          reading_journal,
+          what_i_think_the_writer_is_doing,
+          questions_for_writer,
+          checking_in,
+        });
       }
     });
 
@@ -70,7 +105,11 @@ export function useReadingStream(manuscriptId) {
     const statusMap = {};
     personasData.forEach((p) => {
       const readerReactions = reactionsData.filter((r) => r.reader_id === p.id);
-      const commentCount = readerReactions.reduce((sum, r) => sum + (r.inline_comments?.length || 0), 0);
+      const commentCount = readerReactions.reduce((sum, r) => {
+        const rj = r.response_json || {};
+        const moments = (rj.moments || []).length > 0 ? rj.moments : r.inline_comments || [];
+        return sum + moments.length;
+      }, 0);
       statusMap[p.id] = { currentSection: null, done: true, totalComments: commentCount };
     });
     setReaderStatus(statusMap);
@@ -126,11 +165,30 @@ export function useReadingStream(manuscriptId) {
         });
 
       } else if (data.type === "reader_complete") {
-        const { reader_id, reader_name, inline_comments = [], section_reflection, section_number } = data;
+        const {
+          reader_id,
+          reader_name,
+          moments = [],
+          reading_journal,
+          what_i_think_the_writer_is_doing,
+          questions_for_writer = [],
+          checking_in,
+          section_number,
+          // Legacy fallback fields (may still arrive from cached existing reactions)
+          inline_comments,
+          section_reflection,
+        } = data;
+
+        // Use moments (new schema) if present; otherwise fall back to inline_comments
+        const rawMoments = moments.length > 0 ? moments : (inline_comments || []);
+        const mappedComments =
+          moments.length > 0
+            ? _momentsToComments(moments)
+            : (inline_comments || []).map((c) => ({ line: c.line, type: c.type, comment: c.comment }));
 
         setCommentsByLine((prev) => {
           const next = { ...prev };
-          inline_comments.forEach((comment) => {
+          mappedComments.forEach((comment) => {
             const line = comment.line;
             if (!next[line]) next[line] = [];
             const exists = next[line].some(
@@ -145,17 +203,29 @@ export function useReadingStream(manuscriptId) {
 
         setAllComments((prev) => [
           ...prev,
-          ...inline_comments.map((c) => ({ readerId: reader_id, readerName: reader_name, comment: c })),
+          ...mappedComments.map((c) => ({ readerId: reader_id, readerName: reader_name, comment: c })),
         ]);
 
-        if (section_reflection) {
-          setReflections((prev) => [...prev, { readerId: reader_id, section_number, reflection: section_reflection }]);
+        // Reading journal (new primary field, falls back to section_reflection)
+        const journal = reading_journal || section_reflection || null;
+        if (journal || what_i_think_the_writer_is_doing || questions_for_writer.length > 0) {
+          setReflections((prev) => [
+            ...prev,
+            {
+              readerId: reader_id,
+              section_number,
+              reading_journal: journal,
+              what_i_think_the_writer_is_doing: what_i_think_the_writer_is_doing || null,
+              questions_for_writer: Array.isArray(questions_for_writer) ? questions_for_writer : [],
+              checking_in: checking_in || null,
+            },
+          ]);
         }
 
         setThinkingReaders((prev) => { const next = new Map(prev); next.delete(reader_id); return next; });
         setReaderStatus((prev) => {
           const cur = prev[reader_id] || {};
-          return { ...prev, [reader_id]: { ...cur, totalComments: (cur.totalComments || 0) + inline_comments.length } };
+          return { ...prev, [reader_id]: { ...cur, totalComments: (cur.totalComments || 0) + mappedComments.length } };
         });
 
       } else if (data.type === "section_complete") {
