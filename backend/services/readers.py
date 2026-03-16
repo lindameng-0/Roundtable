@@ -404,20 +404,43 @@ def _reader_json_schema_block() -> str:
     return "{}"
 
 
-# Call 2 JSON example: memory_update FIRST, then moments (so truncation preserves memory).
-_READER_JSON_EXAMPLE_CALL2 = '''{
+# Call 2 JSON examples: memory_update FIRST, then moments (so truncation preserves memory).
+# Two examples with different moment counts teach the model that count varies with the text.
+_READER_JSON_EXAMPLE_CALL2 = """
+EXAMPLE A — a section where the writing is solid and only a few things stood out:
+{
   "memory_update": {
-    "facts": "After the Cataclysm, Eli found a boy in the rain, showed him light, left, came back to find him gone. A flower grew where he sat.",
-    "impressions": "Eli makes big promises to strangers. The boy felt more like a symbol than a person so far.",
-    "watching_for": "Whether the boy appears again and whether Eli's promises actually hold.",
-    "feeling": "cautiously interested"
+    "facts": "Eli gave a speech about taking the fight to the Metropolis. Maeve challenged him. A Citadel attack forced the decision.",
+    "impressions": "Eli talks a big game but I'm not sure he believes it. Maeve is playing him.",
+    "watching_for": "Whether Eli actually wants to fight or is being cornered.",
+    "feeling": "uneasy"
   },
   "moments": [
-    {"paragraph": 8, "type": "confusion", "comment": "I don't understand how Eli's light works. Is it magic? Technology?"},
-    {"paragraph": 22, "type": "craft", "comment": "The phrase 'silence it broke' reads oddly — tripped me up."},
-    {"paragraph": 36, "type": "reaction", "comment": "The flower is a strong image but is the boy dead or just gone?"}
+    {"paragraph": 98, "type": "craft", "comment": "'The way how people leaned forward' — 'the way how' is redundant. Small thing but it pulled me out."},
+    {"paragraph": 111, "type": "confusion", "comment": "The scout bursting in right after Maeve corners Eli feels too convenient. Did she know?"}
   ]
-}'''
+}
+
+EXAMPLE B — a section with more problems and interesting moments:
+{
+  "memory_update": {
+    "facts": "Battle sequence. Seth's luck ability failed. Soldiers were killed by the decoy explosion. Eli confronted a Citadel soldier.",
+    "impressions": "The soldier's speech completely changed how I see this conflict. Seth is in over his head.",
+    "watching_for": "Whether the soldier's claim about deliberately missing is true.",
+    "feeling": "shaken, questioning everything"
+  },
+  "moments": [
+    {"paragraph": 45, "type": "craft", "comment": "The battle descriptions cycle through the same beat three times — push forward, get hit, regroup. It started feeling repetitive around the second cycle."},
+    {"paragraph": 52, "type": "confusion", "comment": "I can't tell if Seth's luck is literal magic or just good instincts. The text seems to go back and forth."},
+    {"paragraph": 67, "type": "reaction", "comment": "'And then, I become you.' I had to put the book down for a second. This one line reframes the entire war."},
+    {"paragraph": 71, "type": "craft", "comment": "After that gut-punch line, the narration tells us 'Eli didn't know what to say.' The silence was already doing that work — this undercuts it."},
+    {"paragraph": 73, "type": "confusion", "comment": "Wait, Eli just lets the soldier go? After everything? I need to understand his reasoning because right now it feels like the plot needed it to happen, not like Eli would actually do this."},
+    {"paragraph": 78, "type": "callback", "comment": "The flower behind Eli's ear from the earlier chapter — he's still wearing it into battle. That detail is doing a lot of quiet work."}
+  ]
+}
+
+The number of moments should match the text, not the examples. A clean section might deserve 1. A messy, pivotal section might deserve 6-8. Both examples above are correct for their respective sections. Your output should use ONLY the schema structure shown — one JSON object with memory_update first, then moments.
+"""
 
 
 def _build_section_1_static_prefix(reader: Dict) -> str:
@@ -862,8 +885,36 @@ async def get_reader_inline_reaction(
         "Do not skip any field. Complete the entire JSON object before stopping.\n"
         "Schema:\n"
         '{ "memory_update": { "facts": string, "impressions": string, "watching_for": string, "feeling": string }, '
-        '"moments": [ { "paragraph": number, "type": string, "comment": string } ] }\n'
-        "Here is an example of the structure (values are illustrative only):\n"
+        '"moments": [ { "paragraph": number, "type": string, "comment": string } ] }\n\n'
+        "MOMENT QUALITY FILTER:\n"
+        "Before writing each moment, ask yourself: would a real reader actually stop reading and think about this? Or would they just keep going?\n\n"
+        "These are NOT worth a moment:\n"
+        "- Noting that a line is \"powerful\" or \"effective\" or \"striking\" — that's a compliment, not a reaction\n"
+        "- Summarizing what a character did or said — the writer already knows what they wrote\n"
+        "- Pointing out that dialogue \"establishes\" a character trait — that's literary analysis, not reading\n"
+        "- Saying an image is \"symbolic\" or \"poignant\" — the writer put it there on purpose\n"
+        "- Observing that something \"creates tension\" or \"highlights\" a theme — that's an essay, not a reaction\n\n"
+        "These ARE worth a moment:\n"
+        "- A specific word or phrase that's awkward, redundant, or grammatically off\n"
+        "- A plot beat that feels too convenient, rushed, or unearned\n"
+        "- A place where you genuinely lost track of what was happening\n"
+        "- A line of dialogue that doesn't sound like how that character would talk\n"
+        "- Something that contradicts what was established earlier\n"
+        "- A moment where your emotional reaction was different from what the text seemed to intend\n"
+        "- A genuine question the text raised that you can't resolve\n\n"
+        "If a section is 1000 words of solid writing with nothing that trips you up, the correct number of moments is 0-1. Don't invent reactions.\n\n"
+        "If a section has a confusing action sequence, clunky dialogue, and a plot hole, the correct number might be 5-6. Let the text determine it.\n\n"
+        "BANNED MOMENT LANGUAGE — never use these in a moment comment:\n"
+        "- \"establishes [character] as...\" / \"establishes the...\"\n"
+        "- \"highlights the...\" / \"underscores the...\" / \"reveals the...\"\n"
+        "- \"creates tension\" / \"adds a layer of...\" / \"adds depth\"\n"
+        "- \"is symbolic of...\" / \"is a powerful symbol\"\n"
+        "- \"powerful and well-phrased\" / \"striking and symbolic\" / \"evocative language\"\n"
+        "- \"effectively conveys\" / \"masterfully\" / \"skillfully\"\n"
+        "- \"foil to\" / \"central conflict\" / \"internal state\"\n"
+        "- \"poignant\" / \"incredibly moving\" / \"beautifully phrased\"\n"
+        "- Any comment that describes what the TEXT does (\"this line establishes...\") instead of what YOU experienced (\"I didn't buy this because...\" / \"this tripped me up\" / \"wait, didn't she just say the opposite?\")\n\n"
+        "Examples of the structure (moment count varies by section):\n"
         f"{_READER_JSON_EXAMPLE_CALL2}\n\n"
     )
 
