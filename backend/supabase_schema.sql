@@ -57,9 +57,10 @@ CREATE TABLE IF NOT EXISTS reader_personas (
   avatar_index INT DEFAULT 0,
   personality_specific_instructions TEXT,
   persona_block TEXT,
+  attention_mode TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
--- If table exists without persona_block: ALTER TABLE reader_personas ADD COLUMN IF NOT EXISTS persona_block TEXT;
+-- If table exists without new columns: run supabase_migration_reader_refactor.sql
 CREATE INDEX IF NOT EXISTS idx_reader_personas_manuscript_id ON reader_personas(manuscript_id);
 
 -- Reader memories (per reader per section)

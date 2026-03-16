@@ -8,6 +8,7 @@ from typing import Dict, List
 from utils import make_chat, now_iso, UserMessage
 from config import db
 from models import ReaderPersonaResponse
+from services.readers import DEFAULT_ATTENTION_BY_AVATAR
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +112,7 @@ REQUIREMENTS:
 - "liked_tropes" and "disliked_tropes": Arrays of specific tropes (e.g. "enemies to lovers", "chosen one").
 - "quote": One sentence in their voice about what makes or breaks a book for them.
 - "persona_block": 4-6 sentences for the reader prompt. Style: Start with "You are [Name], [age], a [occupation] who..." and one line on reading habits. Then 2-3 sentences with "You tend to..." for their subtle lens (e.g. notice subtext, notice pacing, notice when they're bored). Add "You don't always comment on it. Sometimes you just note it and keep reading." or similar. End with one grounding sentence: "You're just a reader. You notice what any thoughtful person would. Your personality comes through in how you say things, not in having unusual opinions about everything." No "lens" lists; write flowing prose. This block is used as-is in the system prompt.
+- You are generating one reader in a panel. Each reader in the panel has a different "attention mode" (what they naturally look at). This reader's mode will be assigned by the system; write the persona_block so it fits a reader who tends to focus on that mode. The modes are: SUBTEXT (what's not said, gaps, silence), MOMENTUM (pacing, where the chapter moves), LANGUAGE (sentences, word choice, rhythm), LOGIC (what's established vs withheld, consistency), EMOTIONAL_BEAT (emotional arc of scenes), CHARACTER (what people do vs what narrator says). Don't name the mode in the block; just write a coherent reader who would naturally lean that way.
 
 Return ONLY this JSON (no other text):
 {{
@@ -197,6 +199,8 @@ Return ONLY this JSON (no other text):
     if not persona_block:
         # Fallback: build a short block from fields so reader prompt still has something
         persona_block = f"You are {name}, {age}, a {occ}. {_coerce(data.get('reading_habits'), 'Reads widely.')} You love {_coerce(data.get('favorite_genres'), genre)}. You're a normal reader with opinions. Your personality comes through in how you say things."
+    # Assign this reader a distinct attention mode (no duplicates in panel)
+    attention_mode = DEFAULT_ATTENTION_BY_AVATAR[avatar_index % len(DEFAULT_ATTENTION_BY_AVATAR)]
     return {
         "id": str(uuid.uuid4()),
         "manuscript_id": manuscript_id,
@@ -219,6 +223,7 @@ Return ONLY this JSON (no other text):
             archetype_info["default_instructions"],
         ),
         "persona_block": persona_block,
+        "attention_mode": attention_mode,
         "created_at": now_iso(),
     }
 
