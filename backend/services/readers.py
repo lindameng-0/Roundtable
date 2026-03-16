@@ -112,12 +112,14 @@ def _normalize_memory_update(mu: Dict) -> Dict:
 
 
 def compress_memory(memories: List[Dict], personality: str) -> Dict:
-    """Use the most recent memory. New shape: facts, impressions, watching_for, feeling. Legacy shape: plot_events, etc. converted for prompt."""
+    """Use the most recent memory. New shape: facts, impressions, watching_for, feeling.
+    Legacy shape: plot_events, etc. converted for prompt.
+    """
     if not memories:
         return {}
     last = memories[-1]
     mj = last.get("memory_json", {})
-        if not isinstance(mj, dict):
+    if not isinstance(mj, dict):
         return {}
     if isinstance(mj.get("facts"), str) or isinstance(mj.get("impressions"), str):
         return {
