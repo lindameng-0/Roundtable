@@ -187,8 +187,9 @@ def _validate_reader_parsed(parsed: Dict, fallback: Dict) -> Dict:
 def parse_reader_response(raw_text: str, previous_memory: Optional[Dict] = None) -> Dict:
     """
     Parse reader response with aggressive repair. Returns valid dict or fallback.
-    New schema: checking_in, reading_journal, what_i_think_the_writer_is_doing, moments, questions_for_writer, memory_update.
-    Handles markdown fences (strip ```json and ```), tolerant defaults for missing fields.
+    Schema: checking_in (nullable), reading_journal, what_i_think_the_writer_is_doing, moments, questions_for_writer, memory_update.
+    Tolerance: empty questions_for_writer → []; missing checking_in → null; fewer than 2 moments accepted (no retry).
+    Handles markdown fences (strip ```json and ```); Gemini with response_mime_type=application/json should return valid JSON.
     """
     fallback = {
         "checking_in": None,

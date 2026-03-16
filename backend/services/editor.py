@@ -1,110 +1,216 @@
 import json
 import re
 import logging
-from typing import Dict, List
+from typing import Dict, List, Any
 
-from utils import make_chat, UserMessage
-from config import db
+import google.generativeai as genai
+import config as _cfg
 
 logger = logging.getLogger(__name__)
 
+EDITOR_MODEL = "gemini-2.5-pro"
+EDITOR_TEMPERATURE = 0.3
+# Cap total editor input to stay within context; Editor needs to see all sections but not unbounded
+MAX_EDITOR_INPUT_CHARS = 120000
+
 
 def _reactions_to_editor_input(reactions: List[Dict]) -> str:
-    """Build editor input from new reader schema: what_i_think_the_writer_is_doing, reading_journal, moments, questions_for_writer, memory impressions."""
-    lines = []
+    """
+    Build editor input: ALL reader responses per section as full JSON.
+    Structure: Section 1:\\n  ReaderName: {json}\\n  ...\\nSection 2:\\n  ...
+    """
+    by_section: Dict[int, List[Dict]] = {}
     for r in reactions:
         sn = r.get("section_number", 0)
-        reader_name = r.get("reader_name", "Reader")
-        rj = r.get("response_json") or {}
-        checking_in = rj.get("checking_in") or r.get("checking_in")
-        reading_journal = rj.get("reading_journal") or r.get("section_reflection") or ""
-        what_doing = rj.get("what_i_think_the_writer_is_doing") or r.get("what_i_think_the_writer_is_doing")
-        moments = rj.get("moments") or r.get("inline_comments") or r.get("moments") or []
-        questions = rj.get("questions_for_writer") or r.get("questions_for_writer") or []
+        if sn not in by_section:
+            by_section[sn] = []
+        by_section[sn].append(r)
 
-        lines.append(f"\n[Section {sn}] {reader_name}:")
-        if checking_in:
-            lines.append(f"  Checking in: {checking_in}")
-        if reading_journal:
-            lines.append(f"  Reading journal: {reading_journal}")
-        if what_doing:
-            lines.append(f"  What they think the writer is doing: {what_doing}")
-        for m in moments[:10]:
-            mt = m.get("type", "reaction")
-            mc = m.get("comment", "")
-            if mc:
-                lines.append(f"  [{mt}] {mc}")
-        for q in questions:
-            if q:
-                lines.append(f"  Question for writer: {q}")
-    return "\n".join(lines) if lines else "No reader feedback available."
+    lines = []
+    for sn in sorted(by_section.keys()):
+        lines.append(f"Section {sn}:")
+        for r in by_section[sn]:
+            reader_name = r.get("reader_name", "Reader")
+            # Full reader response: response_json preferred, else build from legacy fields
+            rj = r.get("response_json") or {}
+            if not rj:
+                rj = {
+                    "checking_in": r.get("checking_in"),
+                    "reading_journal": r.get("reading_journal") or r.get("section_reflection"),
+                    "what_i_think_the_writer_is_doing": r.get("what_i_think_the_writer_is_doing"),
+                    "moments": r.get("moments") or r.get("inline_comments") or [],
+                    "questions_for_writer": r.get("questions_for_writer") or [],
+                }
+            try:
+                blob = json.dumps(rj, ensure_ascii=False)
+            except (TypeError, ValueError):
+                blob = "{}"
+            lines.append(f"  {reader_name}: {blob}")
+        lines.append("")
+
+    out = "\n".join(lines).strip()
+    if len(out) > MAX_EDITOR_INPUT_CHARS:
+        out = out[:MAX_EDITOR_INPUT_CHARS] + "\n[... input truncated ...]"
+        logger.warning(f"Editor input truncated to {MAX_EDITOR_INPUT_CHARS} chars")
+    return out or "No reader feedback available."
+
+
+def _editor_system_prompt(genre: str) -> str:
+    return f"""You are a professional editor synthesizing feedback from multiple independent beta readers. You did not read the manuscript yourself. Your job is to find patterns, disagreements, and insights across the readers' responses.
+
+RULES:
+- Never invent observations the readers didn't make. Only synthesize what's in their data.
+- Surface disagreements — they're the most valuable part. When readers see the same scene differently, that reveals ambiguity the writer needs to know about.
+- For "did_it_land": compare each reader's "what_i_think_the_writer_is_doing" per section. If they agree, the intent is clear. If they diverge, flag it.
+- For "character_perception_map": pull from reader impressions across ALL sections, not just the section where the character appeared most.
+- For "engagement_map": use journal length and moment count as engagement proxies. Short journals + few moments = cold spot.
+- For "unresolved_questions": track which questions_for_writer were never answered by a callback in later sections.
+- For "prediction_tracker": use readers' "watching_for" and "impressions" fields across sections.
+- For "moments_of_consensus": find paragraphs/scenes where ALL readers independently reacted.
+- For "heart_of_story": synthesize each reader's intent reads across the whole manuscript into their overall thematic read.
+- For "strongest_moments": curate 8-10 moments that are most specific and most strongly felt. Not "best" — strongest.
+
+Do NOT produce generic writing advice. No "consider tightening the pacing." Only observations grounded in what readers actually experienced.
+
+Respond with valid JSON only. No markdown fences. Use this exact structure:
+
+{
+  "story_overview": { "genre": "...", "tone": "...", "premise": "1-2 sentences" },
+  "did_it_land": [
+    { "section": 1, "reader_intents": { "ReaderName": "..." }, "alignment": "aligned | divergent | mixed", "summary": "1-2 sentences" }
+  ],
+  "character_perception_map": [
+    { "character": "Name", "reader_impressions": { "ReaderName": "1 sentence" }, "consensus_or_split": "1 sentence" }
+  ],
+  "engagement_map": [
+    { "section": 1, "engagement_level": "high | medium | low", "notes": "1 sentence" }
+  ],
+  "disagreements": [
+    { "topic": "...", "positions": { "reader_name": "their take" }, "significance": "1 sentence" }
+  ],
+  "unresolved_questions": [
+    { "question": "...", "asked_by": ["names"], "section_first_asked": 1, "resolved": false }
+  ],
+  "prediction_tracker": [
+    { "reader": "Name", "prediction": "...", "section_predicted": 1, "outcome": "confirmed | denied | still open", "section_resolved": 2 }
+  ],
+  "strongest_moments": [
+    { "reader": "Name", "section": 1, "paragraph": 12, "comment": "...", "why_selected": "1 sentence" }
+  ],
+  "heart_of_story": { "reader_themes": { "ReaderName": "1 sentence" }, "synthesis": "2-3 sentences" },
+  "moments_of_consensus": [
+    { "section": 1, "paragraph": 14, "what_happened": "1 sentence", "who_reacted": ["all readers"], "significance": "1 sentence" }
+  ]
+}"""
+
+
+def _default_editor_report(section_numbers: List[int]) -> Dict[str, Any]:
+    """Default 10-section report when parsing fails or fields are missing."""
+    return {
+        "story_overview": {"genre": "", "tone": "", "premise": ""},
+        "did_it_land": [{"section": s, "reader_intents": {}, "alignment": "mixed", "summary": ""} for s in section_numbers],
+        "character_perception_map": [],
+        "engagement_map": [{"section": s, "engagement_level": "medium", "notes": ""} for s in section_numbers],
+        "disagreements": [],
+        "unresolved_questions": [],
+        "prediction_tracker": [],
+        "strongest_moments": [],
+        "heart_of_story": {"reader_themes": {}, "synthesis": ""},
+        "moments_of_consensus": [],
+    }
+
+
+def _normalize_editor_report(parsed: Dict, section_numbers: List[int]) -> Dict[str, Any]:
+    """Ensure all 10 sections exist with correct shape."""
+    default = _default_editor_report(section_numbers)
+    out = {}
+    for key in default:
+        val = parsed.get(key)
+        if val is None:
+            out[key] = default[key]
+        elif key == "story_overview" and isinstance(val, dict):
+            out[key] = {
+                "genre": val.get("genre", ""),
+                "tone": val.get("tone", ""),
+                "premise": val.get("premise", ""),
+            }
+        elif key == "did_it_land" and isinstance(val, list):
+            out[key] = val
+        elif key == "character_perception_map" and isinstance(val, list):
+            out[key] = val
+        elif key == "engagement_map" and isinstance(val, list):
+            out[key] = val
+        elif key == "disagreements" and isinstance(val, list):
+            out[key] = val
+        elif key == "unresolved_questions" and isinstance(val, list):
+            out[key] = val
+        elif key == "prediction_tracker" and isinstance(val, list):
+            out[key] = val
+        elif key == "strongest_moments" and isinstance(val, list):
+            out[key] = val
+        elif key == "heart_of_story" and isinstance(val, dict):
+            out[key] = {
+                "reader_themes": val.get("reader_themes") if isinstance(val.get("reader_themes"), dict) else {},
+                "synthesis": val.get("synthesis", ""),
+            }
+        elif key == "moments_of_consensus" and isinstance(val, list):
+            out[key] = val
+        else:
+            out[key] = default[key]
+    return out
 
 
 async def generate_editor_report(manuscript: Dict, reactions: List[Dict]) -> Dict:
     """
-    Build and call the editor LLM prompt using the new reader schema.
-    Report focuses on: Did it land? Where did engagement drop? What do readers disagree about?
-    Open questions. Strongest moments. No generic writing advice.
+    Build and call the Editor (Gemini 2.5 Pro) with ALL reader data across ALL sections.
+    Returns the 10-section report: story_overview, did_it_land, character_perception_map,
+    engagement_map, disagreements, unresolved_questions, prediction_tracker,
+    strongest_moments, heart_of_story, moments_of_consensus.
     """
     reactions_text = _reactions_to_editor_input(reactions)
-    section_comment_counts: Dict[int, int] = {}
-    for r in reactions:
-        sn = r.get("section_number", 0)
-        rj = r.get("response_json") or {}
-        moments = rj.get("moments") or r.get("inline_comments") or []
-        section_comment_counts[sn] = section_comment_counts.get(sn, 0) + len(moments)
+    section_numbers = sorted(set(r.get("section_number", 0) for r in reactions if r.get("section_number")))
 
-    editor_system = f"""You are an editor synthesizing feedback from beta readers for a {manuscript.get('genre', 'fiction')} manuscript.
-Your report must be grounded ONLY in what the readers actually experienced. No generic writing advice.
+    api_key = _cfg.GOOGLE_API_KEY or _cfg.GEMINI_API_KEY
+    if not api_key:
+        logger.error("No Gemini API key configured for Editor")
+        return _normalize_editor_report({}, section_numbers)
 
-Read the reader feedback and produce a JSON report with this exact structure:
+    genai.configure(api_key=api_key)
+    genre = manuscript.get("genre", "fiction")
+    model = genai.GenerativeModel(
+        model_name=EDITOR_MODEL,
+        generation_config={
+            "temperature": EDITOR_TEMPERATURE,
+            "max_output_tokens": 8192,
+            "response_mime_type": "application/json",
+        },
+        system_instruction=_editor_system_prompt(genre),
+    )
 
-1. "did_it_land" — For each section (or overall), compare what readers said in "what they think the writer is doing". If readers agree, the intent is clear. If they diverge, list the different interpretations (one short paragraph per section or theme).
-
-2. "engagement_drop" — Sections where reading_journal entries were short or moments were few = lower engagement. List section numbers and a one-line note per section where engagement seemed low.
-
-3. "what_readers_disagree_about" — Genuine disagreements between readers about characters, intentions, or quality. Pull from reading_journal and impressions. Be specific; quote or paraphrase.
-
-4. "open_questions" — Aggregate all "questions for writer" across readers and sections. Highlight questions that multiple readers asked independently. List each question once with a note if more than one reader asked it.
-
-5. "strongest_moments" — Your curated selection of 5-8 strongest individual moments across all readers. These should be the moments with the most specificity and genuine reaction. Each entry: {{ "reader": "name", "section": N, "quote_or_summary": "..." }}.
-
-Return ONLY valid JSON (no markdown fences). No "executive_summary", "recommendations", or generic advice. Only observations grounded in reader experience.
-
-{{
-  "did_it_land": "One or more paragraphs: where reader interpretations aligned vs. diverged.",
-  "engagement_drop": [{{"section": 1, "note": "brief reason"}}],
-  "what_readers_disagree_about": ["disagreement 1", "disagreement 2"],
-  "open_questions": [{{"question": "...", "asked_by_multiple": true/false}}],
-  "strongest_moments": [{{"reader": "name", "section": 1, "quote_or_summary": "..."}}]
-}}"""
-
-    chat = make_chat(editor_system).with_params(temperature=0.35, max_tokens=2000)
-    response = await chat.send_message(UserMessage(
-        text=f"Reader feedback:\n{reactions_text[:12000]}\n\nGenerate the editorial report."
-    ))
+    user_message = f"Reader feedback (each section lists readers with their full response JSON):\n\n{reactions_text}\n\nGenerate the editorial report as JSON."
 
     report_data: Dict = {}
     try:
-        clean = re.sub(r'```[a-z]*\n?', '', response).strip().rstrip('`')
+        response = await model.generate_content_async(user_message)
+        if not response or not response.candidates:
+            logger.warning("Editor: Gemini returned no candidates")
+            return _normalize_editor_report({}, section_numbers)
+        candidate = response.candidates[0]
+        if not candidate.content or not candidate.content.parts:
+            logger.warning("Editor: Gemini candidate has no content")
+            return _normalize_editor_report({}, section_numbers)
+        raw = candidate.content.parts[0].text or ""
+        if not raw.strip():
+            return _normalize_editor_report({}, section_numbers)
+
+        clean = re.sub(r"^```(?:json)?\s*\n?", "", raw.strip())
+        clean = re.sub(r"\n?```\s*$", "", clean.strip())
         report_data = json.loads(clean)
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse editor report JSON: {e}")
+        report_data = {}
     except Exception as e:
-        logger.error(f"Failed to parse editor report: {e}")
-        report_data = {
-            "did_it_land": "The manuscript received reader feedback; synthesis could not be parsed.",
-            "engagement_drop": [{"section": k, "note": ""} for k in sorted(section_comment_counts.keys())],
-            "what_readers_disagree_about": [],
-            "open_questions": [],
-            "strongest_moments": [],
-        }
+        logger.exception("Editor Gemini call failed: %s", e)
+        return _normalize_editor_report({}, section_numbers)
 
-    for key in ("did_it_land", "engagement_drop", "what_readers_disagree_about", "open_questions", "strongest_moments"):
-        if key not in report_data:
-            if key == "did_it_land":
-                report_data[key] = ""
-            elif key == "engagement_drop":
-                report_data[key] = [{"section": k, "note": ""} for k in sorted(section_comment_counts.keys())]
-            else:
-                report_data[key] = [] if key != "did_it_land" else ""
-
-    return report_data
+    return _normalize_editor_report(report_data, section_numbers)

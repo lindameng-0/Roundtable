@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import uuid
 import time
@@ -6,11 +7,14 @@ import asyncio
 import logging
 from typing import Dict, List
 
-import litellm
+import google.generativeai as genai
 import tiktoken
-from utils import make_chat, now_iso, validate_moments, parse_reader_response, UserMessage
+from utils import now_iso, validate_moments, parse_reader_response
 from config import db
 import config as _cfg
+
+# Reader pipeline uses Gemini 2.5 Flash. TODO: If Gemini is unavailable or rate-limited, fall back to OpenAI GPT-4.1-mini.
+READER_MODEL = "gemini-2.5-flash"
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +63,9 @@ ATTENTION_MODES: Dict[str, str] = {
 # Default assignment: Danielle→SUBTEXT, Marcus→MOMENTUM, Suki→LANGUAGE, Jordan→EMOTIONAL_BEAT, Ren→LOGIC
 DEFAULT_ATTENTION_BY_AVATAR: List[str] = ["SUBTEXT", "MOMENTUM", "LANGUAGE", "EMOTIONAL_BEAT", "LOGIC"]
 
+# Default temperature per avatar (0.7–1.0 spread for behavioral divergence). Override via reader.temperature.
+DEFAULT_TEMPERATURE_BY_AVATAR: List[float] = [0.8, 0.85, 0.75, 0.95, 0.8]
+
 
 def _get_attention_mode_block(reader: Dict) -> str:
     """Append YOUR READING TENDENCY for this reader. Uses reader.attention_mode or default by avatar_index."""
@@ -76,7 +83,7 @@ def _get_attention_mode_block(reader: Dict) -> str:
     mode_text = ATTENTION_MODES.get(mode_key, "")
     if not mode_text:
         return ""
-    return f"\n\nYOUR READING TENDENCY: {mode_text}\nThis is a natural inclination, not a mandate. Most of the time you react like any reader would. But when you have a choice of what to focus on, this is where your eye goes."
+    return f"\n\nYOUR READING TENDENCY: {mode_text}\nThis is a natural inclination, not a mandate. Most of the time you react like any reader would. But when you have a choice of what to focus on, this is where your eye goes. It should influence maybe 30% of your comments. The other 70% are just you reading normally."
 
 
 def _get_llm_semaphore() -> asyncio.Semaphore:
@@ -303,78 +310,127 @@ def _reader_json_schema_block() -> str:
 
 
 def _build_section_1_static_prefix(reader: Dict) -> str:
-    """Full prompt for section 1: persona, voice rules, banned phrases, JSON schema. No line/section numbers."""
+    """Full prompt for section 1: persona, voice rules, CRITICAL HONESTY, banned phrases, JSON schema. Optimized for Gemini 2.5 Flash."""
     persona_block = _get_persona_block(reader)
     prefix = f"""{persona_block}
 
-You are reading a manuscript for fun. You are not an editor, teacher, critic, or AI. You're a person who reads a lot and has opinions.
+You are reading a manuscript for fun. Not editing it. Not grading it. Not reviewing it for a magazine. You picked this up because someone asked you to read it, and you're being honest about your experience.
 
-YOUR JOB: Read this section carefully. React honestly. Report what you experienced.
+YOUR JOB: Read this section. React honestly. Report what you experienced — including when the answer is "not much."
 
-HOW TO RESPOND:
-1. "checking_in" — Before you react to the text: what are you expecting from this story based on the genre and opening? 1-2 sentences.
-2. "reading_journal" — After reading: what's going through your head? Write 3-5 sentences like you're texting a friend or journaling. Be specific — name characters, reference scenes, quote words that stuck. If something confused you, say so. If you were bored, say when and why.
-{_JOURNAL_STARTERS}
-3. "what_i_think_the_writer_is_doing" — 1 sentence. What do you think the point of this section was? Not what happened — what the writer wanted you to feel or understand. It should reflect YOUR way of reading (your reading tendency), not a generic theme.
+=== HOW TO RESPOND ===
+
+1. "checking_in" — Before reacting to the text: what are you expecting based on the genre and opening? What kind of story does this feel like it's going to be? 1-2 sentences.
+
+2. "reading_journal" — After reading: what's going through your head? 3-5 sentences.
+   - Start with your gut reaction. Not a thesis. Not a summary. Your actual feeling.
+   - Be specific — name characters, reference specific moments, quote words that stuck with you.
+   - If something confused you, say so. If you were bored, say when your attention drifted and why.
+   - If nothing surprised you, that's a valid reaction. Say it.
+
+3. "what_i_think_the_writer_is_doing" — 1 sentence. Not what happened. What you think the PURPOSE of this section is — what the writer is trying to make you feel, understand, or question. This should come from your specific way of reading (see YOUR READING TENDENCY below), not from a generic theme extraction.
 {_INTENT_READ_INSTRUCTION}
-4. "moments" — 2-4 specific places where you stopped and reacted. Only moments where you'd actually pause, reread, laugh, frown, or text someone. If a paragraph didn't make you feel anything, skip it.
-{_TYPE_DIVERSITY_RULE}
-5. {_QUESTIONS_FOR_WRITER_INSTRUCTION}
-6. "memory_update" — Your notes for next time. What happened (facts), what you think about it (impressions), what you're watching for, and how you feel.
 
-VOICE RULES:
+4. "moments" — 2-4 specific places where you genuinely stopped and reacted. Only moments where you'd pause, reread, laugh, frown, or text someone about.
+   - TYPE DIVERSITY: Your moments should use at least 2 different types. If everything is "reaction," look harder: is there a confusing moment? A craft choice? A question the text raised?
+   - If only 1-2 things struck you, give 1-2 moments. Do not pad.
+
+5. "questions_for_writer" — 0-2 questions about WHAT IS HAPPENING IN THE STORY.
+   GOOD: "Is the boy dead at the end or did he leave? The flower growing where he sat makes me think he died but I'm not sure I'm supposed to think that."
+   GOOD: "Does Maeve actually agree with Eli or is she going along with it? Her silence could go either way."
+   BAD: "What inspired the symbolism of...?" / "Was this meant to represent...?" / "What was your intention behind...?"
+   Your questions should come from genuine confusion or curiosity — things where knowing the answer would change how you understand what you just read. Never ask about the writer's creative process.
+
+6. "memory_update" — Your notes for next time.
+   - "facts": 1-2 sentences. What happened.
+   - "impressions": 1-2 sentences. What you THINK about what happened. Interpretations, suspicions, opinions about characters. This is where your real reading lives.
+   - "watching_for": 1 sentence. What you'll be paying attention to going forward.
+   - "feeling": A few words. Your emotional state.
+
+=== VOICE RULES ===
+
 - First person always. "I felt," "I noticed," "this made me think."
 - Plain language. No literary criticism vocabulary.
-- Specific always beats general. Name the character, the line, the image. Never say "the prose" or "the narrative."
-- You have permission to feel nothing about most of the text. Comment only on what actually struck you. Silence on a paragraph means it was fine. That's okay.
-{_HONESTY_ABOUT_ENGAGEMENT}
+- Specific beats general every time. Name the character, the line, the image. Never say "the prose" or "the narrative" or "the writing."
+- You have permission to feel nothing about most of the text. Silence on a paragraph means it was fine.
 
-BANNED PATTERNS — never use these:
+CRITICAL HONESTY RULE:
+Every section has weaknesses, or at least things that didn't fully land. If you only have positive things to say, you are not reading carefully enough. For every journal entry, include at least one thing that didn't fully work — something that confused you, bored you, felt forced, went on too long, or didn't land the way the writing seemed to intend. You are not being mean. You are being useful. A reader who only praises is a reader the writer can't trust.
+
+HONESTY ABOUT ENGAGEMENT:
+- If this section is setup and you don't have strong feelings yet, say that. "Nice writing but I'm waiting to see where this goes" is valid.
+- If the prose is good but nothing surprised you, say that.
+- Do not perform enthusiasm. A flat honest reaction is more useful than fake energy.
+- Prologues and first chapters often don't provoke strong reactions. Your journal can be 2-3 sentences if that's all you genuinely have.
+
+=== BANNED PATTERNS ===
+
+Never use:
 - "This section [verb]s..." / "The author [verb]s..." / "The narrative..."
-- "effectively," "skillfully," "masterfully," "compelling," "nuanced"
+- "effectively," "skillfully," "masterfully," "compelling," "nuanced," "layered"
 - "adds depth," "rich tapestry," "creates tension," "invites the reader"
-- Any sentence that works as a generic book review. If you could swap in a different book and the sentence still works, delete it and write something specific.
-- Listing positives then negatives in sequence. You're not writing a review.
-{_BANNED_PATTERNS_EXTRA}
-{_ANTI_CONVERGENCE_RULE}
+- "I loved how..." / "I love that..." / "I really enjoyed..."
+- "really hit me" / "hit me hard" / "struck me" / "resonated with me"
+- "so poignant" / "so beautiful" / "so powerful" / "so striking" / "incredibly moving"
+- "was so [adjective]" as a reaction — say what you actually felt
+- Starting with "Wow" or any exclamatory opener
+- Any sentence that works as a generic book review — if you could swap in a different book and the sentence still applies, delete it
 
-PROPORTION RULE: Most of what you read, you just read. You don't stop to comment on it. A 2000-word section might only have 2 moments worth flagging. That's fine. Fewer specific comments >> many generic ones.
+JOURNAL STARTERS — Do NOT start your reading_journal with an exclamation. Instead try:
+- "I keep thinking about..."
+- "The thing I can't let go of is..."
+- "I'm not sure I understand why..."
+- "I feel unsettled because..."
+- "Honestly, not much happened here but..."
+- "So is [character] actually [thing]? Because..."
+- "There's this weird thing where..."
 
-Respond with ONLY valid JSON matching the schema below. No text outside the JSON.
+=== YOU ARE ONE READER, NOT THE ONLY READER ===
+
+Other readers are also reading this manuscript. You don't know what they'll say, but assume they'll notice the obvious things. So:
+- If something is the single most dramatic/beautiful/striking moment — the one ANY reader would notice — you don't need to be the one who points it out. Mention it briefly in your journal if you want, but find something else that caught YOUR eye.
+- Your value is in noticing what others might miss, not confirming what's obviously working.
+- Dig past the surface. There's usually a quieter moment, a word choice, a structural decision, something in the subtext that only you would catch with your particular reading tendency.
+
+=== RESPONSE FORMAT ===
+
+Respond with valid JSON only. The generation config enforces JSON output.
 
 """
     return prefix + "\n" + _reader_json_schema_block()
 
 
 def _build_section_2_plus_static_prefix(reader: Dict) -> str:
-    """Compressed static prefix for section 2+: persona, voice reminder, memory-primed reading, JSON schema."""
+    """Compressed static prefix for section 2+: persona, memory-primed reading, voice reminder, JSON schema. Optimized for Gemini."""
     persona_block = _get_persona_block(reader)
     prefix = f"""{persona_block}
 
 You are continuing to read a manuscript. You are a person, not a critic.
 
-Before reading the new section, check in with yourself: what are you feeling about the story? What are you watching for? Put this in "checking_in."
+Before reading the new section, check in with yourself: what are you feeling about the story so far? What are you watching for? Has anything from earlier sections been nagging at you? Put this in "checking_in."
 
 Then read the section and respond honestly.
 
-VOICE RULES (same as before — brief reminder):
+VOICE RULES (brief reminder):
 - First person. Specific. Plain language.
-- Comment only on moments that genuinely struck you.
-- 2-4 moments per section. Do not force comments.
-{_TYPE_DIVERSITY_RULE}
-- reading_journal is your main response. 3-5 sentences. Vary how you start — never "Wow" or "This section" or "I really loved."
-{_HONESTY_ABOUT_ENGAGEMENT}
-- Use "callback" type when something connects to your memory — a prediction confirmed, a question answered, a pattern you notice.
-- questions_for_writer: only about WHAT IS HAPPENING IN THE STORY (confusion about plot/character), never about the writer's intention or inspiration.
-- what_i_think_the_writer_is_doing: should reflect YOUR reading tendency, not a generic theme. Something other readers might NOT say.
+- 2-4 moments. Use at least 2 different types. Do not force comments.
+- reading_journal is your main response. 3-5 sentences.
+- Always include at least one thing that didn't fully work or land for you.
+- Use "callback" type when something connects to your memory.
 
-BANNED: "This section..." / "The author..." / "effectively" / "compelling" / "Wow" / "hit me" / "so beautiful" / "I loved how..." / generic book-review language.
-{_BANNED_PATTERNS_EXTRA}
-{_ANTI_CONVERGENCE_RULE}
+BANNED: "Wow" / "This section..." / "The author..." / "effectively" / "compelling" / "struck me" / "so beautiful" / generic book-review language.
 
-When referencing your memory, don't say "as I noted previously." Just react naturally. If you predicted something and it happened, say "I KNEW IT" or "okay I saw that coming" — react like a reader, not an analyst.
+MEMORY CALLBACKS:
+When referencing your memory, don't say "as I noted previously." React naturally.
+- If you predicted something and it happened: "I KNEW IT" or "called it"
+- If your impression of a character changed: say what changed and why
+- If something from earlier sections is still unresolved: mention you're still waiting
+- Your most valuable comments connect THIS section to your evolving understanding of the whole story. If you had a suspicion three sections ago, has it been confirmed or complicated?
 
-Respond with ONLY valid JSON matching the schema below. No text outside the JSON.
+YOU ARE ONE READER, NOT THE ONLY READER:
+Other readers are also reading this. Focus on what YOUR specific reading tendency catches, not the obvious standout moments everyone would notice.
+
+Respond with valid JSON only.
 
 """
     return prefix + "\n" + _reader_json_schema_block()
@@ -511,110 +567,128 @@ async def get_reader_inline_reaction(
     prompt_words = len(system_prompt.split())
     logger.info(f"[{reader_name}] Section {section_number}: prompt built ({prompt_words} words)")
 
-    temperature = float(reader.get("temperature", 0.85))
-    model = section.get("model") or _cfg.LLM_MODEL
-    chat_with_json = make_chat(system_prompt, model=model).with_params(
-        max_tokens=1000,
-        temperature=temperature,
-        response_format={"type": "json_object"},
-    )
-    chat_plain = make_chat(system_prompt, model=model).with_params(max_tokens=1000, temperature=temperature)
+    # Temperature: reader override or default by avatar (0.7–1.0 spread for divergence)
+    avatar_idx = reader.get("avatar_index", 0)
+    if not isinstance(avatar_idx, int):
+        try:
+            avatar_idx = int(avatar_idx)
+        except (TypeError, ValueError):
+            avatar_idx = 0
+    if "temperature" in reader and reader["temperature"] is not None:
+        temperature = float(reader["temperature"])
+    else:
+        temperature = DEFAULT_TEMPERATURE_BY_AVATAR[avatar_idx % len(DEFAULT_TEMPERATURE_BY_AVATAR)]
 
     total_sections = section.get("total_sections") or 1
     READER_LLM_TIMEOUT = 150  # seconds per attempt
 
-    async def _call_llm(use_json_format: bool):
-        chat = chat_with_json if use_json_format else chat_plain
-        async with _get_llm_semaphore():
-            user_text = f"Section {section_number} of {total_sections}.\n\n{numbered_text}"
-            if section_number == total_sections:
-                user_text = (
-                    "This is the final section. Read it like a reader finishing a book — notice how things land, what pays off, what doesn't. React honestly to the ending.\n\n"
-                    + user_text
-                )
-            return await asyncio.wait_for(
-                chat.send_message(UserMessage(text=user_text)),
-                timeout=READER_LLM_TIMEOUT,
-            )
+    api_key = _cfg.GOOGLE_API_KEY or _cfg.GEMINI_API_KEY
+    if not api_key:
+        raise ValueError(
+            "No Gemini API key configured. Set GOOGLE_API_KEY or GEMINI_API_KEY in backend/.env"
+        )
+    genai.configure(api_key=api_key)
 
-    # ── API call with retries for transient failures and rate limits
-    logger.info(f"[{reader_name}] Section {section_number}: LLM call started (temp={temperature})")
+    model = genai.GenerativeModel(
+        model_name=READER_MODEL,
+        generation_config={
+            "temperature": temperature,
+            "top_p": 0.95,
+            "max_output_tokens": 2048,
+            "response_mime_type": "application/json",
+        },
+        system_instruction=system_prompt,
+    )
+
+    user_text = f"Section {section_number} of {total_sections}.\n\n{numbered_text}"
+    if section_number == total_sections:
+        user_text = (
+            "This is the final section. Read it like finishing a book — notice what pays off, what doesn't, what you're left with. React honestly to the ending.\n\n"
+            + user_text
+        )
+
+    # ── Gemini API call with retries for transient failures
+    logger.info(f"[{reader_name}] Section {section_number}: Gemini call started (temp={temperature})")
     t0 = time.monotonic()
     response = None
     last_error = None
-    max_attempts = 4  # allow extra retries for rate limit (wait and retry)
+    max_attempts = 4
     for attempt in range(max_attempts):
         try:
-            response = await _call_llm(use_json_format=True)
+            async with _get_llm_semaphore():
+                gemini_response = await asyncio.wait_for(
+                    model.generate_content_async(user_text),
+                    timeout=READER_LLM_TIMEOUT,
+                )
+            # Handle SAFETY block: Gemini may return no text when content is blocked
+            if not gemini_response or not gemini_response.candidates:
+                logger.warning(
+                    f"[{reader_name}] Section {section_number}: Gemini returned no candidates (possible SAFETY block)"
+                )
+                last_error = RuntimeError("Gemini returned no content (possible safety block)")
+                if attempt < max_attempts - 1:
+                    await asyncio.sleep(2)
+                    continue
+                raise last_error
+            candidate = gemini_response.candidates[0]
+            if not candidate.content or not candidate.content.parts:
+                logger.warning(
+                    f"[{reader_name}] Section {section_number}: Gemini candidate has no content/parts"
+                )
+                last_error = RuntimeError("Gemini returned empty content")
+                if attempt < max_attempts - 1:
+                    await asyncio.sleep(2)
+                    continue
+                raise last_error
+            response = candidate.content.parts[0].text or ""
+            if not response.strip():
+                last_error = RuntimeError("Gemini returned empty text")
+                if attempt < max_attempts - 1:
+                    await asyncio.sleep(2)
+                    continue
+                raise last_error
+            # Log usage for cost monitoring
+            um = getattr(gemini_response, "usage_metadata", None)
+            if um:
+                pt = getattr(um, "prompt_token_count", None) or 0
+                ct = getattr(um, "candidates_token_count", None) or 0
+                logger.info(f"[{reader_name}] Section {section_number}: tokens prompt={pt} output={ct}")
             break
         except asyncio.TimeoutError as e:
             last_error = e
             elapsed = time.monotonic() - t0
             logger.warning(f"[{reader_name}] Section {section_number}: attempt {attempt + 1} TIMED OUT after {elapsed:.1f}s")
-            if attempt == 0:
-                await asyncio.sleep(2)  # brief delay before retry
+            if attempt < max_attempts - 1:
+                await asyncio.sleep(2)
                 continue
             raise
         except Exception as e:
             last_error = e
             err_str = str(e).lower()
-            # Transient socket error on Windows (non-blocking socket would block)
-            is_socket_would_block = (
+            is_socket = (
                 isinstance(e, OSError) and getattr(e, "winerror", None) == 10035
             ) or "10035" in str(e)
-            if is_socket_would_block:
-                wait_sec = 2.0
+            if is_socket and attempt < max_attempts - 1:
+                await asyncio.sleep(2)
+                continue
+            if "rate limit" in err_str or "ratelimit" in err_str:
+                wait_sec = 5.0
                 logger.warning(
-                    f"[{reader_name}] Section {section_number}: transient socket error (WinError 10035), waiting {wait_sec}s then retry (attempt {attempt + 1}/{max_attempts})"
+                    f"[{reader_name}] Section {section_number}: rate limited, waiting {wait_sec}s (attempt {attempt + 1}/{max_attempts})"
                 )
                 await asyncio.sleep(wait_sec)
                 if attempt < max_attempts - 1:
                     continue
-                raise
-            # Rate limit: parse "try again in Xs" or "Xms" from error, wait that long + 1s buffer
-            is_rate_limit = (
-                isinstance(e, getattr(litellm, "RateLimitError", type(None)))
-                or "rate limit" in err_str
-                or "ratelimit" in err_str
-            )
-            if is_rate_limit:
-                wait_match = re.search(
-                    r"try again in (\d+(?:\.\d+)?)\s*(ms|s)?",
-                    str(e),
-                    re.I,
-                )
-                if wait_match:
-                    wait_sec = float(wait_match.group(1))
-                    if (wait_match.group(2) or "s").lower() == "ms":
-                        wait_sec /= 1000
-                    wait_sec += 1.0  # 1 second buffer
-                    wait_sec = min(wait_sec, 60.0)
-                else:
-                    wait_sec = 5.0
-                logger.warning(
-                    f"[{reader_name}] Section {section_number}: rate limited, waiting {wait_sec:.1f}s then retry (attempt {attempt + 1}/{max_attempts})"
-                )
-                await asyncio.sleep(wait_sec)
-                if attempt < max_attempts - 1:
-                    continue
-                raise
-            if "response_format" in err_str or "json_schema" in err_str:
-                logger.warning(f"[{reader_name}] Section {section_number}: provider may not support json_object, retrying without")
-                try:
-                    response = await _call_llm(use_json_format=False)
-                    break
-                except Exception:
-                    raise last_error
             logger.warning(f"[{reader_name}] Section {section_number}: attempt {attempt + 1} failed: {e}")
-            if attempt == 0:
+            if attempt < max_attempts - 1:
                 await asyncio.sleep(2)
                 continue
             raise
     if response is None:
-        raise last_error or RuntimeError("No response from LLM")
+        raise last_error or RuntimeError("No response from Gemini")
 
     elapsed = time.monotonic() - t0
-    logger.info(f"[{reader_name}] Section {section_number}: OpenAI call complete ({len(response)} chars, {elapsed*1000:.0f}ms)")
+    logger.info(f"[{reader_name}] Section {section_number}: Gemini call complete ({len(response)} chars, {elapsed*1000:.0f}ms)")
 
     # ── Parse and validate response (repair malformed JSON, validate structure)
     # Use compressed_memory as previous_memory so fallback carries forward last good memory

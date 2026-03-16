@@ -15,7 +15,9 @@ db = get_db(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 # Provider API keys — set the ones you use; LiteLLM reads these from env for the active provider
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
 ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY')
-GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')  # or GOOGLE_API_KEY for Gemini
+# Gemini: support both GOOGLE_API_KEY and GEMINI_API_KEY
+GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY') or os.environ.get('GEMINI_API_KEY')
+GEMINI_API_KEY = GOOGLE_API_KEY  # alias for code that references GEMINI_API_KEY
 
 # Mutable — only gpt-4o-mini is used
 LLM_MODEL = os.environ.get('LLM_MODEL', 'gpt-4o-mini')
