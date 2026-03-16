@@ -117,7 +117,7 @@ def compress_memory(memories: List[Dict], personality: str) -> Dict:
         return {}
     last = memories[-1]
     mj = last.get("memory_json", {})
-    if not isinstance(mj, dict):
+        if not isinstance(mj, dict):
         return {}
     if isinstance(mj.get("facts"), str) or isinstance(mj.get("impressions"), str):
         return {
@@ -601,11 +601,11 @@ async def get_reader_inline_reaction(
     )
 
     user_text = f"Section {section_number} of {total_sections}.\n\n{numbered_text}"
-    if section_number == total_sections:
-        user_text = (
+            if section_number == total_sections:
+                user_text = (
             "This is the final section. Read it like finishing a book — notice what pays off, what doesn't, what you're left with. React honestly to the ending.\n\n"
-            + user_text
-        )
+                    + user_text
+                )
 
     def _call_gemini_sync():
         """Run sync generate_content in a thread to avoid blocking the event loop."""
@@ -678,9 +678,9 @@ async def get_reader_inline_reaction(
             ) or "10035" in str(e)
             if is_socket and attempt < max_attempts - 1:
                 await asyncio.sleep(2)
-                continue
+                    continue
             if "rate limit" in err_str or "ratelimit" in err_str:
-                wait_sec = 5.0
+                    wait_sec = 5.0
                 logger.warning(
                     f"[{reader_name}] Section {section_number}: rate limited, waiting {wait_sec}s (attempt {attempt + 1}/{max_attempts})"
                 )
