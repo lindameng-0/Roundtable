@@ -628,6 +628,8 @@ async def get_reader_inline_reaction(
         "what_i_think_the_writer_is_doing": what_i_think_the_writer_is_doing,
         "moments": moments,
         "questions_for_writer": questions_for_writer,
+        "inline_comments": inline_comments,
+        "section_reflection": section_reflection,
         "reaction_id": reaction_doc["id"],
         "_parse_warning": parse_warning,
     }
@@ -663,6 +665,11 @@ async def reader_pipeline(
                 f"(concurrent-connection guard), reusing saved result"
             )
             rj = existing_reaction.get("response_json") or {}
+            moments_reuse = rj.get("moments") or existing_reaction.get("inline_comments", [])
+            inline_comments_reuse = [
+                {"line": m.get("line", m.get("paragraph")), "type": m.get("type", "reaction"), "comment": m.get("comment", "")}
+                for m in moments_reuse
+            ]
             await queue.put({
                 "type": "reader_complete",
                 "reader_id": reader["id"],
@@ -673,8 +680,10 @@ async def reader_pipeline(
                 "checking_in": rj.get("checking_in"),
                 "reading_journal": rj.get("reading_journal") or existing_reaction.get("section_reflection"),
                 "what_i_think_the_writer_is_doing": rj.get("what_i_think_the_writer_is_doing"),
-                "moments": rj.get("moments") or existing_reaction.get("inline_comments", []),
+                "moments": moments_reuse,
                 "questions_for_writer": rj.get("questions_for_writer", []),
+                "inline_comments": inline_comments_reuse,
+                "section_reflection": rj.get("reading_journal") or existing_reaction.get("section_reflection"),
                 "reaction_id": existing_reaction.get("id", ""),
             })
             return

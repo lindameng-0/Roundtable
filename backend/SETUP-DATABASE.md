@@ -15,4 +15,12 @@ then the schema has not been applied yet.
 
 Tables are created in order: `users`, `user_sessions`, `manuscripts`, `reader_personas`, `reader_memories`, `reader_reactions`, `editor_reports`. The script uses `CREATE TABLE IF NOT EXISTS`, so it's safe to run more than once.
 
+### If you already had the database (reader refactor)
+
+If you see:
+
+`Could not find the 'persona_block' column of 'reader_personas' in the schema cache`
+
+run **`supabase_migration_reader_refactor.sql`** in the SQL Editor instead. It adds the `persona_block` and `response_json` columns required by the refactored reader pipeline.
+
 After it runs, retry the request that failed.
