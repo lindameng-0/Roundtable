@@ -164,6 +164,9 @@ def repair_call2_json(raw_text: str) -> dict:
     except json.JSONDecodeError:
         pass
 
+    # Debug: log the raw text from "moments" onwards to diagnose moments=0 with long responses
+    logger.debug(f"Call2 moments portion: {raw_text[raw_text.find('moments'):][:500]}")
+
     # Extract memory_update fields (these should be complete since they come first)
     for field in ["facts", "impressions", "watching_for", "feeling"]:
         field_match = re.search(
