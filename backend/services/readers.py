@@ -9,7 +9,7 @@ from typing import Dict, List
 
 from google import genai
 import tiktoken
-from utils import now_iso, validate_moments
+from utils import now_iso, validate_moments, parse_reader_response
 from config import db
 import config as _cfg
 
@@ -701,18 +701,31 @@ async def get_reader_inline_reaction(
             logger.info(
                 f"[{reader_name}] Section {section_number}: Gemini Call1 finish_reason={finish_reason}, raw_text_len={len(response_call1_text)}"
             )
+            # Log usage for cost monitoring (new SDK fields)
+            um = getattr(gemini_response_call1, "usage_metadata", None)
+            ct = 0
+            if um:
+                pt = getattr(um, "prompt_token_count", None) or 0
+                ct = getattr(um, "candidates_token_count", None) or 0
+                logger.info(f"[{reader_name}] Section {section_number}: Call1 tokens prompt={pt} output={ct}")
+            # Fix 2: If model hit MAX_TOKENS very early (<150 tokens), retry this call once after a short delay.
+            if (
+                str(finish_reason).endswith("MAX_TOKENS")
+                and ct
+                and ct < 150
+                and attempt == 0
+            ):
+                logger.info(
+                    f"[{reader_name}] Section {section_number}: Call1 hit MAX_TOKENS with only {ct} tokens, retrying once after 3s"
+                )
+                await asyncio.sleep(3)
+                continue
             if not (response_call1_text and response_call1_text.strip()):
                 last_error = RuntimeError("Gemini returned empty text")
                 if attempt < max_attempts - 1:
                     await asyncio.sleep(2)
                     continue
                 raise last_error
-            # Log usage for cost monitoring (new SDK fields)
-            um = getattr(gemini_response_call1, "usage_metadata", None)
-            if um:
-                pt = getattr(um, "prompt_token_count", None) or 0
-                ct = getattr(um, "candidates_token_count", None) or 0
-                logger.info(f"[{reader_name}] Section {section_number}: Call1 tokens prompt={pt} output={ct}")
             break
         except asyncio.TimeoutError as e:
             last_error = e
@@ -751,21 +764,43 @@ async def get_reader_inline_reaction(
         f"[{reader_name}] Section {section_number}: Gemini Call1 complete ({len(response_call1_text)} chars, {elapsed*1000:.0f}ms)"
     )
 
-    # ── Parse Call 1 (simple flat JSON) ───────────────────────────────────────
+    # ── Parse Call 1 (simple flat JSON) with repair using parse_reader_response ──
+    checking_in = None
+    reading_journal = None
+    what_i_think_the_writer_is_doing = None
+    questions_for_writer: List[str] = []
     try:
         parsed_call1 = json.loads(response_call1_text)
-        if not isinstance(parsed_call1, dict):
-            raise ValueError("Call1 JSON is not an object")
+        if isinstance(parsed_call1, dict):
+            checking_in = parsed_call1.get("checking_in")
+            reading_journal = parsed_call1.get("reading_journal")
+            what_i_think_the_writer_is_doing = parsed_call1.get("what_i_think_the_writer_is_doing")
+            qfw = parsed_call1.get("questions_for_writer", [])
+            if isinstance(qfw, list):
+                questions_for_writer = [str(q) for q in qfw]
     except Exception as e:
         logger.error(
-            f"[{reader_name}] Section {section_number}: failed to parse Call1 JSON: {e}. Raw: {response_call1_text[:500]}"
+            f"[{reader_name}] Section {section_number}: failed to parse Call1 JSON directly: {e}. Attempting repair. Raw: {response_call1_text[:500]}"
         )
-        raise
+        try:
+            # Reuse aggressive repair logic from parse_reader_response to salvage partial data.
+            repaired = parse_reader_response(response_call1_text, previous_memory={})
+            checking_in = repaired.get("checking_in")
+            reading_journal = repaired.get("reading_journal")
+            what_i_think_the_writer_is_doing = repaired.get("what_i_think_the_writer_is_doing")
+            qfw = repaired.get("questions_for_writer", [])
+            if isinstance(qfw, list):
+                questions_for_writer = [str(q) for q in qfw]
+            logger.info(
+                f"[{reader_name}] Section {section_number}: Call1 JSON repaired via parse_reader_response (checking_in={bool(checking_in)}, journal={bool(reading_journal)}, intent={bool(what_i_think_the_writer_is_doing)}, questions={len(questions_for_writer)})"
+            )
+        except Exception as repair_err:
+            logger.error(
+                f"[{reader_name}] Section {section_number}: Call1 JSON repair failed, giving up on this reader: {repair_err}"
+            )
+            raise
 
-    checking_in = parsed_call1.get("checking_in")
-    reading_journal = parsed_call1.get("reading_journal")
-    what_i_think_the_writer_is_doing = parsed_call1.get("what_i_think_the_writer_is_doing")
-    questions_for_writer = parsed_call1.get("questions_for_writer", [])
+    # Even after repair, enforce list type for questions_for_writer.
     if not isinstance(questions_for_writer, list):
         questions_for_writer = []
 
@@ -833,6 +868,26 @@ async def get_reader_inline_reaction(
             logger.info(
                 f"[{reader_name}] Section {section_number}: Gemini Call2 finish_reason={finish_reason2}, raw_text_len={len(response_call2_text)}"
             )
+
+            um2 = getattr(gemini_response_call2, "usage_metadata", None)
+            ct2 = 0
+            if um2:
+                pt2 = getattr(um2, "prompt_token_count", None) or 0
+                ct2 = getattr(um2, "candidates_token_count", None) or 0
+                logger.info(f"[{reader_name}] Section {section_number}: Call2 tokens prompt={pt2} output={ct2}")
+            # Fix 2: If Call2 hit MAX_TOKENS very early, retry once after a short delay.
+            if (
+                str(finish_reason2).endswith("MAX_TOKENS")
+                and ct2
+                and ct2 < 150
+                and attempt == 0
+            ):
+                logger.info(
+                    f"[{reader_name}] Section {section_number}: Call2 hit MAX_TOKENS with only {ct2} tokens, retrying once after 3s"
+                )
+                await asyncio.sleep(3)
+                continue
+
             if not (response_call2_text and response_call2_text.strip()):
                 last_error_call2 = RuntimeError("Gemini Call2 returned empty text")
                 if attempt < max_attempts - 1:
@@ -840,11 +895,6 @@ async def get_reader_inline_reaction(
                     continue
                 raise last_error_call2
 
-            um2 = getattr(gemini_response_call2, "usage_metadata", None)
-            if um2:
-                pt2 = getattr(um2, "prompt_token_count", None) or 0
-                ct2 = getattr(um2, "candidates_token_count", None) or 0
-                logger.info(f"[{reader_name}] Section {section_number}: Call2 tokens prompt={pt2} output={ct2}")
             break
         except asyncio.TimeoutError as e:
             last_error_call2 = e
@@ -900,6 +950,29 @@ async def get_reader_inline_reaction(
             parsed_call2 = json.loads(response_call2_text)
             if not isinstance(parsed_call2, dict):
                 raise ValueError("Call2 JSON is not an object")
+        except Exception as e:
+            logger.error(
+                f"[{reader_name}] Section {section_number}: failed to parse Call2 JSON directly: {e}. Attempting repair. Raw: {response_call2_text[:500]}"
+            )
+            try:
+                # Reuse aggressive repair logic from parse_reader_response to salvage as many moments/memory fields as possible.
+                repaired = parse_reader_response(response_call2_text, previous_memory=compressed_memory if isinstance(compressed_memory, dict) else {})
+                parsed_call2 = {
+                    "moments": repaired.get("moments", []),
+                    "memory_update": repaired.get("memory_update", {}),
+                }
+                logger.info(
+                    f"[{reader_name}] Section {section_number}: Call2 JSON repaired via parse_reader_response (moments={len(parsed_call2.get('moments', []))}, has_memory={bool(parsed_call2.get('memory_update'))})"
+                )
+            except Exception as repair_err:
+                logger.error(
+                    f"[{reader_name}] Section {section_number}: Call2 JSON repair failed, falling back to partial data: {repair_err}"
+                )
+                parse_warning = True
+                moments = []
+                memory_update = {}
+                parsed_call2 = None
+        if isinstance(parsed_call2, dict):
             raw_moments = parsed_call2.get("moments", [])
             if not isinstance(raw_moments, list):
                 raw_moments = []
@@ -909,13 +982,6 @@ async def get_reader_inline_reaction(
                 memory_update = _normalize_memory_update(memory_update_raw)
             else:
                 memory_update = {}
-        except Exception as e:
-            logger.error(
-                f"[{reader_name}] Section {section_number}: failed to parse Call2 JSON, falling back to partial data: {e}. Raw: {response_call2_text[:500]}"
-            )
-            parse_warning = True
-            moments = []
-            memory_update = {}
     else:
         if last_error_call2:
             logger.error(
