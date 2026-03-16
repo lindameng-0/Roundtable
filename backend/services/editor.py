@@ -3,7 +3,7 @@ import re
 import logging
 from typing import Dict, List, Any
 
-import google.generativeai as genai
+from google import genai
 import config as _cfg
 
 logger = logging.getLogger(__name__)
@@ -175,31 +175,28 @@ async def generate_editor_report(manuscript: Dict, reactions: List[Dict]) -> Dic
         logger.error("No Gemini API key configured for Editor")
         return _normalize_editor_report({}, section_numbers)
 
-    genai.configure(api_key=api_key)
+    client = genai.Client(api_key=api_key)
     genre = manuscript.get("genre", "fiction")
-    model = genai.GenerativeModel(
-        model_name=EDITOR_MODEL,
-        generation_config={
-            "temperature": EDITOR_TEMPERATURE,
-            "max_output_tokens": 8192,
-            "response_mime_type": "application/json",
-        },
+    config = genai.types.GenerateContentConfig(
         system_instruction=_editor_system_prompt(genre),
+        temperature=EDITOR_TEMPERATURE,
+        max_output_tokens=8192,
+        response_mime_type="application/json",
     )
 
     user_message = f"Reader feedback (each section lists readers with their full response JSON):\n\n{reactions_text}\n\nGenerate the editorial report as JSON."
 
     report_data: Dict = {}
     try:
-        response = await model.generate_content_async(user_message)
-        if not response or not response.candidates:
+        response = await client.aio.models.generate_content(
+            model=EDITOR_MODEL,
+            contents=user_message,
+            config=config,
+        )
+        if not response or not getattr(response, "candidates", None):
             logger.warning("Editor: Gemini returned no candidates")
             return _normalize_editor_report({}, section_numbers)
-        candidate = response.candidates[0]
-        if not candidate.content or not candidate.content.parts:
-            logger.warning("Editor: Gemini candidate has no content")
-            return _normalize_editor_report({}, section_numbers)
-        raw = candidate.content.parts[0].text or ""
+        raw = getattr(response, "text", None) or ""
         if not raw.strip():
             return _normalize_editor_report({}, section_numbers)
 
