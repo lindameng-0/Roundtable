@@ -7,7 +7,7 @@ import asyncio
 import logging
 from typing import Dict, List
 
-from google import genai
+import google.generativeai as genai
 import tiktoken
 from utils import now_iso, validate_moments, parse_reader_response
 from config import db
