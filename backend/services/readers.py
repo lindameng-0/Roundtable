@@ -584,9 +584,9 @@ async def get_reader_inline_reaction(
 
     api_key = _cfg.GOOGLE_API_KEY or _cfg.GEMINI_API_KEY
     if not api_key:
-        raise ValueError(
-            "No Gemini API key configured. Set GOOGLE_API_KEY or GEMINI_API_KEY in backend/.env"
-        )
+        msg = "No Gemini API key configured. Set GOOGLE_API_KEY or GEMINI_API_KEY in backend/.env and restart the server."
+        logger.error(f"[{reader_name}] Section {section_number}: {msg}")
+        raise ValueError(msg)
     genai.configure(api_key=api_key)
 
     model = genai.GenerativeModel(
@@ -607,6 +607,10 @@ async def get_reader_inline_reaction(
             + user_text
         )
 
+    def _call_gemini_sync():
+        """Run sync generate_content in a thread to avoid blocking the event loop."""
+        return model.generate_content(user_text)
+
     # ── Gemini API call with retries for transient failures
     logger.info(f"[{reader_name}] Section {section_number}: Gemini call started (temp={temperature})")
     t0 = time.monotonic()
@@ -617,11 +621,11 @@ async def get_reader_inline_reaction(
         try:
             async with _get_llm_semaphore():
                 gemini_response = await asyncio.wait_for(
-                    model.generate_content_async(user_text),
+                    asyncio.to_thread(_call_gemini_sync),
                     timeout=READER_LLM_TIMEOUT,
                 )
             # Handle SAFETY block: Gemini may return no text when content is blocked
-            if not gemini_response or not gemini_response.candidates:
+            if not gemini_response or not getattr(gemini_response, "candidates", None):
                 logger.warning(
                     f"[{reader_name}] Section {section_number}: Gemini returned no candidates (possible SAFETY block)"
                 )
@@ -631,7 +635,9 @@ async def get_reader_inline_reaction(
                     continue
                 raise last_error
             candidate = gemini_response.candidates[0]
-            if not candidate.content or not candidate.content.parts:
+            content = getattr(candidate, "content", None)
+            parts = getattr(content, "parts", None) if content else None
+            if not parts:
                 logger.warning(
                     f"[{reader_name}] Section {section_number}: Gemini candidate has no content/parts"
                 )
@@ -640,8 +646,9 @@ async def get_reader_inline_reaction(
                     await asyncio.sleep(2)
                     continue
                 raise last_error
-            response = candidate.content.parts[0].text or ""
-            if not response.strip():
+            part = parts[0]
+            response = getattr(part, "text", None) or ""
+            if not (response and response.strip()):
                 last_error = RuntimeError("Gemini returned empty text")
                 if attempt < max_attempts - 1:
                     await asyncio.sleep(2)
@@ -665,6 +672,7 @@ async def get_reader_inline_reaction(
         except Exception as e:
             last_error = e
             err_str = str(e).lower()
+            logger.warning(f"[{reader_name}] Section {section_number}: attempt {attempt + 1} failed: {type(e).__name__}: {e}")
             is_socket = (
                 isinstance(e, OSError) and getattr(e, "winerror", None) == 10035
             ) or "10035" in str(e)
@@ -679,7 +687,6 @@ async def get_reader_inline_reaction(
                 await asyncio.sleep(wait_sec)
                 if attempt < max_attempts - 1:
                     continue
-            logger.warning(f"[{reader_name}] Section {section_number}: attempt {attempt + 1} failed: {e}")
             if attempt < max_attempts - 1:
                 await asyncio.sleep(2)
                 continue
@@ -909,7 +916,7 @@ async def reader_pipeline(
         })
 
     except Exception as e:
-        logger.error(f"Reader {reader_name}: ERROR on section {sec['section_number']}: {e}")
+        logger.exception(f"Reader {reader_name}: ERROR on section {sec['section_number']}: {e}")
         await queue.put({
             "type": "reader_error",
             "reader_id": reader["id"],
