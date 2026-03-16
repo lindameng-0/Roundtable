@@ -110,6 +110,7 @@ REQUIREMENTS:
 - "occupation", "reading_habits", "favorite_genres", "genre_preferences", "reading_priority": Be specific (e.g. "teaches high school English", "reads 2 books a month, mostly on commute", "literary fiction and slow-burn thrillers"). Do NOT leave generic like "Reader" or "A compelling story".
 - "liked_tropes" and "disliked_tropes": Arrays of specific tropes (e.g. "enemies to lovers", "chosen one").
 - "quote": One sentence in their voice about what makes or breaks a book for them.
+- "persona_block": 4-6 sentences for the reader prompt. Style: Start with "You are [Name], [age], a [occupation] who..." and one line on reading habits. Then 2-3 sentences with "You tend to..." for their subtle lens (e.g. notice subtext, notice pacing, notice when they're bored). Add "You don't always comment on it. Sometimes you just note it and keep reading." or similar. End with one grounding sentence: "You're just a reader. You notice what any thoughtful person would. Your personality comes through in how you say things, not in having unusual opinions about everything." No "lens" lists; write flowing prose. This block is used as-is in the system prompt.
 
 Return ONLY this JSON (no other text):
 {{
@@ -124,7 +125,8 @@ Return ONLY this JSON (no other text):
   "disliked_tropes": ["trope1", "trope2"],
   "voice_style": "how they express themselves",
   "quote": "one line in their voice",
-  "personality_specific_instructions": "2-3 sentences: their unique lens as a reader"
+  "personality_specific_instructions": "2-3 sentences: their unique lens as a reader",
+  "persona_block": "4-6 sentences in the style described above, flowing prose, no bullet lists"
 }}"""
 
     user_text = (
@@ -191,6 +193,10 @@ Return ONLY this JSON (no other text):
     if not prio or prio.lower() == "a compelling story":
         prio = default_priorities.get(arch, "A compelling story.")
 
+    persona_block = _coerce(data.get("persona_block"), "").strip()
+    if not persona_block:
+        # Fallback: build a short block from fields so reader prompt still has something
+        persona_block = f"You are {name}, {age}, a {occ}. {_coerce(data.get('reading_habits'), 'Reads widely.')} You love {_coerce(data.get('favorite_genres'), genre)}. You're a normal reader with opinions. Your personality comes through in how you say things."
     return {
         "id": str(uuid.uuid4()),
         "manuscript_id": manuscript_id,
@@ -212,6 +218,7 @@ Return ONLY this JSON (no other text):
             data.get("personality_specific_instructions"),
             archetype_info["default_instructions"],
         ),
+        "persona_block": persona_block,
         "created_at": now_iso(),
     }
 

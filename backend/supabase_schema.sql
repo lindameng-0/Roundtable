@@ -56,8 +56,10 @@ CREATE TABLE IF NOT EXISTS reader_personas (
   quote TEXT,
   avatar_index INT DEFAULT 0,
   personality_specific_instructions TEXT,
+  persona_block TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- If table exists without persona_block: ALTER TABLE reader_personas ADD COLUMN IF NOT EXISTS persona_block TEXT;
 CREATE INDEX IF NOT EXISTS idx_reader_personas_manuscript_id ON reader_personas(manuscript_id);
 
 -- Reader memories (per reader per section)
@@ -71,7 +73,7 @@ CREATE TABLE IF NOT EXISTS reader_memories (
 );
 CREATE INDEX IF NOT EXISTS idx_reader_memories_manuscript_reader ON reader_memories(manuscript_id, reader_id);
 
--- Reader reactions (inline comments + reflection per reader per section)
+-- Reader reactions (new schema: checking_in, reading_journal, what_i_think_the_writer_is_doing, moments, questions_for_writer; legacy inline_comments/section_reflection kept for compat)
 CREATE TABLE IF NOT EXISTS reader_reactions (
   id TEXT PRIMARY KEY,
   manuscript_id TEXT NOT NULL REFERENCES manuscripts(id) ON DELETE CASCADE,
@@ -80,8 +82,10 @@ CREATE TABLE IF NOT EXISTS reader_reactions (
   section_number INT NOT NULL,
   inline_comments JSONB DEFAULT '[]',
   section_reflection TEXT,
+  response_json JSONB DEFAULT '{}',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- If table already exists without response_json: ALTER TABLE reader_reactions ADD COLUMN IF NOT EXISTS response_json JSONB DEFAULT '{}';
 CREATE INDEX IF NOT EXISTS idx_reader_reactions_manuscript ON reader_reactions(manuscript_id);
 CREATE INDEX IF NOT EXISTS idx_reader_reactions_manuscript_section ON reader_reactions(manuscript_id, section_number);
 

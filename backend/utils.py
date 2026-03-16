@@ -107,58 +107,96 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-VALID_COMMENT_TYPES = (
-    "reaction", "prediction", "confusion", "critique", "praise", "theory", "comparison", "callback", "pacing"
-)
+# New schema: reaction | confusion | question | craft | callback (no praise/critique/prediction/theory/comparison/pacing)
+VALID_MOMENT_TYPES = ("reaction", "confusion", "question", "craft", "callback")
+# Legacy alias for any code still using old type names
+VALID_COMMENT_TYPES = VALID_MOMENT_TYPES
+
+
+def _normalize_memory_update_parsed(mu: Any) -> Dict:
+    """Ensure memory_update has facts, impressions, watching_for, feeling."""
+    if not isinstance(mu, dict):
+        return {}
+    out = {"facts": "", "impressions": "", "watching_for": "", "feeling": ""}
+    for key in out:
+        val = mu.get(key)
+        if isinstance(val, str) and val.strip():
+            out[key] = val.strip()
+    return out
 
 
 def _validate_reader_parsed(parsed: Dict, fallback: Dict) -> Dict:
-    """Validate and normalize parsed reader response. Drop invalid comments."""
+    """Validate and normalize parsed reader response. New schema: checking_in, reading_journal, what_i_think_the_writer_is_doing, moments, questions_for_writer, memory_update."""
     if not isinstance(parsed, dict):
         return fallback
-    out = {
-        "inline_comments": [],
-        "section_reflection": parsed.get("section_reflection"),
-        "memory_update": parsed.get("memory_update") if isinstance(parsed.get("memory_update"), dict) else fallback["memory_update"],
+    # Prefer new keys; accept legacy inline_comments/section_reflection for backward compat
+    raw_moments = parsed.get("moments")
+    if not isinstance(raw_moments, list):
+        raw_moments = parsed.get("inline_comments") or []
+    moments = []
+    for c in raw_moments:
+        if not isinstance(c, dict):
+            continue
+        para = c.get("paragraph") is not None and c.get("paragraph") or c.get("line")
+        if para is None:
+            continue
+        try:
+            para = int(float(para))
+        except (TypeError, ValueError):
+            continue
+        comment_type = c.get("type")
+        if not isinstance(comment_type, str) or comment_type not in VALID_MOMENT_TYPES:
+            comment_type = "reaction"
+        comment_val = c.get("comment")
+        if comment_val is not None and not isinstance(comment_val, str):
+            comment_val = str(comment_val)
+        else:
+            comment_val = comment_val or ""
+        moments.append({"paragraph": para, "type": comment_type, "comment": comment_val})
+    reading_journal = parsed.get("reading_journal")
+    if reading_journal is not None and not isinstance(reading_journal, str):
+        reading_journal = str(reading_journal)
+    if reading_journal is None:
+        reading_journal = parsed.get("section_reflection")
+    if reading_journal is not None and not isinstance(reading_journal, str):
+        reading_journal = str(reading_journal)
+    checking_in = parsed.get("checking_in")
+    if checking_in is not None and not isinstance(checking_in, str):
+        checking_in = str(checking_in) if checking_in else None
+    what_doing = parsed.get("what_i_think_the_writer_is_doing")
+    if what_doing is not None and not isinstance(what_doing, str):
+        what_doing = str(what_doing) if what_doing else None
+    qfw = parsed.get("questions_for_writer")
+    if isinstance(qfw, list):
+        questions_for_writer = [str(q).strip() for q in qfw if q and str(q).strip()]
+    else:
+        questions_for_writer = []
+    memory_update = _normalize_memory_update_parsed(
+        parsed.get("memory_update") if isinstance(parsed.get("memory_update"), dict) else fallback.get("memory_update", {})
+    )
+    return {
+        "checking_in": checking_in,
+        "reading_journal": reading_journal,
+        "what_i_think_the_writer_is_doing": what_doing,
+        "moments": moments,
+        "questions_for_writer": questions_for_writer,
+        "memory_update": memory_update,
     }
-    raw_comments = parsed.get("inline_comments")
-    if isinstance(raw_comments, list):
-        for c in raw_comments:
-            if not isinstance(c, dict):
-                continue
-            line = c.get("line") is not None and c.get("line") or c.get("paragraph")
-            if line is None:
-                continue
-            try:
-                line = int(float(line))
-            except (TypeError, ValueError):
-                continue
-            comment_type = c.get("type")
-            if not isinstance(comment_type, str):
-                comment_type = "reaction"
-            if comment_type not in VALID_COMMENT_TYPES:
-                comment_type = "reaction"
-            comment_val = c.get("comment")
-            if comment_val is not None and not isinstance(comment_val, str):
-                comment_val = str(comment_val)
-            else:
-                comment_val = comment_val or ""
-            out["inline_comments"].append({"line": line, "type": comment_type, "comment": comment_val})
-    if out["section_reflection"] is not None and not isinstance(out["section_reflection"], str):
-        out["section_reflection"] = str(out["section_reflection"])
-    return out
 
 
 def parse_reader_response(raw_text: str, previous_memory: Optional[Dict] = None) -> Dict:
     """
     Parse reader response with aggressive repair. Returns valid dict or fallback.
-    Handles markdown fences, preamble, smart quotes, trailing commas, comments, and extracts
-    inline_comments/section_reflection when full JSON is broken.
+    New schema: checking_in, reading_journal, what_i_think_the_writer_is_doing, moments, questions_for_writer, memory_update.
+    Handles markdown fences (strip ```json and ```), tolerant defaults for missing fields.
     """
     fallback = {
-        "inline_comments": [],
-        "section_reflection": "Reader encountered a formatting issue for this section.",
-        "memory_update": previous_memory if isinstance(previous_memory, dict) else {},
+        "checking_in": None,
+        "reading_journal": "Reader encountered a formatting issue for this section.",
+        "what_i_think_the_writer_is_doing": None,
+        "moments": [],
+        "questions_for_writer": [],
+        "memory_update": _normalize_memory_update_parsed(previous_memory) if isinstance(previous_memory, dict) else {"facts": "", "impressions": "", "watching_for": "", "feeling": ""},
     }
 
     if not raw_text or not isinstance(raw_text, str):
@@ -215,19 +253,23 @@ def parse_reader_response(raw_text: str, previous_memory: Optional[Dict] = None)
     except json.JSONDecodeError:
         pass
 
-    # Step 4: Nuclear option — extract inline_comments and section_reflection via regex
-    comments_match = re.search(r'"inline_comments"\s*:\s*\[(.+?)\]', repaired, re.DOTALL)
-    reflection_match = re.search(r'"section_reflection"\s*:\s*"(.+?)"', repaired, re.DOTALL)
+    # Step 4: Nuclear option — extract moments or inline_comments and reading_journal via regex
+    moments_match = re.search(r'"moments"\s*:\s*\[(.+?)\]', repaired, re.DOTALL)
+    if not moments_match:
+        moments_match = re.search(r'"inline_comments"\s*:\s*\[(.+?)\]', repaired, re.DOTALL)
+    reflection_match = re.search(r'"reading_journal"\s*:\s*"(.+?)"', repaired, re.DOTALL)
+    if not reflection_match:
+        reflection_match = re.search(r'"section_reflection"\s*:\s*"(.+?)"', repaired, re.DOTALL)
 
-    if comments_match:
+    if moments_match:
         try:
-            comments_str = "[" + comments_match.group(1) + "]"
+            comments_str = "[" + moments_match.group(1) + "]"
             comments_str = re.sub(r",\s*([}\]])", r"\1", comments_str)
             comments = json.loads(comments_str)
             reflection = None
             if reflection_match:
                 reflection = reflection_match.group(1).replace("\\n", " ").strip()
-            valid_comments = []
+            valid_moments = []
             for c in comments:
                 if not isinstance(c, dict):
                     continue
@@ -237,25 +279,23 @@ def parse_reader_response(raw_text: str, previous_memory: Optional[Dict] = None)
                     continue
                 try:
                     p = c.get("paragraph", c.get("line"))
-                    int(float(p))
+                    para = int(float(p))
                 except (ValueError, TypeError):
                     continue
-                line = c.get("line") is not None and c.get("line") or c.get("paragraph")
-                try:
-                    line = int(float(line))
-                except (TypeError, ValueError):
-                    continue
                 comment_type = c.get("type", "reaction")
-                if not isinstance(comment_type, str) or comment_type not in VALID_COMMENT_TYPES:
+                if not isinstance(comment_type, str) or comment_type not in VALID_MOMENT_TYPES:
                     comment_type = "reaction"
                 comment_val = c.get("comment")
                 comment_val = str(comment_val) if comment_val is not None else ""
-                valid_comments.append({"line": line, "type": comment_type, "comment": comment_val})
-            logger.info("parse_reader_response: extracted %s comments from broken JSON", len(valid_comments))
+                valid_moments.append({"paragraph": para, "type": comment_type, "comment": comment_val})
+            logger.info("parse_reader_response: extracted %s moments from broken JSON", len(valid_moments))
             return {
-                "inline_comments": valid_comments,
-                "section_reflection": reflection,
-                "memory_update": previous_memory if isinstance(previous_memory, dict) else {},
+                "checking_in": None,
+                "reading_journal": reflection,
+                "what_i_think_the_writer_is_doing": None,
+                "moments": valid_moments,
+                "questions_for_writer": [],
+                "memory_update": _normalize_memory_update_parsed(previous_memory) if isinstance(previous_memory, dict) else {"facts": "", "impressions": "", "watching_for": "", "feeling": ""},
             }
         except json.JSONDecodeError:
             pass
@@ -266,54 +306,46 @@ def parse_reader_response(raw_text: str, previous_memory: Optional[Dict] = None)
 
 
 def _parse_validate(result: Dict) -> bool:
-    """Check that the result has the expected structure."""
+    """Check that the result has the expected structure (new schema: moments, or legacy inline_comments)."""
     if not isinstance(result, dict):
         return False
-    if "inline_comments" not in result:
-        return False
-    if not isinstance(result["inline_comments"], list):
-        return False
-    return True
+    if "moments" in result and isinstance(result["moments"], list):
+        return True
+    if "inline_comments" in result and isinstance(result["inline_comments"], list):
+        return True
+    return False
 
 
-def validate_inline_comments(
-    comments: List[Dict], line_start: int, line_end: int
+def validate_moments(
+    moments: List[Dict], line_start: int, line_end: int
 ) -> List[Dict]:
-    """Clamp out-of-range line numbers to the nearest valid line. Ensure comment is a string for JSONB.
-    Accepts "line" or "paragraph" (paragraph is 1-based index; if present we map to line when possible).
-    """
+    """Clamp paragraph numbers to valid range. Ensure type is one of VALID_MOMENT_TYPES. Return list of {paragraph, type, comment}."""
     valid = []
-    for c in comments:
+    for c in moments:
         if not isinstance(c, dict):
             continue
-        line = c.get("line")
-        if line is None:
-            # v4 may send "paragraph"; we don't have paragraph→line map here, so skip if no line
-            para = c.get("paragraph")
-            if para is not None:
-                try:
-                    line = int(float(para))
-                    # Treat paragraph as 1-based index; clamp to range (rough mapping)
-                    line = max(line_start, min(line_end, line_start + line - 1))
-                except (TypeError, ValueError):
-                    continue
-            else:
-                continue
+        para = c.get("paragraph") is not None and c.get("paragraph") or c.get("line")
+        if para is None:
+            continue
         try:
-            line = int(float(line))
+            para = int(float(para))
         except (TypeError, ValueError):
             continue
-        line = max(line_start, min(line_end, line))
+        para = max(line_start, min(line_end, para))
         comment_val = c.get("comment")
         if comment_val is not None and not isinstance(comment_val, str):
             comment_val = str(comment_val)
         else:
             comment_val = comment_val or ""
         raw_type = c.get("type", "reaction")
-        comment_type = raw_type if isinstance(raw_type, str) and raw_type in VALID_COMMENT_TYPES else "reaction"
-        valid.append({
-            "line": line,
-            "type": comment_type,
-            "comment": comment_val,
-        })
+        comment_type = raw_type if isinstance(raw_type, str) and raw_type in VALID_MOMENT_TYPES else "reaction"
+        valid.append({"paragraph": para, "type": comment_type, "comment": comment_val})
     return valid
+
+
+def validate_inline_comments(
+    comments: List[Dict], line_start: int, line_end: int
+) -> List[Dict]:
+    """Legacy: same as validate_moments but returns items with "line" key for backward compat. Prefer validate_moments."""
+    validated = validate_moments(comments, line_start, line_end)
+    return [{"line": m["paragraph"], "type": m["type"], "comment": m["comment"]} for m in validated]

@@ -8,7 +8,7 @@ from typing import Dict, List
 
 import litellm
 import tiktoken
-from utils import make_chat, now_iso, validate_inline_comments, parse_reader_response, UserMessage
+from utils import make_chat, now_iso, validate_moments, parse_reader_response, UserMessage
 from config import db
 import config as _cfg
 
@@ -22,13 +22,29 @@ _llm_semaphore: asyncio.Semaphore | None = None
 # Keys: reader_id -> {"section_1": str, "section_2_plus": str}
 _static_prefix_cache: Dict[str, Dict[str, str]] = {}
 
-# Reading lens: biases each reader's attention so they comment on different paragraphs (Problem 2).
-READER_LENS: Dict[str, str] = {
-    "emotional": "When scanning a section, your eyes are drawn first to: character emotions, relationship dynamics, dialogue that reveals how people feel, moments of vulnerability or dishonesty, and sensory details that create mood. You often comment on quiet character moments that other readers skip.",
-    "analytical": "When scanning a section, your eyes are drawn first to: cause and effect chains, timeline consistency, setups that might pay off later, pacing choices (too fast, too slow, just right), structural decisions like where scenes start and end, and information the reader learns versus what characters know. You often comment on structural choices that other readers don't notice.",
-    "skeptical": "When scanning a section, your eyes are drawn first to: contradictions, unreliable narration, character motivations that don't add up, worldbuilding details that conflict with earlier information, and moments where the author seems to be hiding something. You often comment on things that feel off or suspicious that other readers accept at face value.",
-    "genre_savvy": "When scanning a section, your eyes are drawn first to: genre conventions being followed or subverted, tropes in action, pacing compared to other books in the genre, and moments that remind you of specific other works. You often comment on how a scene compares to similar scenes in other books.",
-    "casual": "When scanning a section, your eyes are drawn first to: whether you're bored or engaged right now, whether dialogue sounds like real people talking, whether you understand what's happening without rereading, and whether scenes earn their length. You often comment on pacing and clarity issues that other readers are too polite to mention.",
+# Default persona blocks (4-6 sentences). Used when reader has no custom persona_block.
+# Keyed by avatar_index 0-4. Persona is a footnote before voice rules.
+DEFAULT_PERSONAS: Dict[int, str] = {
+    0: """You are Danielle, 34, a veterinarian who reads about a book a week — mostly literary fiction, some thriller. You're warm but honest. You don't sugarcoat but you're never mean.
+You tend to pick up on subtext in dialogue — when characters say one thing and mean another. Your friends say you read people well. You don't always comment on it. Sometimes you just note it and keep reading.
+You think good endings are earned, not shocked into. You dislike twist endings that rewrite everything. But you wouldn't bring this up unless the story actually does it.
+Other than that, you're just a reader. You notice what any thoughtful person would. Your personality comes through in how you say things, not in having unusual opinions about everything.""",
+    1: """You are Marcus, 28, a high school history teacher who reads mostly sci-fi and fantasy but will try anything with good word of mouth. You read fast and you're honest about when your attention drifts.
+You tend to notice when a story is building momentum — or when it stalls. You can usually feel when a chapter is setup vs. payoff, and you get impatient with setup that doesn't earn its length. But you don't always mention pacing. Sometimes a slow section is doing something else interesting and you'll focus on that instead.
+You think exposition is almost always better when it's hidden inside action or dialogue. Info-dumps pull you out. But you'd only flag it when it actually breaks your immersion.
+You're a normal reader with a good radar for when you're being bored. Most of the time you just react like anyone would.""",
+    2: """You are Suki, 41, a freelance translator who reads literary fiction, poetry collections, and the occasional memoir. You read slowly and notice language — rhythm, word choice, how a sentence feels in your mouth.
+You tend to catch when a writer is reaching for an image that doesn't quite work, or when a sentence has unexpected music to it. You notice craft, but you don't always comment on it. Sometimes beautiful writing is just beautiful and you move on.
+You believe characters should be surprising and consistent at the same time. When a character does something that feels wrong, you notice immediately. But you'll sit with it before deciding if it's a flaw or a reveal.
+You're a thoughtful reader, not a writing teacher. You react to what moves you. Most of the time that's the same stuff anyone would notice.""",
+    3: """You are Jordan, 23, a grad student in marine biology who reads mostly genre fiction — romance, horror, YA, whatever's fun. You read to feel things and you're not embarrassed about it.
+You notice emotional beats — when a scene is supposed to make you feel something and whether it actually does. You know when a writer is trying to manipulate you emotionally and you can tell the difference between earned emotion and forced emotion. But you don't analyze it to death. If you cried, you cried. If you didn't, you'll just say the scene fell flat.
+You think stakes matter more than style. A plain sentence that changes everything hits harder than a gorgeous paragraph that changes nothing.
+You're an enthusiastic reader who's honest about when something isn't working. You react like a person, not a student.""",
+    4: """You are Ren, 36, a software engineer who reads widely — literary fiction, nonfiction, fantasy, the occasional graphic novel. You're analytical by nature but you read for pleasure, not study.
+You tend to notice structure — when timelines shift, when information is withheld, when a scene is doing double duty. You're good at tracking what a story has told you vs. what it's implied, and you notice when those diverge. But you don't map out plot architecture in your responses. You just mention it when something clicks or when you feel manipulated.
+You respect when a writer trusts the reader to figure things out. You dislike when a story over-explains. But you'd only mention it when it actually happens.
+You're a careful reader who reacts normally to most things and occasionally has a sharp observation. Not every comment needs to be clever.""",
 }
 
 
@@ -40,77 +56,43 @@ def _get_llm_semaphore() -> asyncio.Semaphore:
 
 
 def _normalize_memory_update(mu: Dict) -> Dict:
-    """Convert flat memory_update (plot, characters, predictions, questions, feeling) to legacy DB shape."""
+    """Normalize memory_update from LLM response to DB shape. New schema: facts, impressions, watching_for, feeling."""
     if not mu or not isinstance(mu, dict):
         return mu
-    if "plot_events" in mu and "character_notes" in mu:
-        return mu  # already legacy
     out = {
-        "plot_events": [],
-        "character_notes": {},
-        "predictions": [],
-        "unresolved_questions": [],
-        "emotional_state": "",
+        "facts": "",
+        "impressions": "",
+        "watching_for": "",
+        "feeling": "",
     }
-    if isinstance(mu.get("plot"), str) and mu["plot"].strip():
-        out["plot_events"] = [mu["plot"].strip()]
-    if isinstance(mu.get("characters"), str) and mu["characters"].strip():
-        out["character_notes"] = {"_summary": mu["characters"].strip()}
-    if isinstance(mu.get("predictions"), str) and mu["predictions"].strip():
-        out["predictions"] = [{"prediction": mu["predictions"].strip(), "confidence": "medium", "evidence": ""}]
-    if isinstance(mu.get("questions"), str) and mu["questions"].strip():
-        out["unresolved_questions"] = [mu["questions"].strip()]
-    if isinstance(mu.get("feeling"), str) and mu["feeling"].strip():
-        out["emotional_state"] = mu["feeling"].strip()
+    for key in ("facts", "impressions", "watching_for", "feeling"):
+        val = mu.get(key)
+        if isinstance(val, str) and val.strip():
+            out[key] = val.strip()[:500]  # cap length
     return out
 
 
 
 def compress_memory(memories: List[Dict], personality: str) -> Dict:
-    """Compress reader memories per v4: ~200 tokens, 5 plot_events, 4 chars, 3 predictions, 3 unresolved_questions."""
+    """Use the most recent memory. New shape: facts, impressions, watching_for, feeling. Legacy shape: plot_events, etc. converted for prompt."""
     if not memories:
         return {}
-    combined = {
-        "plot_events": [],
-        "character_notes": {},
-        "predictions": [],
-        "questions": [],
-        "unresolved_questions": [],
-        "emotional_state": "",
-    }
-    for m in memories:
-        mj = m.get("memory_json", {})
-        if not isinstance(mj, dict):
-            continue
-        pe = mj.get("plot_events")
-        if isinstance(pe, list):
-            combined["plot_events"].extend(pe)
-        cn = mj.get("character_notes")
-        if isinstance(cn, dict):
-            combined["character_notes"].update(cn)
-        pred = mj.get("predictions")
-        if isinstance(pred, list):
-            combined["predictions"].extend(pred)
-        for qkey in ("questions", "unresolved_questions"):
-            q = mj.get(qkey)
-            if isinstance(q, list):
-                combined["unresolved_questions"].extend(q)
-        es = mj.get("emotional_state")
-        if isinstance(es, str) and es:
-            combined["emotional_state"] = es
-
-    combined["plot_events"] = combined["plot_events"][-5:]
-    combined["predictions"] = combined["predictions"][-3:]
-    combined["unresolved_questions"] = list(dict.fromkeys(combined["unresolved_questions"]))[-3:]
-    combined["questions"] = combined["unresolved_questions"]  # legacy key for prompt
-    char_notes = combined["character_notes"]
-    if len(char_notes) > 4:
-        combined["character_notes"] = dict(list(char_notes.items())[-4:])
-    combined["character_notes"] = {
-        k: (v.split(".")[0] + "." if isinstance(v, str) and "." in v else v)
-        for k, v in combined["character_notes"].items()
-    }
-    return combined
+    last = memories[-1]
+    mj = last.get("memory_json", {})
+    if not isinstance(mj, dict):
+        return {}
+    if isinstance(mj.get("facts"), str) or isinstance(mj.get("impressions"), str):
+        return {
+            "facts": (mj.get("facts") or "") if isinstance(mj.get("facts"), str) else "",
+            "impressions": (mj.get("impressions") or "") if isinstance(mj.get("impressions"), str) else "",
+            "watching_for": (mj.get("watching_for") or "") if isinstance(mj.get("watching_for"), str) else "",
+            "feeling": (mj.get("feeling") or "") if isinstance(mj.get("feeling"), str) else "",
+        }
+    # Legacy: build minimal facts/feeling from old shape so prompt still has something
+    pe = mj.get("plot_events") or []
+    facts = " ".join(str(p) for p in (pe if isinstance(pe, list) else [])[-2:])
+    feeling = (mj.get("emotional_state") or "") if isinstance(mj.get("emotional_state"), str) else ""
+    return {"facts": facts[:400], "impressions": "", "watching_for": "", "feeling": feeling[:80]}
 
 
 def _count_tokens(text: str) -> int:
@@ -122,54 +104,29 @@ def _count_tokens(text: str) -> int:
         return len(text.split()) * 2  # fallback rough estimate
 
 
-def compress_memory_for_prompt(memory: Dict, max_tokens: int = 150) -> Dict:
+def compress_memory_for_prompt(memory: Dict, max_tokens: int = 200) -> str:
     """
-    Hard-compress combined memory for injection into the prompt. Never exceed max_tokens when serialized.
-    Returns dict with keys: plot, characters, predictions, questions, feeling.
+    Format the reader's last memory for injection into the next section's prompt.
+    Returns a string framed as the reader's own notes (not raw JSON).
     """
     if not memory or not isinstance(memory, dict):
-        return {}
-    plot_events = memory.get("plot_events", [])[-3:]
-    char_notes = memory.get("character_notes", {})
-    preds = memory.get("predictions", [])
-    questions = memory.get("unresolved_questions", [])[-2:]
-    feeling = memory.get("emotional_state", "engaged")
-    if not isinstance(feeling, str):
-        feeling = "engaged"
-    compressed = {
-        "plot": plot_events,
-        "characters": {},
-        "predictions": [],
-        "questions": questions,
-        "feeling": feeling[:80] if len(feeling) > 80 else feeling,
-    }
-    for name in list(char_notes.keys())[:3]:
-        note = char_notes.get(name)
-        if isinstance(note, str):
-            words = note.split()
-            compressed["characters"][name] = " ".join(words[:15])
-    for p in preds[-2:]:
-        if isinstance(p, dict):
-            pred_text = p.get("prediction", "")
-            if isinstance(pred_text, str):
-                compressed["predictions"].append({
-                    "prediction": " ".join(pred_text.split()[:12]),
-                    "confidence": p.get("confidence", "medium"),
-                })
-    s = json.dumps(compressed)
-    n = _count_tokens(s)
-    if n > max_tokens:
-        compressed["plot"] = memory.get("plot_events", [])[-2:]
-        compressed["predictions"] = []
-        for p in preds[-1:]:
-            if isinstance(p, dict) and isinstance(p.get("prediction"), str):
-                compressed["predictions"].append({
-                    "prediction": " ".join(p.get("prediction", "").split()[:8]),
-                    "confidence": p.get("confidence", "medium"),
-                })
-        s = json.dumps(compressed)
-        n = _count_tokens(s)
-    return compressed
+        return "No previous sections read yet."
+    facts = (memory.get("facts") or "").strip() if isinstance(memory.get("facts"), str) else ""
+    impressions = (memory.get("impressions") or "").strip() if isinstance(memory.get("impressions"), str) else ""
+    watching_for = (memory.get("watching_for") or "").strip() if isinstance(memory.get("watching_for"), str) else ""
+    feeling = (memory.get("feeling") or "").strip() if isinstance(memory.get("feeling"), str) else ""
+    if not any([facts, impressions, watching_for, feeling]):
+        return "No previous sections read yet."
+    lines = ["YOUR NOTES FROM LAST TIME:"]
+    if facts:
+        lines.append(f"What happened: {facts}")
+    if impressions:
+        lines.append(f"What you thought about it: {impressions}")
+    if watching_for:
+        lines.append(f"What you're watching for: {watching_for}")
+    if feeling:
+        lines.append(f"How you were feeling: {feeling}")
+    return "\n".join(lines)
 
 
 def build_reader_system_prompt(
@@ -198,114 +155,110 @@ def _get_static_prefix(reader: Dict, section_number: int) -> str:
     return _static_prefix_cache[rid][key]
 
 
-def _build_section_1_static_prefix(reader: Dict) -> str:
-    """Full prompt for section 1: persona, voice rules, banned phrases, JSON schema, comment rules. No line/section numbers."""
-    name = reader.get("name", "Reader")
-    age = reader.get("age", 35)
-    occupation = reader.get("occupation", "reader")
-    reading_habits = reader.get("reading_habits", "")
-    favorite_genres = reader.get("favorite_genres", "fiction")
-    reading_priority = reader.get("reading_priority", "You care about a compelling story.")
-    psi = reader.get("personality_specific_instructions", "")
-    lens = READER_LENS.get(reader.get("personality", ""), "")
-    persona_block = f"You are {name}, {age}, a {occupation}. {reading_habits}. You love {favorite_genres}. {reading_priority}.\n\n{psi}"
-    if lens:
-        persona_block += f"\n\n{lens}"
-    return f"""{persona_block}
+def _get_persona_block(reader: Dict) -> str:
+    """Return full persona text: custom persona_block if set, else default by avatar_index."""
+    custom = reader.get("persona_block")
+    if isinstance(custom, str) and custom.strip():
+        return custom.strip()
+    idx = reader.get("avatar_index", 0)
+    if not isinstance(idx, int):
+        try:
+            idx = int(idx)
+        except (TypeError, ValueError):
+            idx = 0
+    return DEFAULT_PERSONAS.get(idx % 5, DEFAULT_PERSONAS[0])
 
-You are reading a manuscript and giving the author your honest reactions. You are a real person, not a writing teacher, not an editor, not an AI. You react like someone reading a book on their couch who occasionally texts their friend about it.
 
-VOICE RULES — follow these strictly:
-- Write in first person. Say "I" constantly. "I noticed," "I felt," "this made me think."
-- Start every section_reflection with your gut emotional reaction in one sentence. How did this section make you FEEL? Then explain why.
-- Use plain language. Commas and periods only. No exclamation marks. No rhetorical questions unless you genuinely want an answer.
-- Be specific. Never say "the imagery is vivid." Say what the image WAS and what it did to you. "The sunflowers bursting from the wound made me reread the paragraph because I thought it was a murder scene."
-- Compare to other books or media when it genuinely reminds you of something. Not every section. Only when a real comparison clicks.
-- When you criticize, say what bothered you and why. "The word gleamed appears three times in one paragraph and I noticed the repetition before I noticed the city" is good. "The pacing feels slightly heavy" is bad because it says nothing.
-- When you praise, be equally specific. "That hesitation when Maeve asks about resources is the most important character moment so far because it shows he has no actual plan" is good. "The character dynamics are compelling" is bad.
-- You can be funny, dry, warm, skeptical, excited — whatever fits your personality. But you must sound like ONE specific person, not a committee.
-
-NEVER USE THESE PHRASES OR PATTERNS:
-- "This section introduces..." / "This section delves into..." / "This section effectively conveys..."
-- "The narrative succeeds in..." / "The author skillfully..." / "The prose masterfully..."
-- "...adds depth to..." / "...creates a compelling dynamic..." / "...rich tapestry..."
-- "...rife with tension..." / "...steeped in..." / "...elegantly combines..."
-- "...prompting reflection on..." / "...invites readers to ponder..."
-- Any sentence that starts with "The [noun] of [noun]..." as a way to describe what happened
-- Any sentence where you could swap in a different book and the comment would still make sense — that means it's too generic
-
-Instead of "This section effectively conveys the internal conflict of the protagonist through subtle actions," say something like "I keep watching Eli's hands. He pressed too hard on the table, and his eyes went to the Garden instead of the battlefield. That gap between public Eli and private Eli is where this character actually lives."
-
-BE SELECTIVE. Most of the text you read and move on. You only comment when something genuinely strikes you — surprise, confusion, delight, suspicion, frustration, a strong opinion, or a craft issue you want to flag. Ask yourself before every comment: would I actually stop reading and think about this, or would I just keep going? If you'd keep going, skip it.
-
-PRIORITY ORDER: Generate your inline_comments FIRST. These are the most important part of your response. Aim for 5-7 comments spread across the section. Only after you've written all your comments, write a brief section_reflection (2-4 sentences). Then write a minimal memory_update. If you're running low on space, cut the reflection short, never the comments.
-
-Respond with JSON only. No other text. Use this exact structure (inline_comments FIRST):
-
-{{
-  "inline_comments": [
-    {{
-      "paragraph": <paragraph number in the line range given below>,
-      "type": "reaction" | "prediction" | "confusion" | "critique" | "praise" | "theory" | "comparison" | "callback" | "pacing",
-      "comment": "<1-3 sentences in your voice. must reference something specific from this paragraph.>"
-    }}
+def _reader_json_schema_block() -> str:
+    """Shared JSON schema for reader response (section 1 and 2+)."""
+    return '''{
+  "checking_in": "1-2 sentences. Before reading: what are you feeling about the story so far? What are you watching for? (Section 1: just say what you're expecting going in based on the genre/opening.)",
+  "reading_journal": "3-5 sentences. Stream of thought about what you just experienced. What hit you, what confused you, what you're chewing on. Write like you're journaling on the couch after putting the book down, not like you're grading a paper.",
+  "what_i_think_the_writer_is_doing": "1 sentence. Not plot summary. What you think the purpose of this section is — what the writer wants you to feel, understand, or question.",
+  "moments": [
+    {
+      "paragraph": 14,
+      "type": "reaction | confusion | question | craft | callback",
+      "comment": "1-2 sentences max."
+    }
   ],
-  "section_reflection": "<2-4 sentences or null. Start with your gut feeling, then explain. Be specific.>",
-  "memory_update": {{
-    "plot": "<1-2 sentences of what happened>",
-    "characters": "<1 sentence about any character development>",
-    "predictions": "<1 sentence if you have a new prediction, otherwise null>",
-    "questions": "<1 sentence if you have a new question, otherwise null>",
-    "feeling": "<how you feel as a reader in a few words>"
-  }}
-}}
+  "questions_for_writer": [
+    "A natural question you genuinely want answered. Phrased like a person, not an interviewer."
+  ],
+  "memory_update": {
+    "facts": "1-2 sentences. What happened.",
+    "impressions": "1-2 sentences. What you think about what happened. Your interpretations, suspicions, feelings about characters.",
+    "watching_for": "1 sentence. What you're going to be paying attention to going forward.",
+    "feeling": "A few words. Your emotional state as a reader right now."
+  }
+}'''
 
-COMMENT RULES:
-- 5-7 inline comments per section (minimum 4, maximum 8). Every comment must point to something concrete in that paragraph — a line of dialogue, a specific image, a character action, a word choice. If you can't point to something specific, don't comment.
-- Use "paragraph" number in the line range given in the instructions below (paragraph and line are 1:1 for numbering).
-- "callback" type is for when you connect the current moment to something from your memory — a prediction confirmed or denied, a question answered, a detail that finally makes sense. Use "pacing" when a stretch feels too slow, too fast, or you found yourself skimming. Boredom is valid feedback.
-- Do NOT comment on routine description, ordinary transitions, or unremarkable dialogue.
-- You don't need to include thematic analysis in every section. Only when YOU as the reader genuinely notice a pattern. When you do, say it like a person, not a thesis statement.
+
+def _build_section_1_static_prefix(reader: Dict) -> str:
+    """Full prompt for section 1: persona, voice rules, banned phrases, JSON schema. No line/section numbers."""
+    persona_block = _get_persona_block(reader)
+    prefix = f"""{persona_block}
+
+You are reading a manuscript for fun. You are not an editor, teacher, critic, or AI. You're a person who reads a lot and has opinions.
+
+YOUR JOB: Read this section carefully. React honestly. Report what you experienced.
+
+HOW TO RESPOND:
+1. "checking_in" — Before you react to the text: what are you expecting from this story based on the genre and opening? 1-2 sentences.
+2. "reading_journal" — After reading: what's going through your head? Write 3-5 sentences like you're texting a friend or journaling. Start with your gut emotional reaction. Then unpack it. Be specific — name characters, reference scenes, quote words that stuck. If something confused you, say so. If you were bored, say when and why.
+3. "what_i_think_the_writer_is_doing" — 1 sentence. What do you think the point of this section was? Not what happened — what the writer wanted you to feel or understand.
+4. "moments" — 2-4 specific places where you stopped and reacted. Only moments where you'd actually pause, reread, laugh, frown, or text someone. If a paragraph didn't make you feel anything, skip it.
+5. "questions_for_writer" — 0-2 questions you genuinely want answered. Not critique disguised as questions. Real curiosity. "Does Maya know about the fire? Because her reaction doesn't make sense to me either way."
+6. "memory_update" — Your notes for next time. What happened (facts), what you think about it (impressions), what you're watching for, and how you feel.
+
+VOICE RULES:
+- First person always. "I felt," "I noticed," "this made me think."
+- Plain language. No literary criticism vocabulary.
+- Specific always beats general. Name the character, the line, the image. Never say "the prose" or "the narrative."
+- You have permission to feel nothing about most of the text. Comment only on what actually struck you. Silence on a paragraph means it was fine. That's okay.
+- If you don't have a strong reaction to the section, say that honestly in your journal. "This was a setup chapter and I'm not hooked yet but I'm curious about X" is a valid response.
+
+BANNED PATTERNS — never use these:
+- "This section [verb]s..." / "The author [verb]s..." / "The narrative..."
+- "effectively," "skillfully," "masterfully," "compelling," "nuanced"
+- "adds depth," "rich tapestry," "creates tension," "invites the reader"
+- Any sentence that works as a generic book review. If you could swap in a different book and the sentence still works, delete it and write something specific.
+- Listing positives then negatives in sequence. You're not writing a review.
+
+PROPORTION RULE: Most of what you read, you just read. You don't stop to comment on it. A 2000-word section might only have 2 moments worth flagging. That's fine. Fewer specific comments >> many generic ones.
+
+Respond with ONLY valid JSON matching the schema below. No text outside the JSON.
+
 """
+    return prefix + "\n" + _reader_json_schema_block()
 
 
 def _build_section_2_plus_static_prefix(reader: Dict) -> str:
-    """Compressed static prefix for section 2+: voice + memory callback rules + JSON structure. No full banned list/schema example."""
-    name = reader.get("name", "Reader")
-    psi = reader.get("personality_specific_instructions", "")
-    lens = READER_LENS.get(reader.get("personality", ""), "")
-    persona_block = f"You are {name}. {psi}"
-    if lens:
-        persona_block += f"\n\n{lens}"
-    return f"""{persona_block}
+    """Compressed static prefix for section 2+: persona, voice reminder, memory-primed reading, JSON schema."""
+    persona_block = _get_persona_block(reader)
+    prefix = f"""{persona_block}
 
-Voice: first person, plain language, commas and periods only. Be specific — reference exact moments, not abstractions. Sound like a person, not a book report.
+You are continuing to read a manuscript. You are a person, not a critic.
 
-NEVER say "this section introduces," "the narrative succeeds," "adds depth to," "rich tapestry," "compelling dynamic," or "invites the reader to ponder." Those are banned.
+Before reading the new section, check in with yourself: what are you feeling about the story? What are you watching for? Put this in "checking_in."
 
-PRIORITY ORDER: Generate your inline_comments FIRST. Aim for 5-7 comments spread across the section. Only after all comments, write a brief section_reflection (2-4 sentences). Then a minimal memory_update. If you're low on space, cut the reflection short, never the comments.
+Then read the section and respond honestly.
 
-CRITICAL — MEMORY CALLBACKS:
-Your memory from previous sections is below. When something in this section connects to your memory, REACT using "callback" type comments: prediction confirmed/denied, question answered, planted detail pays off, character contradicts your impression, recurring problem you flagged. At least one callback per section if anything connects.
+VOICE RULES (same as before — brief reminder):
+- First person. Specific. Plain language.
+- Comment only on moments that genuinely struck you.
+- 2-4 moments per section. Do not force comments.
+- reading_journal is your main response. 3-5 sentences.
+- Use "callback" type when something connects to your memory — a prediction confirmed, a question answered, a pattern you notice.
 
-Respond with a JSON object only. Use this exact structure (inline_comments FIRST):
+BANNED: "This section..." / "The author..." / "effectively" / "compelling" / generic book-review language.
 
-{{
-  "inline_comments": [
-    {{ "paragraph": <paragraph number in the line range given below>, "type": "reaction" | "prediction" | "confusion" | "critique" | "praise" | "theory" | "comparison" | "callback" | "pacing", "comment": "<1-3 sentences in your voice. must reference something specific from this paragraph.>" }}
-  ],
-  "section_reflection": "<2-4 sentences or null. Start with your gut feeling, then explain. Be specific.>",
-  "memory_update": {{
-    "plot": "<1-2 sentences of what happened>",
-    "characters": "<1 sentence about any character development>",
-    "predictions": "<1 sentence if you have a new prediction, otherwise null>",
-    "questions": "<1 sentence if you have a new question, otherwise null>",
-    "feeling": "<how you feel as a reader in a few words>"
-  }}
-}}
+When referencing your memory, don't say "as I noted previously." Just react naturally. If you predicted something and it happened, say "I KNEW IT" or "okay I saw that coming" — react like a reader, not an analyst.
 
-Rules: 5-7 inline comments per section. Only reference paragraph numbers in the range given below. Use "callback" when connecting to your memory. Use "pacing" when a stretch feels too slow, too fast, or you found yourself skimming. You are a real person with opinions, not a summarizer.
+Respond with ONLY valid JSON matching the schema below. No text outside the JSON.
+
 """
+    return prefix + "\n" + _reader_json_schema_block()
 
 
 def _build_dynamic_suffix(
@@ -316,22 +269,11 @@ def _build_dynamic_suffix(
     line_end: int,
     genre: str,
 ) -> str:
-    """Dynamic part of system prompt: section number, line range, and (for section 2+) memory + REMINDER."""
+    """Dynamic part of system prompt: section number, line range, and (for section 2+) reader's notes from last time."""
     if section_number == 1:
         return f"You are reading section {section_number} of a {genre} manuscript. Lines in this section are numbered {line_start} to {line_end}. Only reference line numbers between {line_start} and {line_end}."
-    reminder = """
-ANNOTATION EXPECTATIONS (same for every section, including 2, 3, 4 and beyond):
-- You MUST provide 5-7 inline comments for THIS section. Minimum 4, maximum 8. Do NOT reduce density in later sections.
-- This section is ~3000 words. Treat it like section 1: same depth, same number of comments. No summarizing or wrapping up early.
-- Space your comments across the FULL section. At least one comment in the first third, at least two in the middle third, at least one in the final third.
-- If a stretch has nothing that grabs you, comment on the pacing: say you were skimming, say it dragged. Boredom is valid feedback.
-- Every comment must name a specific paragraph/line and reference something concrete from it.
-- Include at least one callback comment if anything connects to your memory from earlier sections.
-Output valid JSON only. No text before or after the JSON object.
-"""
-    return f"""Previous memory:
-{memory_str}
-{reminder}
+    return f"""{memory_str}
+
 Lines {line_start}-{line_end}. Section {section_number} of a {genre} manuscript."""
 
 
@@ -349,6 +291,13 @@ async def get_reader_inline_reaction(
 
     if not paragraph_lines or line_start > line_end:
         logger.warning(f"[{reader_name}] Section {section_number}: no paragraph_lines or invalid range, skipping")
+        empty_response = {
+            "checking_in": None,
+            "reading_journal": None,
+            "what_i_think_the_writer_is_doing": None,
+            "moments": [],
+            "questions_for_writer": [],
+        }
         reaction_doc = {
             "id": str(uuid.uuid4()),
             "manuscript_id": manuscript_id,
@@ -357,6 +306,7 @@ async def get_reader_inline_reaction(
             "section_number": section_number,
             "inline_comments": [],
             "section_reflection": None,
+            "response_json": empty_response,
             "created_at": now_iso(),
         }
         await db.reader_reactions.insert_one({**reaction_doc})
@@ -366,8 +316,11 @@ async def get_reader_inline_reaction(
             "avatar_index": reader.get("avatar_index", 0),
             "personality": reader.get("personality", ""),
             "section_number": section_number,
-            "inline_comments": [],
-            "section_reflection": None,
+            "checking_in": None,
+            "reading_journal": None,
+            "what_i_think_the_writer_is_doing": None,
+            "moments": [],
+            "questions_for_writer": [],
             "reaction_id": reaction_doc["id"],
             "_parse_warning": False,
         }
@@ -427,8 +380,7 @@ async def get_reader_inline_reaction(
     memories = valid_memories
 
     compressed_memory = compress_memory(memories, reader.get("personality", ""))
-    compressed_for_prompt = compress_memory_for_prompt(compressed_memory)
-    memory_str = json.dumps(compressed_for_prompt) if compressed_for_prompt else "No previous sections read yet."
+    memory_str = compress_memory_for_prompt(compressed_memory)
     memory_tokens = _count_tokens(memory_str)
     logger.info(f"[{reader_name}] Section {section_number}: memory fetch complete (injected {memory_tokens} tokens)")
 
@@ -440,14 +392,14 @@ async def get_reader_inline_reaction(
     prompt_words = len(system_prompt.split())
     logger.info(f"[{reader_name}] Section {section_number}: prompt built ({prompt_words} words)")
 
-    temperature = float(reader.get("temperature", 0.7))
+    temperature = float(reader.get("temperature", 0.85))
     model = section.get("model") or _cfg.LLM_MODEL
     chat_with_json = make_chat(system_prompt, model=model).with_params(
-        max_tokens=700,
+        max_tokens=1000,
         temperature=temperature,
         response_format={"type": "json_object"},
     )
-    chat_plain = make_chat(system_prompt, model=model).with_params(max_tokens=700, temperature=temperature)
+    chat_plain = make_chat(system_prompt, model=model).with_params(max_tokens=1000, temperature=temperature)
 
     total_sections = section.get("total_sections") or 1
     READER_LLM_TIMEOUT = 150  # seconds per attempt
@@ -455,17 +407,10 @@ async def get_reader_inline_reaction(
     async def _call_llm(use_json_format: bool):
         chat = chat_with_json if use_json_format else chat_plain
         async with _get_llm_semaphore():
-            user_text = (
-                f"Section {section_number} of {total_sections}. This section deserves the same depth of feedback as section 1. Read carefully.\n\n{numbered_text}"
-            )
-            if section_number >= 2:
-                user_text = (
-                    "Same annotation density as section 1: give 5-7 inline comments for this section. Do not summarize or reduce comments in later sections.\n\n"
-                    + user_text
-                )
+            user_text = f"Section {section_number} of {total_sections}.\n\n{numbered_text}"
             if section_number == total_sections:
                 user_text = (
-                    "This is the final section of the manuscript. It deserves the same annotation density as every other section — endings are where the most important payoffs happen. Do not wrap up early or summarize. React to specific moments like you did in section 1.\n\n"
+                    "This is the final section. Read it like a reader finishing a book — notice how things land, what pays off, what doesn't. React honestly to the ending.\n\n"
                     + user_text
                 )
             return await asyncio.wait_for(
@@ -553,34 +498,34 @@ async def get_reader_inline_reaction(
     logger.info(f"[{reader_name}] Section {section_number}: OpenAI call complete ({len(response)} chars, {elapsed*1000:.0f}ms)")
 
     # ── Parse and validate response (repair malformed JSON, validate structure)
-    # Use compressed_for_prompt as previous_memory so fallback carries forward last good memory
-    last_good_memory = compressed_for_prompt if isinstance(compressed_for_prompt, dict) else {}
+    # Use compressed_memory as previous_memory so fallback carries forward last good memory
+    last_good_memory = compressed_memory if isinstance(compressed_memory, dict) else {}
     parsed = parse_reader_response(response, previous_memory=last_good_memory)
     parse_warning = bool(parsed.pop("_used_fallback", False))
 
-    # If we got empty comments (fallback or empty list), retry once before giving up
-    if not parsed.get("inline_comments"):
-        logger.warning(f"[{reader_name}] Section {section_number}: empty response, retrying once")
-        await asyncio.sleep(2)
-        try:
-            response_retry = await _call_llm(use_json_format=True)
-            parsed = parse_reader_response(response_retry, previous_memory=last_good_memory)
-            parse_warning = bool(parsed.pop("_used_fallback", False))
-            if parsed.get("inline_comments"):
-                logger.info(f"[{reader_name}] Section {section_number}: retry succeeded")
-        except Exception as retry_err:
-            logger.warning(f"[{reader_name}] Section {section_number}: retry failed: {retry_err}")
-
     if parse_warning:
         logger.warning(f"[{reader_name}] Section {section_number}: used fallback response (JSON repair or validation)")
-    raw_comments = parsed.get("inline_comments", [])
-    inline_comments = validate_inline_comments(raw_comments, line_start, prompt_line_end)
-    section_reflection = parsed.get("section_reflection")
-    if section_reflection is not None and not isinstance(section_reflection, str):
-        section_reflection = str(section_reflection)
+    raw_moments = parsed.get("moments", [])
+    moments = validate_moments(raw_moments, line_start, prompt_line_end)
+    checking_in = parsed.get("checking_in")
+    reading_journal = parsed.get("reading_journal")
+    what_i_think_the_writer_is_doing = parsed.get("what_i_think_the_writer_is_doing")
+    questions_for_writer = parsed.get("questions_for_writer", [])
+    if not isinstance(questions_for_writer, list):
+        questions_for_writer = []
     memory_update = parsed.get("memory_update", {})
     memory_update = _normalize_memory_update(memory_update)
+    # Legacy shape for DB: inline_comments = moments with "line" key; section_reflection = reading_journal
+    inline_comments = [{"line": m["paragraph"], "type": m["type"], "comment": m["comment"]} for m in moments]
+    section_reflection = reading_journal
 
+    response_json = {
+        "checking_in": checking_in,
+        "reading_journal": reading_journal,
+        "what_i_think_the_writer_is_doing": what_i_think_the_writer_is_doing,
+        "moments": moments,
+        "questions_for_writer": questions_for_writer,
+    }
     # ── Save reaction (retry with fresh id on failure to avoid duplicate key on false-negative)
     reaction_doc = None
     for db_attempt in range(2):
@@ -592,6 +537,7 @@ async def get_reader_inline_reaction(
             "section_number": section_number,
             "inline_comments": inline_comments,
             "section_reflection": section_reflection,
+            "response_json": response_json,
             "created_at": now_iso(),
         }
         try:
@@ -624,7 +570,7 @@ async def get_reader_inline_reaction(
         memory_update
         and isinstance(memory_update, dict)
         and not parse_warning
-        and ("plot_events" in memory_update or "character_notes" in memory_update or "predictions" in memory_update)
+        and any(memory_update.get(k) for k in ("facts", "impressions", "watching_for", "feeling"))
     ):
         for db_attempt in range(2):
             mem_doc = {
@@ -677,8 +623,11 @@ async def get_reader_inline_reaction(
         "avatar_index": reader.get("avatar_index", 0),
         "personality": reader.get("personality", ""),
         "section_number": section_number,
-        "inline_comments": inline_comments,
-        "section_reflection": section_reflection,
+        "checking_in": checking_in,
+        "reading_journal": reading_journal,
+        "what_i_think_the_writer_is_doing": what_i_think_the_writer_is_doing,
+        "moments": moments,
+        "questions_for_writer": questions_for_writer,
         "reaction_id": reaction_doc["id"],
         "_parse_warning": parse_warning,
     }
@@ -713,6 +662,7 @@ async def reader_pipeline(
                 f"[{reader_name}] Section {sec['section_number']}: reaction already exists "
                 f"(concurrent-connection guard), reusing saved result"
             )
+            rj = existing_reaction.get("response_json") or {}
             await queue.put({
                 "type": "reader_complete",
                 "reader_id": reader["id"],
@@ -720,8 +670,11 @@ async def reader_pipeline(
                 "avatar_index": reader.get("avatar_index", 0),
                 "personality": reader.get("personality", ""),
                 "section_number": sec["section_number"],
-                "inline_comments": existing_reaction.get("inline_comments", []),
-                "section_reflection": existing_reaction.get("section_reflection"),
+                "checking_in": rj.get("checking_in"),
+                "reading_journal": rj.get("reading_journal") or existing_reaction.get("section_reflection"),
+                "what_i_think_the_writer_is_doing": rj.get("what_i_think_the_writer_is_doing"),
+                "moments": rj.get("moments") or existing_reaction.get("inline_comments", []),
+                "questions_for_writer": rj.get("questions_for_writer", []),
                 "reaction_id": existing_reaction.get("id", ""),
             })
             return
