@@ -199,8 +199,8 @@ Return ONLY this JSON (no other text):
     if not persona_block:
         # Fallback: build a short block from fields so reader prompt still has something
         persona_block = f"You are {name}, {age}, a {occ}. {_coerce(data.get('reading_habits'), 'Reads widely.')} You love {_coerce(data.get('favorite_genres'), genre)}. You're a normal reader with opinions. Your personality comes through in how you say things."
-    # Assign this reader a distinct attention mode (no duplicates in panel)
-    attention_mode = DEFAULT_ATTENTION_BY_AVATAR[avatar_index % len(DEFAULT_ATTENTION_BY_AVATAR)]
+    # Attention mode is derived from avatar_index when building the reader prompt (no DB column required).
+    # Each reader gets a distinct mode: DEFAULT_ATTENTION_BY_AVATAR[avatar_index].
     return {
         "id": str(uuid.uuid4()),
         "manuscript_id": manuscript_id,
@@ -223,7 +223,6 @@ Return ONLY this JSON (no other text):
             archetype_info["default_instructions"],
         ),
         "persona_block": persona_block,
-        "attention_mode": attention_mode,
         "created_at": now_iso(),
     }
 
