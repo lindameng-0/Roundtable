@@ -7,7 +7,7 @@ import asyncio
 import logging
 from typing import Dict, List
 
-import google.generativeai as genai
+from google import genai
 import tiktoken
 from utils import now_iso, validate_moments, parse_reader_response
 from config import db
@@ -594,7 +594,8 @@ async def get_reader_inline_reaction(
         generation_config={
             "temperature": temperature,
             "top_p": 0.95,
-            "max_output_tokens": 2048,
+            # Allow plenty of room for full JSON including moments/questions/memory.
+            "max_output_tokens": 2500,
             "response_mime_type": "application/json",
         },
         system_instruction=system_prompt,
@@ -648,6 +649,14 @@ async def get_reader_inline_reaction(
                 raise last_error
             part = parts[0]
             response = getattr(part, "text", None) or ""
+            # Debug: log raw Gemini response text and finish_reason BEFORE parsing.
+            finish_reason = getattr(candidate, "finish_reason", None)
+            logger.info(
+                f"[{reader_name}] Section {section_number}: Gemini finish_reason={finish_reason}, raw_text_len={len(response)}"
+            )
+            logger.debug(
+                f"[{reader_name}] Section {section_number}: RAW Gemini text: {response}"
+            )
             if not (response and response.strip()):
                 last_error = RuntimeError("Gemini returned empty text")
                 if attempt < max_attempts - 1:
