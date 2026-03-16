@@ -597,9 +597,6 @@ async def get_reader_inline_reaction(
         },
         system_instruction=system_prompt,
     )
-    logger.debug(
-        f"[{reader_name}] Section {section_number}: Gemini generation_config={model.generation_config}"
-    )
 
     # JSON format instructions and concrete example go at the BEGINNING of the user message.
     json_instructions = (
@@ -661,9 +658,6 @@ async def get_reader_inline_reaction(
             finish_reason = getattr(candidate, "finish_reason", None)
             logger.info(
                 f"[{reader_name}] Section {section_number}: Gemini finish_reason={finish_reason}, raw_text_len={len(response)}"
-            )
-            logger.debug(
-                f"[{reader_name}] Section {section_number}: RAW Gemini text: {response}"
             )
             if not (response and response.strip()):
                 last_error = RuntimeError("Gemini returned empty text")
