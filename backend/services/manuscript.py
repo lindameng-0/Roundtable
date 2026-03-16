@@ -4,15 +4,13 @@ from typing import List, Dict, Tuple
 
 logger = logging.getLogger(__name__)
 
-# Smart section splitting: 2500-4000 word sections for focused reading
-TARGET_WORDS = 3000
-WINDOW_LOW = 2500
-WINDOW_HIGH = 4000
-MAX_SECTION_WORDS = 4000  # hard max; do not keep a 5000-word "chapter" as one section
-MIN_SECTION_WORDS = 1500
+# Section limits: keep sections in 500-2500 range so Gemini reliably completes full output
+MAX_SECTION_WORDS = 2500
+MIN_SECTION_WORDS = 500
 
 # Legacy constants for any callers that expect the old targets
-TARGET_WORDS_PER_SECTION = TARGET_WORDS
+TARGET_WORDS_PER_SECTION = 2000
+TARGET_WORDS = 2000
 SPLIT_THRESHOLD = MAX_SECTION_WORDS
 
 # Chapter markers: "Chapter X", "CHAPTER", "---", "***", or 3+ blank lines
@@ -72,124 +70,142 @@ def _parse_paragraphs_with_breaks(raw_text: str) -> List[Tuple[str, str]]:
     return paragraphs
 
 
+def _chapter_ranges(parsed: List[Tuple[str, str]]) -> List[Tuple[int, int]]:
+    """Return list of (start_idx, end_idx) for each chapter. Chapters are split on chapter/scene breaks."""
+    if not parsed:
+        return []
+    starts = [0]
+    for i in range(len(parsed)):
+        if parsed[i][1] == "chapter":
+            starts.append(i + 1)
+    ranges: List[Tuple[int, int]] = []
+    for j in range(len(starts)):
+        s = starts[j]
+        e = starts[j + 1] if j + 1 < len(starts) else len(parsed)
+        if s < e:
+            ranges.append((s, e))
+    return ranges
+
+
+def _segment_words(cum_words: List[int], start_idx: int, end_idx: int) -> int:
+    """Word count for segment [start_idx, end_idx] (inclusive)."""
+    if start_idx > end_idx:
+        return 0
+    before = cum_words[start_idx - 1] if start_idx > 0 else 0
+    return cum_words[end_idx] - before
+
+
+def _subsplit_range(
+    parsed: List[Tuple[str, str]],
+    cum_words: List[int],
+    start_idx: int,
+    end_idx: int,
+) -> List[Tuple[int, int]]:
+    """
+    If segment [start_idx, end_idx] exceeds MAX_SECTION_WORDS, split at paragraph boundary
+    nearest to midpoint. Both parts must be >= MIN_SECTION_WORDS and <= MAX_SECTION_WORDS.
+    Never split mid-paragraph (we split at index boundaries). Recursively sub-split until all <= max.
+    """
+    words = _segment_words(cum_words, start_idx, end_idx)
+    if words <= MAX_SECTION_WORDS:
+        return [(start_idx, end_idx)]
+
+    start_words = cum_words[start_idx - 1] if start_idx > 0 else 0
+    end_words = cum_words[end_idx]
+    mid_target = start_words + (end_words - start_words) // 2
+
+    best_k: int | None = None
+    best_dist = float("inf")
+    for k in range(start_idx, end_idx):
+        first_words = cum_words[k] - start_words
+        second_words = end_words - cum_words[k]
+        if first_words < MIN_SECTION_WORDS or second_words < MIN_SECTION_WORDS:
+            continue
+        if first_words > MAX_SECTION_WORDS or second_words > MAX_SECTION_WORDS:
+            continue
+        dist = abs((cum_words[k]) - mid_target)
+        if dist < best_dist:
+            best_dist = dist
+            best_k = k
+    if best_k is None:
+        # No valid split that keeps both >= 500 and <= 2500; force at midpoint anyway to avoid huge section
+        for k in range(start_idx, end_idx):
+            first_words = cum_words[k] - start_words
+            second_words = end_words - cum_words[k]
+            if first_words >= MIN_SECTION_WORDS and second_words >= MIN_SECTION_WORDS:
+                best_k = k
+                break
+        if best_k is None:
+            return [(start_idx, end_idx)]
+
+    left = _subsplit_range(parsed, cum_words, start_idx, best_k)
+    right = _subsplit_range(parsed, cum_words, best_k + 1, end_idx)
+    return left + right
+
+
+def _merge_small_sections(
+    cum_words: List[int],
+    ranges: List[Tuple[int, int]],
+) -> List[Tuple[int, int]]:
+    """Merge any section under MIN_SECTION_WORDS with the next (or previous) section. Repeat until stable."""
+    if len(ranges) <= 1:
+        return ranges
+    while True:
+        merged: List[Tuple[int, int]] = []
+        i = 0
+        changed = False
+        while i < len(ranges):
+            s, e = ranges[i]
+            w = _segment_words(cum_words, s, e)
+            if w < MIN_SECTION_WORDS and merged:
+                prev_s, prev_e = merged[-1]
+                merged[-1] = (prev_s, e)
+                changed = True
+            elif w < MIN_SECTION_WORDS and i + 1 < len(ranges):
+                next_s, next_e = ranges[i + 1]
+                merged.append((s, next_e))
+                i += 1
+                changed = True
+            else:
+                merged.append((s, e))
+            i += 1
+        ranges = merged
+        if not changed or len(ranges) <= 1:
+            break
+    return ranges
+
+
 def split_manuscript_into_sections(raw_text: str) -> List[Dict]:
     """
-    Split manuscript into sections with smart boundaries.
-    Target 3000 words; look for break in 2500-4000 (chapter > scene > paragraph).
-    Never split mid-paragraph; max 4000; min 1500 except last section.
+    Split manuscript into sections: first by chapter breaks, then sub-split any chapter
+    over 2500 words at paragraph boundaries near the midpoint. Never split mid-paragraph.
+    Minimum section 500 words (merge small fragments into adjacent section).
     Returns list of dicts: text, start_paragraph (1-based), end_paragraph (1-based), word_count.
     """
     parsed = _parse_paragraphs_with_breaks(raw_text.strip())
     if not parsed:
         return []
 
-    # Cumulative word count after each paragraph (0-based index -> words up to and including that para)
     words_per_para = [len(p[0].split()) for p in parsed]
     cum_words: List[int] = []
     acc = 0
     for w in words_per_para:
         acc += w
         cum_words.append(acc)
-    total_words = cum_words[-1]
+
+    chapter_ranges = _chapter_ranges(parsed)
+    section_ranges: List[Tuple[int, int]] = []
+    for s, e in chapter_ranges:
+        segment_w = _segment_words(cum_words, s, e)
+        if segment_w <= MAX_SECTION_WORDS:
+            section_ranges.append((s, e))
+        else:
+            section_ranges.extend(_subsplit_range(parsed, cum_words, s, e))
+
+    section_ranges = _merge_small_sections(cum_words, section_ranges)
 
     sections: List[Dict] = []
-    start_idx = 0
-    para_count = len(parsed)
-
-    while start_idx < para_count:
-        # Remaining words from start_idx to end
-        remaining = total_words - (cum_words[start_idx - 1] if start_idx > 0 else 0)
-        if remaining <= 0:
-            break
-
-        # If remainder is under MIN and we already have sections, take the rest as final section
-        if sections and remaining < MIN_SECTION_WORDS:
-            end_idx = para_count - 1
-            section_text = "\n\n".join(parsed[i][0] for i in range(start_idx, end_idx + 1))
-            sec_word_count = len(section_text.split())
-            sections.append({
-                "text": section_text,
-                "start_paragraph": start_idx + 1,
-                "end_paragraph": end_idx + 1,
-                "word_count": sec_word_count,
-            })
-            logger.info("Section %s (final): %s words (paragraphs %s-%s)", len(sections), sec_word_count, start_idx + 1, end_idx + 1)
-            break
-
-        # Target: find best break in [WINDOW_LOW, WINDOW_HIGH] or force by MAX_SECTION_WORDS
-        start_words = cum_words[start_idx - 1] if start_idx > 0 else 0
-        target_end_words = min(start_words + TARGET_WORDS, start_words + MAX_SECTION_WORDS)
-        search_low = start_words + WINDOW_LOW
-        search_high = min(start_words + WINDOW_HIGH, start_words + MAX_SECTION_WORDS)
-
-        best_idx: int | None = None
-        best_priority = -1  # chapter=2, scene=1, paragraph=0
-
-        # Only use a chapter break if the resulting section is within target size (2500-4000).
-        # If the next chapter would create a segment > WINDOW_HIGH, skip it and split at scene/paragraph ~3000.
-        for i in range(start_idx, para_count):
-            w_after = cum_words[i]
-            if w_after > start_words + MAX_SECTION_WORDS:
-                break
-            segment_words = w_after - start_words
-            if segment_words < MIN_SECTION_WORDS and i < para_count - 1:
-                continue
-            break_after = parsed[i][1]
-            if break_after == "chapter":
-                if WINDOW_LOW <= segment_words <= WINDOW_HIGH:
-                    best_idx = i
-                    best_priority = 2
-                    break
-                if segment_words > WINDOW_HIGH:
-                    break
-        if best_idx is not None:
-            end_idx = best_idx
-            section_text = "\n\n".join(parsed[j][0] for j in range(start_idx, end_idx + 1))
-            sec_word_count = len(section_text.split())
-            sections.append({
-                "text": section_text,
-                "start_paragraph": start_idx + 1,
-                "end_paragraph": end_idx + 1,
-                "word_count": sec_word_count,
-            })
-            logger.info("Section %s: %s words (paragraphs %s-%s)", len(sections), sec_word_count, start_idx + 1, end_idx + 1)
-            start_idx = end_idx + 1
-            continue
-
-        # Look for scene or paragraph break in 2500-4000, then up to max
-        for i in range(start_idx, para_count):
-            w_after = cum_words[i]
-            if w_after > start_words + MAX_SECTION_WORDS:
-                break
-            segment_words = w_after - start_words
-            if segment_words < MIN_SECTION_WORDS and i < para_count - 1:
-                continue
-            break_after = parsed[i][1]
-            prio = 1 if break_after == "scene" else 0
-            if prio >= best_priority:
-                if best_priority == prio and best_idx is not None:
-                    # Prefer break closer to 3000
-                    best_seg = cum_words[best_idx] - start_words if best_idx is not None else 0
-                    if abs(segment_words - TARGET_WORDS) < abs(best_seg - TARGET_WORDS):
-                        best_idx = i
-                else:
-                    best_idx = i
-                    best_priority = prio
-            if segment_words >= WINDOW_HIGH and best_idx is not None:
-                break
-
-        if best_idx is not None:
-            end_idx = best_idx
-        else:
-            # Force split at paragraph before exceeding max
-            end_idx = start_idx
-            for i in range(start_idx, para_count):
-                if cum_words[i] - start_words > MAX_SECTION_WORDS:
-                    break
-                end_idx = i
-            if end_idx < start_idx:
-                end_idx = start_idx
-
+    for start_idx, end_idx in section_ranges:
         section_text = "\n\n".join(parsed[j][0] for j in range(start_idx, end_idx + 1))
         sec_word_count = len(section_text.split())
         sections.append({
@@ -198,9 +214,10 @@ def split_manuscript_into_sections(raw_text: str) -> List[Dict]:
             "end_paragraph": end_idx + 1,
             "word_count": sec_word_count,
         })
-        logger.info("Section %s: %s words (paragraphs %s-%s)", len(sections), sec_word_count, start_idx + 1, end_idx + 1)
-        start_idx = end_idx + 1
-
+        logger.info(
+            "Section %s: %s words (paragraphs %s-%s)",
+            len(sections), sec_word_count, start_idx + 1, end_idx + 1,
+        )
     return sections
 
 
