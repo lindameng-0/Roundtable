@@ -244,10 +244,18 @@ def parse_reader_response(raw_text: str, previous_memory: Optional[Dict] = None)
     text = raw_text.strip()
     logger.debug("parse_reader_response: raw response length %s chars", len(text))
 
-    # Step 1: Try direct parse
+    # Step 1: Try direct parse (then with newlines escaped — Gemini often returns literal newlines in strings)
     try:
         parsed = json.loads(text)
         if _parse_validate(parsed):
+            return _validate_reader_parsed(parsed, fallback)
+    except json.JSONDecodeError:
+        pass
+    try:
+        text_escaped = _escape_newlines_in_json_strings(text)
+        parsed = json.loads(text_escaped)
+        if _parse_validate(parsed):
+            logger.info("parse_reader_response: parsed after escaping newlines (raw)")
             return _validate_reader_parsed(parsed, fallback)
     except json.JSONDecodeError:
         pass
@@ -293,6 +301,29 @@ def parse_reader_response(raw_text: str, previous_memory: Optional[Dict] = None)
             return _validate_reader_parsed(parsed, fallback)
     except json.JSONDecodeError:
         pass
+
+    # Step 3.5: Truncated JSON recovery — Gemini sometimes returns incomplete JSON; extract string fields we can
+    def _extract_string_field(js: str, key: str) -> Optional[str]:
+        m = re.search(rf'"{re.escape(key)}"\s*:\s*"((?:[^"\\\\]|\\\\.)*)"', js)
+        if m:
+            return m.group(1).replace("\\n", "\n").replace("\\\"", '"').strip()
+        m = re.search(rf'"{re.escape(key)}"\s*:\s*"(.*)$', js, re.DOTALL)
+        if m:
+            return m.group(1).replace("\\n", "\n").replace("\\\"", '"').strip()
+        return None
+    checking_in = _extract_string_field(repaired, "checking_in")
+    reading_journal = _extract_string_field(repaired, "reading_journal") or _extract_string_field(repaired, "section_reflection")
+    what_doing = _extract_string_field(repaired, "what_i_think_the_writer_is_doing")
+    if reading_journal or checking_in:
+        logger.info("parse_reader_response: recovered from truncated JSON (checking_in/reading_journal)")
+        return {
+            "checking_in": checking_in,
+            "reading_journal": reading_journal or "Reader response was truncated; partial content recovered.",
+            "what_i_think_the_writer_is_doing": what_doing,
+            "moments": [],
+            "questions_for_writer": [],
+            "memory_update": _normalize_memory_update_parsed(previous_memory) if isinstance(previous_memory, dict) else {"facts": "", "impressions": "", "watching_for": "", "feeling": ""},
+        }
 
     # Step 4: Nuclear option — extract moments or inline_comments and reading_journal via regex
     moments_match = re.search(r'"moments"\s*:\s*\[(.+?)\]', repaired, re.DOTALL)
