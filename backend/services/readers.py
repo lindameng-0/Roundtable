@@ -601,11 +601,11 @@ async def get_reader_inline_reaction(
     )
 
     user_text = f"Section {section_number} of {total_sections}.\n\n{numbered_text}"
-            if section_number == total_sections:
-                user_text = (
+    if section_number == total_sections:
+        user_text = (
             "This is the final section. Read it like finishing a book — notice what pays off, what doesn't, what you're left with. React honestly to the ending.\n\n"
-                    + user_text
-                )
+            + user_text
+        )
 
     def _call_gemini_sync():
         """Run sync generate_content in a thread to avoid blocking the event loop."""
