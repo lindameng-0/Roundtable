@@ -92,7 +92,7 @@ def _segment_words(cum_words: List[int], start_idx: int, end_idx: int) -> int:
     if start_idx > end_idx:
         return 0
     before = cum_words[start_idx - 1] if start_idx > 0 else 0
-    return cum_words[end_idx] - before
+    return cum_words[min(end_idx, len(cum_words) - 1)] - before
 
 
 def _subsplit_range(
