@@ -102,96 +102,97 @@
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
 
-user_problem_statement: "Replace Emergent-managed Google Auth with the user's own Google OAuth 2.0 credentials (Authorization Code Flow). Client ID and Secret provided. Redirect URIs registered: http://roundtable.works/api/auth/google/callback and http://localhost:8000/api/auth/google/callback."
+user_problem_statement: "Frontend update to match new backend reader response schema. Backend now returns: checking_in, reading_journal, what_i_think_the_writer_is_doing, moments (paragraph+type+comment), questions_for_writer instead of inline_comments/section_reflection. Editor report format also changed to: did_it_land, engagement_drop, what_readers_disagree_about, open_questions, strongest_moments."
 
 backend:
-  - task: "Native Google OAuth - /api/auth/google/login endpoint"
+  - task: "Backend reader schema already updated (no changes needed)"
     implemented: true
-    working: "NA"
-    file: "backend/routers/auth.py"
+    working: true
+    file: "backend/services/readers.py"
     stuck_count: 0
     priority: "high"
     needs_retesting: false
     status_history:
-      - working: "NA"
+      - working: true
         agent: "main"
-        comment: "Implemented GET /api/auth/google/login - generates state token, builds Google OAuth URL with GOOGLE_CLIENT_ID, GOOGLE_REDIRECT_URI from env, returns 302 redirect to Google."
-
-  - task: "Native Google OAuth - /api/auth/google/callback endpoint"
-    implemented: true
-    working: "NA"
-    file: "backend/routers/auth.py"
-    stuck_count: 0
-    priority: "high"
-    needs_retesting: false
-    status_history:
-      - working: "NA"
-        agent: "main"
-        comment: "Implemented GET /api/auth/google/callback - exchanges code for tokens via Google, fetches userinfo, upserts user in DB, creates session_token, redirects browser to FRONTEND_URL/auth/callback?session_token=<token>."
-
-  - task: "Google OAuth env vars in config.py"
-    implemented: true
-    working: "NA"
-    file: "backend/config.py"
-    stuck_count: 0
-    priority: "high"
-    needs_retesting: false
-    status_history:
-      - working: "NA"
-        agent: "main"
-        comment: "Added GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI, FRONTEND_URL to config.py loaded from .env. Created backend/.env with the provided Google credentials."
+        comment: "Backend already emits new schema via SSE: checking_in, reading_journal, what_i_think_the_writer_is_doing, moments, questions_for_writer. editor.py also already generates new 5-section report."
 
 frontend:
-  - task: "LoginPage - use backend Google login URL instead of Emergent URL"
+  - task: "useReadingStream - consume new reader_complete event schema"
     implemented: true
     working: "NA"
-    file: "frontend/src/pages/LoginPage.js"
+    file: "frontend/src/hooks/useReadingStream.js"
     stuck_count: 0
     priority: "high"
-    needs_retesting: false
+    needs_retesting: true
     status_history:
       - working: "NA"
         agent: "main"
-        comment: "Changed href from hardcoded Emergent URL to getApiBase()+'/api/auth/google/login' (uses REACT_APP_BACKEND_URL)."
+        comment: "Updated to read moments (paragraph->line mapping), reading_journal, what_i_think_the_writer_is_doing, questions_for_writer, checking_in from SSE events. Updated loadExistingReactions to use response_json fields with legacy fallbacks. Reflections state now carries full per-section journal data."
 
-  - task: "AuthCallback - read session_token from query params instead of session_id from hash"
+  - task: "ReaderSidebar - new literary reader card design with journal as primary content"
     implemented: true
     working: "NA"
-    file: "frontend/src/pages/AuthCallback.js"
+    file: "frontend/src/components/ReaderSidebar.jsx"
     stuck_count: 0
     priority: "high"
-    needs_retesting: false
+    needs_retesting: true
     status_history:
       - working: "NA"
         agent: "main"
-        comment: "Rewrote AuthCallback to read ?session_token= from URL search params, store in localStorage, call /api/auth/me to get user, then navigate to /setup."
+        comment: "Redesigned ReaderPanel: reading_journal is primary (italic serif), what_i_think_the_writer_is_doing secondary, questions_for_writer visually highlighted with clay left-border, checking_in collapsible. New COMMENT_TYPE_COLORS for reaction/confusion/question/craft/callback. Added AggregatedQuestions panel at top of sidebar. Filter bar uses new types only."
 
-  - task: "AuthContext - fix loading-skip logic for new callback format"
+  - task: "ManuscriptView - update comment type colors for new types"
     implemented: true
     working: "NA"
-    file: "frontend/src/context/AuthContext.js"
+    file: "frontend/src/components/ManuscriptView.jsx"
     stuck_count: 0
-    priority: "high"
-    needs_retesting: false
+    priority: "medium"
+    needs_retesting: true
     status_history:
       - working: "NA"
         agent: "main"
-        comment: "Changed hash check (session_id=) to query-param check (session_token= on /auth/callback path)."
+        comment: "Updated COMMENT_TYPE_COLORS to new set. Changed 'annotations' label to 'moments marked'. Popover header shows paragraph symbol."
+
+  - task: "CommentPopover - update type colors for new schema"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/components/CommentPopover.jsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Updated TYPE_COLORS to new set (reaction/confusion/question/craft/callback) with legacy fallbacks."
+
+  - task: "ReportPage - new 5-section editor report replacing old 6 sections"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/pages/ReportPage.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Replaced Executive Summary/Engagement Heatmap/Consensus/Character/Prediction/Recommendations with: Did it land? (did_it_land), Where did engagement drop? (engagement_drop), What readers disagree about (what_readers_disagree_about), Open questions (open_questions, multiple-reader questions highlighted), Strongest moments (strongest_moments). Literary calm aesthetic maintained."
 
 metadata:
   created_by: "main_agent"
   version: "1.0"
-  test_sequence: 0
+  test_sequence: 1
   run_ui: false
 
 test_plan:
   current_focus:
-    - "Native Google OAuth - /api/auth/google/login endpoint"
-    - "Native Google OAuth - /api/auth/google/callback endpoint"
+    - "useReadingStream - consume new reader_complete event schema"
+    - "ReaderSidebar - new literary reader card design with journal as primary content"
+    - "ReportPage - new 5-section editor report replacing old 6 sections"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
 
 agent_communication:
   - agent: "main"
-    message: "Replaced Emergent Google Auth with native Google OAuth 2.0. Backend has two new endpoints: /api/auth/google/login (redirects to Google) and /api/auth/google/callback (exchanges code, creates session, redirects to frontend). Frontend LoginPage now points to the backend login URL; AuthCallback reads session_token from query params. NOTE: Full OAuth flow requires Supabase credentials in backend/.env and the correct GOOGLE_REDIRECT_URI matching what's registered in Google Cloud Console. The redirect URI http://roundtable.works/api/auth/google/callback is registered and configured."
+    message: "Updated 5 frontend files to match new backend reader schema. Key changes: (1) useReadingStream.js now reads moments (paragraph->line) instead of inline_comments, and reflections state carries rich per-section journal data. (2) ReaderSidebar redesigned: journals as primary content, questions highlighted, checking_in collapsible, new type system. (3) ManuscriptView/CommentPopover updated to new type colors. (4) ReportPage completely rewritten with 5 new sections: did_it_land, engagement_drop, what_readers_disagree_about, open_questions, strongest_moments. Frontend compiles cleanly (lint passes). Backend was already updated - no backend changes needed."

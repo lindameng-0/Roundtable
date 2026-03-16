@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronRight, Loader2, MessageSquare } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, MessageSquare, HelpCircle } from "lucide-react";
 import { StallBanner } from "./StallBanner";
 
 const READER_AVATAR_URLS = [
@@ -13,10 +13,15 @@ const READER_AVATAR_URLS = [
 
 const READER_COLORS = ["#C86B56", "#5C5855", "#8da399", "#D4Af37", "#2D2A26"];
 
+// New comment type set
 const COMMENT_TYPE_COLORS = {
   reaction:   { bg: "#EBF4FF", text: "#2563EB", label: "Reaction" },
+  confusion:  { bg: "#FFF5F5", text: "#DC2626", label: "Confusion" },
+  question:   { bg: "#F0FDF4", text: "#16A34A", label: "Question" },
+  craft:      { bg: "#F5F0FF", text: "#7C3AED", label: "Craft" },
+  callback:   { bg: "#FFF7ED", text: "#EA580C", label: "Callback" },
+  // legacy fallbacks
   prediction: { bg: "#F5F0FF", text: "#7C3AED", label: "Prediction" },
-  confusion:  { bg: "#F5F5F5", text: "#6B7280", label: "Confusion" },
   critique:   { bg: "#FFF0F0", text: "#DC2626", label: "Critique" },
   praise:     { bg: "#F0FFF4", text: "#16A34A", label: "Praise" },
   theory:     { bg: "#FFF7ED", text: "#EA580C", label: "Theory" },
@@ -28,7 +33,8 @@ const PERSONALITY_COLORS = {
   skeptical: "#D4Af37", genre_savvy: "#2D2A26",
 };
 
-const ALL_TYPES = Object.keys(COMMENT_TYPE_COLORS);
+// New types only (for filter bar)
+const CURRENT_TYPES = ["reaction", "confusion", "question", "craft", "callback"];
 
 function getReaderDisplayName(persona, index) {
   const n = persona?.name;
@@ -68,7 +74,7 @@ function ThinkingStrip({ thinkingReaders, personas }) {
                 />
               </div>
               <div className="flex-1 min-w-0">
-                <span className="text-xs font-medium text-ink-900">{displayName}</span>
+                <span className="text-xs font-semibold text-ink-900">{displayName}</span>
                 <span className="text-xs text-ink-400 ml-1.5">is reading section {info.section_number}...</span>
               </div>
               <div className="flex items-center gap-0.5 flex-shrink-0">
@@ -90,18 +96,121 @@ function ThinkingStrip({ thinkingReaders, personas }) {
   );
 }
 
+/**
+ * A per-section journal entry within a reader card.
+ * Shows reading_journal (primary), what_i_think_the_writer_is_doing (secondary),
+ * questions_for_writer (highlighted), checking_in (collapsible).
+ */
+function SectionJournalEntry({ entry }) {
+  const [showCheckingIn, setShowCheckingIn] = useState(false);
+  const { section_number, reading_journal, what_i_think_the_writer_is_doing, questions_for_writer, checking_in } = entry;
+
+  return (
+    <div className="pt-3 pb-4 border-b border-ink-900/5 last:border-0">
+      <p className="text-xs text-ink-400 uppercase tracking-widest mb-2">Section {section_number}</p>
+
+      {/* Primary: Reading Journal */}
+      {reading_journal && (
+        <p
+          className="text-sm text-ink-700 leading-relaxed mb-3"
+          style={{
+            fontFamily: "'Cormorant Garamond', serif",
+            fontSize: "1rem",
+            lineHeight: "1.75",
+            fontStyle: "italic",
+          }}
+        >
+          {reading_journal}
+        </p>
+      )}
+
+      {/* Secondary: What the writer is doing */}
+      {what_i_think_the_writer_is_doing && (
+        <div className="mb-3">
+          <p className="text-xs text-ink-400 uppercase tracking-widest mb-1">Intent read</p>
+          <p className="text-xs text-ink-600 leading-relaxed">
+            {what_i_think_the_writer_is_doing}
+          </p>
+        </div>
+      )}
+
+      {/* Questions for writer — visually highlighted */}
+      {questions_for_writer && questions_for_writer.length > 0 && (
+        <div className="space-y-1.5 mb-3">
+          {questions_for_writer.map((q, i) => (
+            <div
+              key={i}
+              className="flex gap-2 px-2.5 py-2 text-xs text-ink-700 leading-relaxed"
+              style={{
+                background: "rgba(200, 107, 86, 0.06)",
+                borderLeft: "2px solid #C86B56",
+                borderRadius: "0 2px 2px 0",
+                fontFamily: "'Cormorant Garamond', serif",
+                fontSize: "0.9rem",
+                fontStyle: "italic",
+              }}
+            >
+              <HelpCircle className="w-3 h-3 flex-shrink-0 mt-0.5 text-clay" strokeWidth={1.5} />
+              <span>{q}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Checking in — low priority, collapsible */}
+      {checking_in && (
+        <div>
+          <button
+            onClick={() => setShowCheckingIn((s) => !s)}
+            className="flex items-center gap-1 text-xs text-ink-400 hover:text-ink-600 transition-colors"
+          >
+            <ChevronRight
+              className={`w-3 h-3 transition-transform ${showCheckingIn ? "rotate-90" : ""}`}
+              strokeWidth={1.5}
+            />
+            Before reading
+          </button>
+          <AnimatePresence>
+            {showCheckingIn && (
+              <motion.p
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.18 }}
+                className="overflow-hidden mt-1.5 text-xs text-ink-400 leading-relaxed pl-4"
+                style={{ fontStyle: "italic" }}
+              >
+                {checking_in}
+              </motion.p>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ReaderPanel({ persona, readerStatus, reflections, totalComments, activeTypes, allComments }) {
   const [expanded, setExpanded] = useState(false);
-  const [showAllComments, setShowAllComments] = useState(false);
+  const [showMoments, setShowMoments] = useState(false);
   const color = PERSONALITY_COLORS[persona?.personality] || "#5C5855";
   const readerColor = READER_COLORS[persona?.avatar_index ?? 0];
   const { currentSection, done } = readerStatus || {};
 
-  const filteredComments = useMemo(() => {
+  // Moments filtered to this reader and active types
+  const filteredMoments = useMemo(() => {
     return allComments.filter(
       (c) => c.readerId === persona.id && (activeTypes.size === 0 || activeTypes.has(c.comment?.type))
     );
   }, [allComments, persona.id, activeTypes]);
+
+  // Sections with journals, sorted
+  const sortedSections = useMemo(() => {
+    return [...reflections].sort((a, b) => (a.section_number || 0) - (b.section_number || 0));
+  }, [reflections]);
+
+  const journalCount = sortedSections.length;
+  const hasContent = journalCount > 0 || filteredMoments.length > 0;
 
   return (
     <div
@@ -124,7 +233,11 @@ function ReaderPanel({ persona, readerStatus, reflections, totalComments, active
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-ink-900 truncate">{getReaderDisplayName(persona)}</p>
           <p className="text-xs" style={{ color }}>
-            {done ? `${totalComments} comments` : currentSection ? `Reading section ${currentSection}...` : "Waiting..."}
+            {done
+              ? `${journalCount} journal${journalCount !== 1 ? "s" : ""} · ${totalComments} moment${totalComments !== 1 ? "s" : ""}`
+              : currentSection
+              ? `Reading section ${currentSection}...`
+              : "Waiting..."}
           </p>
         </div>
         {done && <span className="text-xs text-sage mr-2 flex-shrink-0">Done</span>}
@@ -136,37 +249,35 @@ function ReaderPanel({ persona, readerStatus, reflections, totalComments, active
         {expanded && (
           <motion.div initial={{ height: 0 }} animate={{ height: "auto" }} exit={{ height: 0 }} transition={{ duration: 0.22 }} className="overflow-hidden">
             <div className="px-4 pb-4 border-t border-ink-900/6">
-              {reflections.length > 0 && (
-                <div className="mt-3 space-y-3">
-                  {reflections.map((r, i) => (
-                    <div key={i}>
-                      <p className="text-xs text-ink-400 mb-1 mt-2">After section {r.section_number}</p>
-                      <p className="text-sm text-ink-600 leading-relaxed" style={{ fontFamily: "'Cormorant Garamond', serif", fontStyle: "italic" }}>
-                        {r.reflection}
-                      </p>
-                    </div>
+              {/* Section journals */}
+              {sortedSections.length > 0 && (
+                <div className="mt-3 space-y-0">
+                  {sortedSections.map((entry, i) => (
+                    <SectionJournalEntry key={`${entry.readerId}-${entry.section_number}-${i}`} entry={entry} />
                   ))}
                 </div>
               )}
-              {filteredComments.length > 0 && (
+
+              {/* Moments list (sparse, collapsible) */}
+              {filteredMoments.length > 0 && (
                 <div className="mt-3">
                   <button
-                    onClick={() => setShowAllComments((s) => !s)}
+                    onClick={() => setShowMoments((s) => !s)}
                     className="flex items-center gap-1 text-xs text-ink-400 hover:text-clay transition-colors"
                   >
-                    <ChevronRight className={`w-3 h-3 transition-transform ${showAllComments ? "rotate-90" : ""}`} strokeWidth={1.5} />
-                    {showAllComments ? "Hide" : "Show"} {filteredComments.length} comment{filteredComments.length !== 1 ? "s" : ""}
+                    <ChevronRight className={`w-3 h-3 transition-transform ${showMoments ? "rotate-90" : ""}`} strokeWidth={1.5} />
+                    {showMoments ? "Hide" : "Show"} {filteredMoments.length} moment{filteredMoments.length !== 1 ? "s" : ""}
                   </button>
                   <AnimatePresence>
-                    {showAllComments && (
+                    {showMoments && (
                       <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden mt-2 space-y-2">
-                        {filteredComments.map((c, i) => {
+                        {filteredMoments.map((c, i) => {
                           const typeStyle = COMMENT_TYPE_COLORS[c.comment?.type] || COMMENT_TYPE_COLORS.reaction;
                           return (
                             <div key={i} className="text-xs p-2 bg-paper" style={{ borderRadius: "2px" }}>
                               <div className="flex items-center gap-1.5 mb-1">
                                 <span className="px-1.5 py-0.5 text-xs" style={{ background: typeStyle.bg, color: typeStyle.text, borderRadius: "2px" }}>{typeStyle.label}</span>
-                                <span className="text-ink-400">L{c.comment?.line}</span>
+                                <span className="text-ink-400">¶{c.comment?.line}</span>
                               </div>
                               <p className="text-ink-600 leading-relaxed">{c.comment?.comment}</p>
                             </div>
@@ -177,14 +288,86 @@ function ReaderPanel({ persona, readerStatus, reflections, totalComments, active
                   </AnimatePresence>
                 </div>
               )}
-              {filteredComments.length === 0 && reflections.length === 0 && (
-                <p className="text-xs text-ink-400 mt-3">No comments yet</p>
+
+              {!hasContent && (
+                <p className="text-xs text-ink-400 mt-3">No feedback yet</p>
               )}
             </div>
           </motion.div>
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+/**
+ * Aggregated questions panel: shows all questions from all readers, grouped.
+ * Only shown when there are questions.
+ */
+function AggregatedQuestions({ reflections, personas }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const allQuestions = useMemo(() => {
+    const list = [];
+    reflections.forEach((r) => {
+      const persona = personas.find((p) => p.id === r.readerId);
+      const readerName = getReaderDisplayName(persona, persona?.avatar_index);
+      (r.questions_for_writer || []).forEach((q) => {
+        list.push({ question: q, readerName, section_number: r.section_number });
+      });
+    });
+    return list;
+  }, [reflections, personas]);
+
+  if (allQuestions.length === 0) return null;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -6 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="mb-4 border border-clay/20 bg-white overflow-hidden"
+      style={{ borderRadius: "2px" }}
+    >
+      <button
+        className="w-full flex items-center justify-between px-3 py-2.5 text-left hover:bg-paper transition-colors"
+        onClick={() => setExpanded((e) => !e)}
+      >
+        <div className="flex items-center gap-2">
+          <HelpCircle className="w-3.5 h-3.5 text-clay" strokeWidth={1.5} />
+          <p className="text-xs text-clay uppercase tracking-widest font-medium">
+            {allQuestions.length} question{allQuestions.length !== 1 ? "s" : ""} for you
+          </p>
+        </div>
+        <ChevronDown className={`w-3 h-3 text-clay/60 transition-transform ${expanded ? "rotate-180" : ""}`} strokeWidth={1.5} />
+      </button>
+      <AnimatePresence>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0 }}
+            animate={{ height: "auto" }}
+            exit={{ height: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <div className="px-3 pb-3 space-y-2 border-t border-clay/10">
+              {allQuestions.map((item, i) => (
+                <div key={i} className="pt-2">
+                  <p
+                    className="text-xs text-ink-700 leading-relaxed"
+                    style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "0.9rem", fontStyle: "italic" }}
+                  >
+                    {item.question}
+                  </p>
+                  <p className="text-xs text-ink-400 mt-0.5">
+                    {item.readerName} · §{item.section_number}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
   );
 }
 
@@ -208,19 +391,30 @@ export function ReaderSidebar({
 }) {
   const readerReflections = (readerId) => reflections.filter((r) => r.readerId === readerId);
 
+  // Count total questions across all readers
+  const totalQuestions = useMemo(
+    () => reflections.reduce((sum, r) => sum + (r.questions_for_writer?.length || 0), 0),
+    [reflections]
+  );
+
   return (
     <div className="w-2/5 overflow-y-auto bg-paper-dark flex flex-col" data-testid="reactions-sidebar">
       <div className="p-5 flex-1">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-xs text-ink-400 uppercase tracking-widest">Your Readers</h3>
-          {totalCommentCount > 0 && <span className="text-xs text-ink-400">{totalCommentCount} annotations</span>}
+          {totalCommentCount > 0 && (
+            <span className="text-xs text-ink-400">
+              {totalCommentCount} moment{totalCommentCount !== 1 ? "s" : ""}
+            </span>
+          )}
         </div>
 
+        {/* Moment type filter — only show if there are moments */}
         {totalCommentCount > 0 && (
           <div className="mb-4">
-            <p className="text-xs text-ink-400 mb-2">Filter by type</p>
+            <p className="text-xs text-ink-400 mb-2">Filter moments</p>
             <div className="flex flex-wrap gap-1.5">
-              {ALL_TYPES.map((type) => {
+              {CURRENT_TYPES.map((type) => {
                 const typeStyle = COMMENT_TYPE_COLORS[type];
                 const isActive = activeTypes.has(type);
                 return (
@@ -256,6 +450,11 @@ export function ReaderSidebar({
         <AnimatePresence>
           {thinkingReaders.size > 0 && <ThinkingStrip thinkingReaders={thinkingReaders} personas={personas} />}
         </AnimatePresence>
+
+        {/* Aggregated questions panel */}
+        {totalQuestions > 0 && (
+          <AggregatedQuestions reflections={reflections} personas={personas} />
+        )}
 
         {personas.map((persona) => {
           const status = readerStatus[persona.id] || { currentSection: null, done: false, totalComments: 0 };

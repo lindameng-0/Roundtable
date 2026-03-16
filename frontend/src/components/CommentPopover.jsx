@@ -1,14 +1,19 @@
 import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
+// New comment type set: reaction | confusion | question | craft | callback
 const TYPE_COLORS = {
-  reaction: "#5C5855",
-  prediction: "#2D2A26",
-  confusion: "#C86B56",
-  critique: "#8B5E3C",
-  praise: "#8da399",
-  theory: "#6B5B95",
-  comparison: "#4A7B6F",
+  reaction:  { color: "#2563EB", label: "Reaction" },
+  confusion: { color: "#DC2626", label: "Confusion" },
+  question:  { color: "#16A34A", label: "Question" },
+  craft:     { color: "#7C3AED", label: "Craft" },
+  callback:  { color: "#EA580C", label: "Callback" },
+  // legacy fallbacks
+  prediction: { color: "#7C3AED", label: "Prediction" },
+  critique:   { color: "#DC2626", label: "Critique" },
+  praise:     { color: "#16A34A", label: "Praise" },
+  theory:     { color: "#EA580C", label: "Theory" },
+  comparison: { color: "#0D9488", label: "Comparison" },
 };
 
 /**
@@ -32,29 +37,32 @@ export function CommentPopover({ lineNum, comments, activeTypes, onClose }) {
         data-testid="comment-popover"
       >
         <div className="p-1">
-          {filtered.map((c, i) => (
-            <div
-              key={i}
-              className={`p-3 ${i < filtered.length - 1 ? "border-b border-ink-900/6" : ""}`}
-            >
-              <div className="flex items-center gap-2 mb-1.5">
-                <span
-                  className="text-xs uppercase tracking-widest font-semibold px-1.5 py-0.5"
-                  style={{
-                    color: TYPE_COLORS[c.type] || "#5C5855",
-                    background: `${TYPE_COLORS[c.type] || "#5C5855"}15`,
-                    borderRadius: "2px",
-                  }}
-                >
-                  {c.type}
-                </span>
-                <span className="text-xs text-ink-400">{c.readerName}</span>
+          {filtered.map((c, i) => {
+            const typeInfo = TYPE_COLORS[c.type] || TYPE_COLORS.reaction;
+            return (
+              <div
+                key={i}
+                className={`p-3 ${i < filtered.length - 1 ? "border-b border-ink-900/6" : ""}`}
+              >
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span
+                    className="text-xs uppercase tracking-widest font-semibold px-1.5 py-0.5"
+                    style={{
+                      color: typeInfo.color,
+                      background: `${typeInfo.color}15`,
+                      borderRadius: "2px",
+                    }}
+                  >
+                    {typeInfo.label}
+                  </span>
+                  <span className="text-xs text-ink-400">{c.readerName}</span>
+                </div>
+                <p className="text-sm text-ink-800 leading-relaxed" style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "0.95rem" }}>
+                  {c.comment}
+                </p>
               </div>
-              <p className="text-sm text-ink-800 leading-relaxed" style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "0.95rem" }}>
-                {c.comment}
-              </p>
-            </div>
-          ))}
+            );
+          })}
         </div>
         <button
           onClick={onClose}

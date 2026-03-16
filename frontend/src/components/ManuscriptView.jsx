@@ -13,10 +13,15 @@ const READER_AVATAR_URLS = [
 
 const READER_COLORS = ["#C86B56", "#5C5855", "#8da399", "#D4Af37", "#2D2A26"];
 
+// New comment types: reaction | confusion | question | craft | callback
 const COMMENT_TYPE_COLORS = {
   reaction:   { bg: "#EBF4FF", text: "#2563EB", label: "Reaction" },
+  confusion:  { bg: "#FFF5F5", text: "#DC2626", label: "Confusion" },
+  question:   { bg: "#F0FDF4", text: "#16A34A", label: "Question" },
+  craft:      { bg: "#F5F0FF", text: "#7C3AED", label: "Craft" },
+  callback:   { bg: "#FFF7ED", text: "#EA580C", label: "Callback" },
+  // legacy fallbacks
   prediction: { bg: "#F5F0FF", text: "#7C3AED", label: "Prediction" },
-  confusion:  { bg: "#F5F5F5", text: "#6B7280", label: "Confusion" },
   critique:   { bg: "#FFF0F0", text: "#DC2626", label: "Critique" },
   praise:     { bg: "#F0FFF4", text: "#16A34A", label: "Praise" },
   theory:     { bg: "#FFF7ED", text: "#EA580C", label: "Theory" },
@@ -77,7 +82,7 @@ function CommentPopover({ lineNumber, commentsByLine, personas, onClose }) {
       onClick={(e) => e.stopPropagation()}
     >
       <div className="flex items-center justify-between px-4 py-3 border-b border-ink-900/6">
-        <p className="text-xs text-ink-400 uppercase tracking-widest">Line {lineNumber}</p>
+        <p className="text-xs text-ink-400 uppercase tracking-widest">¶ {lineNumber}</p>
         <button onClick={onClose} className="text-ink-400 hover:text-ink-900 transition-colors">
           <X className="w-3.5 h-3.5" strokeWidth={1.5} />
         </button>
@@ -183,7 +188,7 @@ export function ManuscriptView({
           <div className="flex items-center gap-3 text-xs text-ink-400">
             <span>{manuscript.genre}</span>
             <span>·</span>
-            <span>{totalCommentCount} annotations</span>
+            <span>{totalCommentCount} moment{totalCommentCount !== 1 ? "s" : ""} marked</span>
           </div>
           <div className="w-16 h-px bg-clay mt-4" />
         </div>
@@ -221,7 +226,7 @@ export function ManuscriptView({
               Your readers have finished.
             </h3>
             <p className="text-sm text-ink-600 mb-4">
-              {totalCommentCount} {totalCommentCount === 1 ? "annotation" : "annotations"} across {totalSections} {totalSections === 1 ? "section" : "sections"}. Ready for the editorial synthesis?
+              {totalCommentCount} {totalCommentCount === 1 ? "moment" : "moments"} marked across {totalSections} {totalSections === 1 ? "section" : "sections"}. Ready for the editorial synthesis?
             </p>
             <button
               data-testid="generate-report-complete-btn"
