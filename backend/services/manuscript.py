@@ -71,19 +71,21 @@ def _parse_paragraphs_with_breaks(raw_text: str) -> List[Tuple[str, str]]:
 
 
 def _chapter_ranges(parsed: List[Tuple[str, str]]) -> List[Tuple[int, int]]:
-    """Return list of (start_idx, end_idx) for each chapter. Chapters are split on chapter/scene breaks."""
+    """Return list of (start_idx, end_idx) for each chapter (end_idx inclusive). Chapters are split on chapter/scene breaks."""
     if not parsed:
         return []
+    n = len(parsed)
     starts = [0]
-    for i in range(len(parsed)):
+    for i in range(n):
         if parsed[i][1] == "chapter":
             starts.append(i + 1)
     ranges: List[Tuple[int, int]] = []
     for j in range(len(starts)):
         s = starts[j]
-        e = starts[j + 1] if j + 1 < len(starts) else len(parsed)
-        if s < e:
-            ranges.append((s, e))
+        e_next = starts[j + 1] if j + 1 < len(starts) else n
+        e_inclusive = min(e_next - 1, n - 1) if e_next > 0 else 0
+        if s <= e_inclusive:
+            ranges.append((s, e_inclusive))
     return ranges
 
 
@@ -106,6 +108,11 @@ def _subsplit_range(
     nearest to midpoint. Both parts must be >= MIN_SECTION_WORDS and <= MAX_SECTION_WORDS.
     Never split mid-paragraph (we split at index boundaries). Recursively sub-split until all <= max.
     """
+    n = len(parsed)
+    start_idx = max(0, start_idx)
+    end_idx = min(end_idx, n - 1) if n else 0
+    if start_idx > end_idx:
+        return [(start_idx, end_idx)]
     words = _segment_words(cum_words, start_idx, end_idx)
     if words <= MAX_SECTION_WORDS:
         return [(start_idx, end_idx)]
@@ -116,7 +123,7 @@ def _subsplit_range(
 
     best_k: int | None = None
     best_dist = float("inf")
-    for k in range(start_idx, end_idx):
+    for k in range(start_idx, min(end_idx, len(parsed))):
         ck = cum_words[min(k, len(cum_words) - 1)]
         first_words = ck - start_words
         second_words = end_words - ck
@@ -130,7 +137,7 @@ def _subsplit_range(
             best_k = k
     if best_k is None:
         # No valid split that keeps both >= 500 and <= 2500; force at midpoint anyway to avoid huge section
-        for k in range(start_idx, end_idx):
+        for k in range(start_idx, min(end_idx, len(parsed))):
             ck = cum_words[min(k, len(cum_words) - 1)]
             first_words = ck - start_words
             second_words = end_words - ck
@@ -206,19 +213,26 @@ def split_manuscript_into_sections(raw_text: str) -> List[Dict]:
 
     section_ranges = _merge_small_sections(cum_words, section_ranges)
 
+    n_parsed = len(parsed)
     sections: List[Dict] = []
     for start_idx, end_idx in section_ranges:
-        section_text = "\n\n".join(parsed[j][0] for j in range(start_idx, end_idx + 1))
+        start_idx = max(0, start_idx)
+        end_inclusive = min(end_idx, n_parsed - 1) if n_parsed else 0
+        if start_idx > end_inclusive:
+            continue
+        section_text = "\n\n".join(
+            parsed[j][0] for j in range(start_idx, min(end_inclusive + 1, n_parsed))
+        )
         sec_word_count = len(section_text.split())
         sections.append({
             "text": section_text,
             "start_paragraph": start_idx + 1,
-            "end_paragraph": end_idx + 1,
+            "end_paragraph": end_inclusive + 1,
             "word_count": sec_word_count,
         })
         logger.info(
             "Section %s: %s words (paragraphs %s-%s)",
-            len(sections), sec_word_count, start_idx + 1, end_idx + 1,
+            len(sections), sec_word_count, start_idx + 1, end_inclusive + 1,
         )
     return sections
 
@@ -242,7 +256,7 @@ def split_manuscript(raw_text: str) -> Tuple[List[Dict], int]:
         start_para = sec["start_paragraph"]
         end_para = sec["end_paragraph"]
         word_count = sec["word_count"]
-        start_idx = start_para - 1
+        start_idx = max(0, start_para - 1)
         end_idx = end_para - 1
         paragraph_lines: List[Dict] = []
         for j in range(start_idx, min(end_idx + 1, len(parsed))):
