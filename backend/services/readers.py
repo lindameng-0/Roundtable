@@ -783,17 +783,17 @@ async def get_reader_inline_reaction(
                 pt = getattr(um, "prompt_token_count", None) or 0
                 ct = getattr(um, "candidates_token_count", None) or 0
                 logger.info(f"[{reader_name}] Section {section_number}: Call1 tokens prompt={pt} output={ct}")
-            # Fix 2: If model hit MAX_TOKENS very early (<150 tokens), retry this call once after a short delay.
+            # If MAX_TOKENS with very low output (<300 tokens), retry up to 2 times with 5s delay (rate limit often clears).
             if (
                 str(finish_reason).endswith("MAX_TOKENS")
                 and ct
-                and ct < 150
-                and attempt == 0
+                and ct < 300
+                and attempt < 2
             ):
                 logger.info(
-                    f"[{reader_name}] Section {section_number}: Call1 hit MAX_TOKENS with only {ct} tokens, retrying once after 3s"
+                    f"[{reader_name}] Section {section_number}: Call1 hit MAX_TOKENS with only {ct} tokens, retrying after 5s (attempt {attempt + 1}/2)"
                 )
-                await asyncio.sleep(3)
+                await asyncio.sleep(5)
                 continue
             if not (response_call1_text and response_call1_text.strip()):
                 last_error = RuntimeError("Gemini returned empty text")
@@ -927,17 +927,17 @@ async def get_reader_inline_reaction(
                 pt2 = getattr(um2, "prompt_token_count", None) or 0
                 ct2 = getattr(um2, "candidates_token_count", None) or 0
                 logger.info(f"[{reader_name}] Section {section_number}: Call2 tokens prompt={pt2} output={ct2}")
-            # Fix 2: If Call2 hit MAX_TOKENS very early, retry once after a short delay.
+            # If MAX_TOKENS with very low output (<300 tokens), retry up to 2 times with 5s delay (rate limit often clears).
             if (
                 str(finish_reason2).endswith("MAX_TOKENS")
                 and ct2
-                and ct2 < 150
-                and attempt == 0
+                and ct2 < 300
+                and attempt < 2
             ):
                 logger.info(
-                    f"[{reader_name}] Section {section_number}: Call2 hit MAX_TOKENS with only {ct2} tokens, retrying once after 3s"
+                    f"[{reader_name}] Section {section_number}: Call2 hit MAX_TOKENS with only {ct2} tokens, retrying after 5s (attempt {attempt + 1}/2)"
                 )
-                await asyncio.sleep(3)
+                await asyncio.sleep(5)
                 continue
 
             if not (response_call2_text and response_call2_text.strip()):
