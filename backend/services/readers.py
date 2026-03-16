@@ -9,7 +9,7 @@ from typing import Dict, List
 
 from google import genai
 import tiktoken
-from utils import now_iso, validate_moments, parse_reader_response
+from utils import now_iso, validate_moments
 from config import db
 import config as _cfg
 
@@ -109,6 +109,99 @@ def _get_genai_client() -> genai.Client:
         raise ValueError(msg)
     _genai_client = genai.Client(api_key=api_key)
     return _genai_client
+
+
+def parse_call1_text(text: str) -> dict:
+    """Parse Call 1 plain text response with section markers."""
+    result = {
+        "checking_in": None,
+        "reading_journal": None,
+        "what_i_think_the_writer_is_doing": None,
+        "questions_for_writer": [],
+    }
+
+    # Split on section markers
+    parts = re.split(r"\[(CHECKING IN|JOURNAL|INTENT|QUESTIONS)\]", text)
+
+    # parts alternates: [preamble, marker1, content1, marker2, content2, ...]
+    for i in range(1, len(parts), 2):
+        marker = parts[i].strip()
+        content = parts[i + 1].strip() if i + 1 < len(parts) else ""
+
+        if marker == "CHECKING IN":
+            result["checking_in"] = content if content else None
+        elif marker == "JOURNAL":
+            result["reading_journal"] = content if content else None
+        elif marker == "INTENT":
+            result["what_i_think_the_writer_is_doing"] = content if content else None
+        elif marker == "QUESTIONS":
+            if content.lower().strip() == "none" or not content:
+                result["questions_for_writer"] = []
+            else:
+                result["questions_for_writer"] = [
+                    q.strip()
+                    for q in content.split("\n")
+                    if q.strip() and q.strip().lower() != "none"
+                ]
+
+    # Fallback: if no markers were found at all, treat entire text as the journal
+    if result["reading_journal"] is None and result["checking_in"] is None:
+        stripped = text.strip()
+        if stripped:
+            result["reading_journal"] = stripped
+
+    return result
+
+
+def repair_call2_json(raw_text: str) -> dict:
+    """Extract complete memory and moments from potentially truncated Call 2 JSON."""
+    result = {"moments": [], "memory_update": {}}
+
+    # First try direct parse
+    try:
+        parsed = json.loads(raw_text)
+        return parsed
+    except json.JSONDecodeError:
+        pass
+
+    # Extract memory_update fields (these should be complete since they come first)
+    for field in ["facts", "impressions", "watching_for", "feeling"]:
+        field_match = re.search(
+            rf'"{field}"\s*:\s*"((?:[^"\\]|\\.)*)"',
+            raw_text,
+        )
+        if field_match:
+            result["memory_update"][field] = (
+                field_match.group(1)
+                .replace('\\"', '"')
+                .replace("\\n", "\n")
+            )
+
+    # Extract complete moment objects using regex
+    moment_pattern = (
+        r'\{\s*"paragraph"\s*:\s*(\d+)\s*,\s*'
+        r'"type"\s*:\s*"([^"]+)"\s*,\s*'
+        r'"comment"\s*:\s*"((?:[^"\\]|\\.)*)"\s*\}'
+    )
+
+    moments = []
+    for match in re.finditer(moment_pattern, raw_text):
+        try:
+            moments.append({
+                "paragraph": int(match.group(1)),
+                "type": match.group(2),
+                "comment": (
+                    match.group(3)
+                    .replace('\\"', '"')
+                    .replace("\\n", "\n")
+                ),
+            })
+        except (ValueError, IndexError):
+            continue
+
+    result["moments"] = moments
+
+    return result
 
 
 def _normalize_memory_update(mu: Dict) -> Dict:
@@ -308,41 +401,19 @@ def _reader_json_schema_block() -> str:
     return "{}"
 
 
-# Concrete JSON examples used in the user message so Gemini can mimic the structures reliably.
-_READER_JSON_EXAMPLE_CALL1 = '''{
-  "checking_in": "I'm curious to see how this world works after that opening image.",
-  "reading_journal": "The rain imagery went on longer than I needed. I got the point by paragraph 3 but it kept going. When Eli finally found the boy I perked up — that interaction has weight. But I'm not sure what the flower at the end means yet. Overall this is setup and I'm waiting to see where it goes.",
-  "what_i_think_the_writer_is_doing": "Setting up Eli as someone who makes promises he might not keep, using atmosphere to establish tone over plot.",
-  "questions_for_writer": [
-    "Is the boy dead at the end? The flower makes me think so but the text is ambiguous."
-  ]
-}'''
-
-
+# Call 2 JSON example: memory_update FIRST, then moments (so truncation preserves memory).
 _READER_JSON_EXAMPLE_CALL2 = '''{
-  "moments": [
-    {
-      "paragraph": 8,
-      "type": "confusion",
-      "comment": "I don't understand how Eli's light works. Is it magic? Technology? The story doesn't say and I can't tell if that's intentional."
-    },
-    {
-      "paragraph": 22,
-      "type": "craft",
-      "comment": "The phrase 'silence it broke' reads oddly — the syntax tripped me up and I had to reread."
-    },
-    {
-      "paragraph": 36,
-      "type": "reaction",
-      "comment": "The flower appearing where the boy sat is a strong image but I'm not sure if the boy is dead or just gone. Big difference."
-    }
-  ],
   "memory_update": {
     "facts": "After the Cataclysm, Eli found a boy in the rain, showed him light, left, came back to find him gone. A flower grew where he sat.",
-    "impressions": "Eli makes big promises to strangers. The boy felt more like a symbol than a person so far. Not sure if that's intentional.",
+    "impressions": "Eli makes big promises to strangers. The boy felt more like a symbol than a person so far.",
     "watching_for": "Whether the boy appears again and whether Eli's promises actually hold.",
     "feeling": "cautiously interested"
-  }
+  },
+  "moments": [
+    {"paragraph": 8, "type": "confusion", "comment": "I don't understand how Eli's light works. Is it magic? Technology?"},
+    {"paragraph": 22, "type": "craft", "comment": "The phrase 'silence it broke' reads oddly — tripped me up."},
+    {"paragraph": 36, "type": "reaction", "comment": "The flower is a strong image but is the boy dead or just gone?"}
+  ]
 }'''
 
 
@@ -355,34 +426,14 @@ You are reading a manuscript for fun. Not editing it. Not grading it. Not review
 
 YOUR JOB: Read this section. React honestly. Report what you experienced — including when the answer is "not much."
 
-=== HOW TO RESPOND ===
+Before reacting: what are you expecting based on the genre and opening? (checking in.)
+After reading: what's going through your head? 3-5 sentences — gut reaction, specific moments, characters, anything that confused or bored you. (reading journal.)
+In one sentence: what do you think the writer is trying to do in this section? This should come from YOUR reading tendency, not a generic theme. (intent.)
+0-2 questions about what is happening in the story — not about the writer's process or inspiration. (questions.)
 
-1. "checking_in" — Before reacting to the text: what are you expecting based on the genre and opening? What kind of story does this feel like it's going to be? 1-2 sentences.
-
-2. "reading_journal" — After reading: what's going through your head? 3-5 sentences.
-   - Start with your gut reaction. Not a thesis. Not a summary. Your actual feeling.
-   - Be specific — name characters, reference specific moments, quote words that stuck with you.
-   - If something confused you, say so. If you were bored, say when your attention drifted and why.
-   - If nothing surprised you, that's a valid reaction. Say it.
-
-3. "what_i_think_the_writer_is_doing" — 1 sentence. Not what happened. What you think the PURPOSE of this section is — what the writer is trying to make you feel, understand, or question. This should come from your specific way of reading (see YOUR READING TENDENCY below), not from a generic theme extraction.
 {_INTENT_READ_INSTRUCTION}
 
-4. "moments" — 2-4 specific places where you genuinely stopped and reacted. Only moments where you'd pause, reread, laugh, frown, or text someone about.
-   - TYPE DIVERSITY: Your moments should use at least 2 different types. If everything is "reaction," look harder: is there a confusing moment? A craft choice? A question the text raised?
-   - If only 1-2 things struck you, give 1-2 moments. Do not pad.
-
-5. "questions_for_writer" — 0-2 questions about WHAT IS HAPPENING IN THE STORY.
-   GOOD: "Is the boy dead at the end or did he leave? The flower growing where he sat makes me think he died but I'm not sure I'm supposed to think that."
-   GOOD: "Does Maeve actually agree with Eli or is she going along with it? Her silence could go either way."
-   BAD: "What inspired the symbolism of...?" / "Was this meant to represent...?" / "What was your intention behind...?"
-   Your questions should come from genuine confusion or curiosity — things where knowing the answer would change how you understand what you just read. Never ask about the writer's creative process.
-
-6. "memory_update" — Your notes for next time.
-   - "facts": 1-2 sentences. What happened.
-   - "impressions": 1-2 sentences. What you THINK about what happened. Interpretations, suspicions, opinions about characters. This is where your real reading lives.
-   - "watching_for": 1 sentence. What you'll be paying attention to going forward.
-   - "feeling": A few words. Your emotional state.
+{_QUESTIONS_FOR_WRITER_INSTRUCTION}
 
 === VOICE RULES ===
 
@@ -429,6 +480,22 @@ Other readers are also reading this manuscript. You don't know what they'll say,
 - Your value is in noticing what others might miss, not confirming what's obviously working.
 - Dig past the surface. There's usually a quieter moment, a word choice, a structural decision, something in the subtext that only you would catch with your particular reading tendency.
 
+=== OUTPUT FORMAT ===
+
+Respond using these exact section markers. Write naturally under each marker. Do not use JSON.
+
+[CHECKING IN]
+(1-2 sentences about what you're feeling/expecting before reading this section)
+
+[JOURNAL]
+(3-5 sentences. Your main reaction. Start with your gut feeling, be specific, name characters and moments. Include at least one thing that didn't fully work for you.)
+
+[INTENT]
+(1 sentence. What you think the writer is trying to do in this section. Should come from YOUR reading tendency, not a generic theme.)
+
+[QUESTIONS]
+(0-2 questions about the story, one per line. If you have no questions, write "none")
+
 """
     return prefix
 
@@ -440,16 +507,14 @@ def _build_section_2_plus_static_prefix(reader: Dict) -> str:
 
 You are continuing to read a manuscript. You are a person, not a critic.
 
-Before reading the new section, check in with yourself: what are you feeling about the story so far? What are you watching for? Has anything from earlier sections been nagging at you? Put this in "checking_in."
+Before reading the new section, check in with yourself: what are you feeling about the story so far? What are you watching for? Has anything from earlier sections been nagging at you?
 
 Then read the section and respond honestly.
 
 VOICE RULES (brief reminder):
 - First person. Specific. Plain language.
-- 2-4 moments. Use at least 2 different types. Do not force comments.
 - reading_journal is your main response. 3-5 sentences.
 - Always include at least one thing that didn't fully work or land for you.
-- Use "callback" type when something connects to your memory.
 
 BANNED: "Wow" / "This section..." / "The author..." / "effectively" / "compelling" / "struck me" / "so beautiful" / generic book-review language.
 
@@ -462,6 +527,22 @@ When referencing your memory, don't say "as I noted previously." React naturally
 
 YOU ARE ONE READER, NOT THE ONLY READER:
 Other readers are also reading this. Focus on what YOUR specific reading tendency catches, not the obvious standout moments everyone would notice.
+
+=== OUTPUT FORMAT ===
+
+Respond using these exact section markers. Write naturally under each marker. Do not use JSON.
+
+[CHECKING IN]
+(1-2 sentences about what you're feeling/expecting before reading this section)
+
+[JOURNAL]
+(3-5 sentences. Your main reaction. Start with your gut feeling, be specific, name characters and moments. Include at least one thing that didn't fully work for you.)
+
+[INTENT]
+(1 sentence. What you think the writer is trying to do in this section. Should come from YOUR reading tendency, not a generic theme.)
+
+[QUESTIONS]
+(0-2 questions about the story, one per line. If you have no questions, write "none")
 
 """
     return prefix
@@ -630,12 +711,12 @@ async def get_reader_inline_reaction(
 
     client = _get_genai_client()
 
+    # Call 1: plain text with section markers — NO response_mime_type
     generation_config_call1 = genai.types.GenerateContentConfig(
         system_instruction=system_prompt_call1,
         temperature=temperature,
         top_p=0.95,
         max_output_tokens=2500,
-        response_mime_type="application/json",
     )
     generation_config_call2 = genai.types.GenerateContentConfig(
         system_instruction=system_prompt_call2,
@@ -645,17 +726,8 @@ async def get_reader_inline_reaction(
         response_mime_type="application/json",
     )
 
-    # ── Call 1: reading reaction (checking_in, journal, intent, questions) ───
-    json_instructions_call1 = (
-        "Respond with ONLY valid JSON in this exact flat structure (no nested arrays of objects). "
-        "Do not skip any field. Complete the entire JSON object before stopping.\n"
-        "Schema:\n"
-        '{ "checking_in": string, "reading_journal": string, "what_i_think_the_writer_is_doing": string, "questions_for_writer": string[] }\n'
-        "Here is an example of the structure (values are just an example, do NOT copy the wording):\n"
-        f"{_READER_JSON_EXAMPLE_CALL1}\n\n"
-    )
-
-    user_text_call1 = json_instructions_call1 + f"Section {section_number} of {total_sections}.\n\n{numbered_text}"
+    # ── Call 1: reading reaction (plain text with section markers) ───
+    user_text_call1 = f"Section {section_number} of {total_sections}.\n\n{numbered_text}"
     if section_number == total_sections:
         user_text_call1 = (
             "This is the final section. Read it like finishing a book — notice what pays off, what doesn't, what you're left with. React honestly to the ending.\n\n"
@@ -764,53 +836,30 @@ async def get_reader_inline_reaction(
         f"[{reader_name}] Section {section_number}: Gemini Call1 complete ({len(response_call1_text)} chars, {elapsed*1000:.0f}ms)"
     )
 
-    # ── Parse Call 1 (simple flat JSON) with repair using parse_reader_response ──
-    checking_in = None
-    reading_journal = None
-    what_i_think_the_writer_is_doing = None
-    questions_for_writer: List[str] = []
-    try:
-        parsed_call1 = json.loads(response_call1_text)
-        if isinstance(parsed_call1, dict):
-            checking_in = parsed_call1.get("checking_in")
-            reading_journal = parsed_call1.get("reading_journal")
-            what_i_think_the_writer_is_doing = parsed_call1.get("what_i_think_the_writer_is_doing")
-            qfw = parsed_call1.get("questions_for_writer", [])
-            if isinstance(qfw, list):
-                questions_for_writer = [str(q) for q in qfw]
-    except Exception as e:
-        logger.error(
-            f"[{reader_name}] Section {section_number}: failed to parse Call1 JSON directly: {e}. Attempting repair. Raw: {response_call1_text[:500]}"
-        )
-        try:
-            # Reuse aggressive repair logic from parse_reader_response to salvage partial data.
-            repaired = parse_reader_response(response_call1_text, previous_memory={})
-            checking_in = repaired.get("checking_in")
-            reading_journal = repaired.get("reading_journal")
-            what_i_think_the_writer_is_doing = repaired.get("what_i_think_the_writer_is_doing")
-            qfw = repaired.get("questions_for_writer", [])
-            if isinstance(qfw, list):
-                questions_for_writer = [str(q) for q in qfw]
-            logger.info(
-                f"[{reader_name}] Section {section_number}: Call1 JSON repaired via parse_reader_response (checking_in={bool(checking_in)}, journal={bool(reading_journal)}, intent={bool(what_i_think_the_writer_is_doing)}, questions={len(questions_for_writer)})"
-            )
-        except Exception as repair_err:
-            logger.error(
-                f"[{reader_name}] Section {section_number}: Call1 JSON repair failed, giving up on this reader: {repair_err}"
-            )
-            raise
-
-    # Even after repair, enforce list type for questions_for_writer.
+    # ── Parse Call 1 (plain text with section markers) ──
+    parsed_call1 = parse_call1_text(response_call1_text)
+    checking_in = parsed_call1.get("checking_in")
+    reading_journal = parsed_call1.get("reading_journal")
+    what_i_think_the_writer_is_doing = parsed_call1.get("what_i_think_the_writer_is_doing")
+    questions_for_writer = parsed_call1.get("questions_for_writer", [])
     if not isinstance(questions_for_writer, list):
         questions_for_writer = []
+    logger.info(
+        f"[{reader_name}] Section {section_number}: Call1 parsed — "
+        f"checking_in={'yes' if parsed_call1.get('checking_in') else 'no'}, "
+        f"journal={'yes' if parsed_call1.get('reading_journal') else 'no'}, "
+        f"intent={'yes' if parsed_call1.get('what_i_think_the_writer_is_doing') else 'no'}, "
+        f"questions={len(questions_for_writer)}"
+    )
 
-    # ── Call 2: moments + memory_update ──────────────────────────────────────
+    # ── Call 2: moments + memory_update (JSON; memory first so truncation preserves memory) ──
     json_instructions_call2 = (
+        "Generate memory_update FIRST, then moments. Complete the memory_update object fully before starting the moments array. This order is important.\n\n"
         "Respond with ONLY valid JSON matching this structure. "
         "Do not skip any field. Complete the entire JSON object before stopping.\n"
         "Schema:\n"
-        '{ "moments": [ { "paragraph": number, "type": string, "comment": string } ], '
-        '"memory_update": { "facts": string, "impressions": string, "watching_for": string, "feeling": string } }\n'
+        '{ "memory_update": { "facts": string, "impressions": string, "watching_for": string, "feeling": string }, '
+        '"moments": [ { "paragraph": number, "type": string, "comment": string } ] }\n'
         "Here is an example of the structure (values are illustrative only):\n"
         f"{_READER_JSON_EXAMPLE_CALL2}\n\n"
     )
@@ -940,48 +989,11 @@ async def get_reader_inline_reaction(
         f"[{reader_name}] Section {section_number}: Gemini Call2 complete (len={len(response_call2_text) if response_call2_text else 0}, {elapsed2_total*1000:.0f}ms)"
     )
 
-    # ── Parse Call 2 (moments + memory_update), with graceful fallback ───────
+    # ── Parse Call 2 with repair_call2_json (handles truncated JSON) ───────
     parse_warning = False
-    moments = []
-    memory_update = {}
-
+    call2_result = {"moments": [], "memory_update": {}}
     if response_call2_text:
-        try:
-            parsed_call2 = json.loads(response_call2_text)
-            if not isinstance(parsed_call2, dict):
-                raise ValueError("Call2 JSON is not an object")
-        except Exception as e:
-            logger.error(
-                f"[{reader_name}] Section {section_number}: failed to parse Call2 JSON directly: {e}. Attempting repair. Raw: {response_call2_text[:500]}"
-            )
-            try:
-                # Reuse aggressive repair logic from parse_reader_response to salvage as many moments/memory fields as possible.
-                repaired = parse_reader_response(response_call2_text, previous_memory=compressed_memory if isinstance(compressed_memory, dict) else {})
-                parsed_call2 = {
-                    "moments": repaired.get("moments", []),
-                    "memory_update": repaired.get("memory_update", {}),
-                }
-                logger.info(
-                    f"[{reader_name}] Section {section_number}: Call2 JSON repaired via parse_reader_response (moments={len(parsed_call2.get('moments', []))}, has_memory={bool(parsed_call2.get('memory_update'))})"
-                )
-            except Exception as repair_err:
-                logger.error(
-                    f"[{reader_name}] Section {section_number}: Call2 JSON repair failed, falling back to partial data: {repair_err}"
-                )
-                parse_warning = True
-                moments = []
-                memory_update = {}
-                parsed_call2 = None
-        if isinstance(parsed_call2, dict):
-            raw_moments = parsed_call2.get("moments", [])
-            if not isinstance(raw_moments, list):
-                raw_moments = []
-            moments = validate_moments(raw_moments, line_start, prompt_line_end)
-            memory_update_raw = parsed_call2.get("memory_update", {})
-            if isinstance(memory_update_raw, dict):
-                memory_update = _normalize_memory_update(memory_update_raw)
-            else:
-                memory_update = {}
+        call2_result = repair_call2_json(response_call2_text)
     else:
         if last_error_call2:
             logger.error(
@@ -989,16 +1001,43 @@ async def get_reader_inline_reaction(
             )
         parse_warning = True
 
+    recovered_moments = len(call2_result.get("moments", []))
+    has_memory = bool(call2_result.get("memory_update", {}))
+    logger.info(
+        f"[{reader_name}] Section {section_number}: "
+        f"Call2 parsed — moments={recovered_moments}, has_memory={has_memory}"
+    )
+
+    raw_moments = call2_result.get("moments", [])
+    if not isinstance(raw_moments, list):
+        raw_moments = []
+    moments = validate_moments(raw_moments, line_start, prompt_line_end)
+    memory_update_raw = call2_result.get("memory_update", {})
+    if isinstance(memory_update_raw, dict):
+        memory_update = _normalize_memory_update(memory_update_raw)
+    else:
+        memory_update = {}
+
+    # Merge Call 1 + Call 2 for DB and frontend (same shape as before)
+    merged = {
+        "checking_in": checking_in,
+        "reading_journal": reading_journal,
+        "what_i_think_the_writer_is_doing": what_i_think_the_writer_is_doing,
+        "questions_for_writer": questions_for_writer,
+        "moments": moments,
+        "memory_update": memory_update,
+    }
+
     # Legacy shape for DB: inline_comments = moments with "line" key; section_reflection = reading_journal
     inline_comments = [{"line": m["paragraph"], "type": m["type"], "comment": m["comment"]} for m in moments]
     section_reflection = reading_journal
 
     response_json = {
-        "checking_in": checking_in,
-        "reading_journal": reading_journal,
-        "what_i_think_the_writer_is_doing": what_i_think_the_writer_is_doing,
-        "moments": moments,
-        "questions_for_writer": questions_for_writer,
+        "checking_in": merged["checking_in"],
+        "reading_journal": merged["reading_journal"],
+        "what_i_think_the_writer_is_doing": merged["what_i_think_the_writer_is_doing"],
+        "moments": merged["moments"],
+        "questions_for_writer": merged["questions_for_writer"],
     }
     # ── Save reaction (retry with fresh id on failure to avoid duplicate key on false-negative)
     reaction_doc = None
