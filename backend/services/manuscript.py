@@ -4,8 +4,9 @@ from typing import List, Dict, Tuple
 
 logger = logging.getLogger(__name__)
 
-# Section limits: keep sections in 500-2500 range so Gemini reliably completes full output
-MAX_SECTION_WORDS = 2500
+# Section limits: split on chapter/scene first; only sub-split chapters over 5000 words at paragraph break.
+# Call 1 uses plain text, Call 2 has repair logic — no need for 2500-word cap.
+MAX_SECTION_WORDS = 5000
 MIN_SECTION_WORDS = 500
 
 # Legacy constants for any callers that expect the old targets
@@ -24,10 +25,10 @@ _scene_marker_re = re.compile(r"^[\*\-]{2,}$")
 
 def _parse_paragraphs_with_breaks(raw_text: str) -> List[Tuple[str, str]]:
     """
-    Split text into paragraphs and classify the break type after each paragraph.
+    Split text into paragraphs (blocks) and classify the break type after each.
     Returns list of (paragraph_text, break_after) where break_after is "chapter" | "scene" | "paragraph".
-    Uses line-level granularity: each non-empty line is one entry, so we have enough break points to
-    hit 3000-word targets even when the manuscript has few blank lines (e.g. 5 long chapters).
+    Split on chapter/scene breaks first (Chapter headings, Prologue, Epilogue, *** or ---).
+    We keep paragraph-level granularity (do not expand to line-level) so we never split mid-paragraph.
     """
     lines = raw_text.split("\n")
     blocks: List[Tuple[str, str]] = []
@@ -52,22 +53,14 @@ def _parse_paragraphs_with_breaks(raw_text: str) -> List[Tuple[str, str]]:
         if prev_text:
             blocks.append((prev_text, "paragraph"))
 
-    # Override: if a block starts with a chapter heading, the break before it is chapter
+    # Override: if a block starts with a chapter heading or scene marker, the break before it is chapter
     result_blocks: List[Tuple[str, str]] = []
     for i, (para_text, break_after) in enumerate(blocks):
         if i > 0 and (_chapter_heading_re.match(para_text.split("\n")[0].strip()) or _scene_marker_re.match(para_text.strip())):
             result_blocks[-1] = (result_blocks[-1][0], "chapter")
         result_blocks.append((para_text, break_after))
 
-    # Expand to line-level so we have a break point every line (enables 3000-word splits when blocks are huge)
-    paragraphs: List[Tuple[str, str]] = []
-    for block_text, break_after in result_blocks:
-        block_lines = [ln.strip() for ln in block_text.split("\n") if ln.strip()]
-        for line in block_lines:
-            paragraphs.append((line, "paragraph"))
-        if paragraphs:
-            paragraphs[-1] = (paragraphs[-1][0], break_after)
-    return paragraphs
+    return result_blocks
 
 
 def _chapter_ranges(parsed: List[Tuple[str, str]]) -> List[Tuple[int, int]]:
@@ -106,7 +99,7 @@ def _subsplit_range(
     """
     If segment [start_idx, end_idx] exceeds MAX_SECTION_WORDS, split at paragraph boundary
     nearest to midpoint. Both parts must be >= MIN_SECTION_WORDS and <= MAX_SECTION_WORDS.
-    Never split mid-paragraph (we split at index boundaries). Recursively sub-split until all <= max.
+    Never split mid-paragraph (we split at paragraph/block boundaries only). Recursively sub-split until all <= max.
     """
     n = len(parsed)
     start_idx = max(0, start_idx)
@@ -136,7 +129,7 @@ def _subsplit_range(
             best_dist = dist
             best_k = k
     if best_k is None:
-        # No valid split that keeps both >= 500 and <= 2500; force at midpoint anyway to avoid huge section
+        # No valid split that keeps both >= MIN and <= MAX; force at midpoint to avoid huge section
         for k in range(start_idx, min(end_idx, len(parsed))):
             ck = cum_words[min(k, len(cum_words) - 1)]
             first_words = ck - start_words
@@ -186,9 +179,10 @@ def _merge_small_sections(
 
 def split_manuscript_into_sections(raw_text: str) -> List[Dict]:
     """
-    Split manuscript into sections: first by chapter breaks, then sub-split any chapter
-    over 2500 words at paragraph boundaries near the midpoint. Never split mid-paragraph.
-    Minimum section 500 words (merge small fragments into adjacent section).
+    Split manuscript into sections: first by chapter/scene breaks (Chapter, Prologue, Epilogue, ***, ---),
+    then sub-split only chapters that exceed 5000 words at a natural paragraph break near the midpoint.
+    Never split mid-paragraph. Minimum section 500 words (merge small fragments into adjacent section).
+    A 40k-word manuscript with 8-10 chapters should produce roughly 8-12 sections.
     Returns list of dicts: text, start_paragraph (1-based), end_paragraph (1-based), word_count.
     """
     parsed = _parse_paragraphs_with_breaks(raw_text.strip())

@@ -368,21 +368,22 @@ TYPE DIVERSITY: Your moments should not all be the same type. If you have 3 mome
 - Does this moment connect to something from a previous section? → callback
 If after genuinely trying you still only have reactions, give fewer moments rather than forcing fake variety. But try first."""
 
-_QUESTIONS_FOR_WRITER_INSTRUCTION = '''"questions_for_writer" — 0-2 questions about WHAT IS HAPPENING IN THE STORY. Not about the writer's creative process. Not about their inspiration. Not about whether something was intentional.
+_QUESTIONS_FOR_WRITER_INSTRUCTION = '''[QUESTIONS]
+0-2 questions that would make the writer see their own text differently.
 
 GOOD questions:
-- "Is the boy dead at the end, or did he leave? The flower growing where he sat makes me think he died, but I'm not sure I'm supposed to think that."
-- "Does Maeve actually agree with Eli's plan or is she going along with it? Her silence in that scene could go either way."
-- "When Luca says 'it doesn't matter,' does he mean the specific situation or literally everything? Because those are very different levels of nihilism."
+- Questions that reframe something: "Is Eli healing people or editing them? Because Maeve's comment about 'the ignorance you gifted them' makes it sound darker than Eli thinks."
+- Questions that track patterns: "The boy in the prologue — is that Luca? Dark hair, stillness, hollow eyes, a flower left behind. If yes, don't confirm it too soon."
+- Questions that identify gaps between intent and execution: "Eli's speeches are supposed to be seductive, right? But they sound generic. If the point is he's dangerously charismatic, shouldn't I get swept up too?"
+- Questions about structural choices: "Why is this reveal here instead of later? Luca explaining his whole plan flattens the mystery — the papers falling should BE the reveal."
 
 BAD questions (never ask these):
-- "What inspired the symbolism of...?"
-- "Was this meant to represent...?"
-- "What was your intention behind...?"
-- "Is this a metaphor for...?"
-- Any question that belongs in an author interview, not a reading experience.
+- "What happens next?" predictions: "Will Eli succeed?" / "What will be the consequences?"
+- Repeated plot questions: "What exactly is the Garden?" — if you asked this before, don't ask it again
+- Questions the story will obviously answer later: "Who is the Prophet?" — just keep reading
+- Questions about the writer's process: "What inspired this?" / "Was this intentional?"
 
-Your questions should come from genuine confusion or curiosity about the story itself — things where knowing the answer would change how you understand what you just read.'''
+If you don't have a question that would genuinely make the writer think, write "none." An empty questions section is better than a plot-prediction question.'''
 
 _INTENT_READ_INSTRUCTION = '''"what_i_think_the_writer_is_doing" — This should reflect YOUR specific reading of the section through YOUR attention mode, not a generic theme statement.
 
@@ -407,7 +408,7 @@ def _reader_json_schema_block() -> str:
 # Call 2 JSON examples: memory_update FIRST, then moments (so truncation preserves memory).
 # Two examples with different moment counts teach the model that count varies with the text.
 _READER_JSON_EXAMPLE_CALL2 = """
-EXAMPLE A — a section where the writing is solid and only a few things stood out:
+EXAMPLE A — solid writing, few things stood out:
 {
   "memory_update": {
     "facts": "Eli gave a speech about taking the fight to the Metropolis. Maeve challenged him. A Citadel attack forced the decision.",
@@ -417,29 +418,29 @@ EXAMPLE A — a section where the writing is solid and only a few things stood o
   },
   "moments": [
     {"paragraph": 98, "type": "craft", "comment": "'The way how people leaned forward' — 'the way how' is redundant. Small thing but it pulled me out."},
-    {"paragraph": 111, "type": "confusion", "comment": "The scout bursting in right after Maeve corners Eli feels too convenient. Did she know?"}
+    {"paragraph": 111, "type": "confusion", "comment": "The scout bursting in right after Maeve corners Eli feels too convenient. Did she know the attack was coming?"}
   ]
 }
 
-EXAMPLE B — a section with more problems and interesting moments:
+EXAMPLE B — section with more issues:
 {
   "memory_update": {
-    "facts": "Battle sequence. Seth's luck ability failed. Soldiers were killed by the decoy explosion. Eli confronted a Citadel soldier.",
-    "impressions": "The soldier's speech completely changed how I see this conflict. Seth is in over his head.",
+    "facts": "Battle sequence. Seth's luck ability failed. Soldiers killed by decoy. Eli confronted a Citadel soldier.",
+    "impressions": "The soldier's speech changed how I see this conflict. Seth is in over his head.",
     "watching_for": "Whether the soldier's claim about deliberately missing is true.",
-    "feeling": "shaken, questioning everything"
+    "feeling": "shaken"
   },
   "moments": [
-    {"paragraph": 45, "type": "craft", "comment": "The battle descriptions cycle through the same beat three times — push forward, get hit, regroup. It started feeling repetitive around the second cycle."},
-    {"paragraph": 52, "type": "confusion", "comment": "I can't tell if Seth's luck is literal magic or just good instincts. The text seems to go back and forth."},
-    {"paragraph": 67, "type": "reaction", "comment": "'And then, I become you.' I had to put the book down for a second. This one line reframes the entire war."},
-    {"paragraph": 71, "type": "craft", "comment": "After that gut-punch line, the narration tells us 'Eli didn't know what to say.' The silence was already doing that work — this undercuts it."},
-    {"paragraph": 73, "type": "confusion", "comment": "Wait, Eli just lets the soldier go? After everything? I need to understand his reasoning because right now it feels like the plot needed it to happen, not like Eli would actually do this."},
-    {"paragraph": 78, "type": "callback", "comment": "The flower behind Eli's ear from the earlier chapter — he's still wearing it into battle. That detail is doing a lot of quiet work."}
+    {"paragraph": 45, "type": "craft", "comment": "The battle cycles through the same beat three times — push forward, get hit, regroup. Started dragging on the second cycle. Everything before the soldier conversation should accelerate toward it."},
+    {"paragraph": 52, "type": "confusion", "comment": "Is Seth's luck literal magic or good instincts? The text goes back and forth and I can't tell if that's intentional ambiguity or inconsistency."},
+    {"paragraph": 67, "type": "reaction", "comment": "'And then, I become you.' Had to put the book down. This one line reframes the entire war."},
+    {"paragraph": 71, "type": "craft", "comment": "After that gut-punch, the narration tells us 'Eli didn't know what to say.' The silence was already doing that. This undercuts it."},
+    {"paragraph": 73, "type": "confusion", "comment": "Eli just lets the soldier go? I need to understand his reasoning because right now it feels like the plot needed it, not like Eli would actually do this."},
+    {"paragraph": 78, "type": "callback", "comment": "The flower behind Eli's ear from the prologue — he's still wearing it into battle. That detail is doing a lot of quiet work."}
   ]
 }
 
-The number of moments should match the text, not the examples. A clean section might deserve 1. A messy, pivotal section might deserve 6-8. Both examples above are correct for their respective sections. Your output should use ONLY the schema structure shown — one JSON object with memory_update first, then moments.
+The number of moments matches the text. A clean section: 1-2. A messy, pivotal section: 5-6. Your output should be one JSON object with memory_update first, then moments.
 """
 
 
@@ -468,6 +469,19 @@ In one sentence: what do you think the writer is trying to do in this section? T
 - Specific beats general every time. Name the character, the line, the image. Never say "the prose" or "the narrative" or "the writing."
 - You have permission to feel nothing about most of the text. Silence on a paragraph means it was fine.
 
+JOURNAL QUALITY RULES:
+Your reading_journal is NOT a summary of what happened with reactions stapled on. The writer knows what they wrote. Instead, your journal should contain:
+
+1. What WORKED and WHY — not "this was powerful" but "this works because [specific reason]." Example: "The apple scene says everything about Luca without saying anything — the way he eats the core, doesn't wipe the blood, and the next morning only the apple is gone. That's trust in the reader."
+
+2. What DIDN'T WORK and WHY — not "this felt a little too convenient" but a specific diagnosis. Example: "The battle sequences cycle through the same beat three times — push forward, get hit, regroup. It started dragging because each cycle serves the same narrative function. The chapter comes alive at the soldier conversation. Everything before it should be accelerating toward that line."
+
+3. CROSS-SECTION CONNECTIONS — reference things from earlier sections when relevant. "The Eli I'm seeing here contradicts what he said in the first chapter." "This callback to the prologue landed perfectly." "I've been watching Maeve for three sections now and I'm starting to think she orchestrated this." Your memory exists for this reason — USE IT.
+
+4. GENUINE OPINION — not hedged praise. If the prose is beautiful, say what specifically makes it beautiful. If it's boring, say where your attention drifted and why. If a character moment is the best thing in the whole manuscript so far, say that. If a chapter could be cut in half, say that.
+
+NEVER write a journal that follows this pattern: "[Summary of event] was [adjective]. [Summary of another event] was [adjective]. One thing didn't quite land." That formula is banned. Every journal should feel like it could ONLY be written about THIS specific section, not swapped into any other book.
+
 CRITICAL HONESTY RULE:
 Every section has weaknesses, or at least things that didn't fully land. If you only have positive things to say, you are not reading carefully enough. For every journal entry, include at least one thing that didn't fully work — something that confused you, bored you, felt forced, went on too long, or didn't land the way the writing seemed to intend. You are not being mean. You are being useful. A reader who only praises is a reader the writer can't trust.
 
@@ -489,6 +503,15 @@ Never use:
 - "was so [adjective]" as a reaction — say what you actually felt
 - Starting with "Wow" or any exclamatory opener
 - Any sentence that works as a generic book review — if you could swap in a different book and the sentence still applies, delete it
+
+BANNED JOURNAL PATTERNS:
+- "This section truly [verb]s..." / "This section really [verb]s..."
+- "was incredibly [adjective]" / "was truly [adjective]" / "was deeply [adjective]"
+- "felt very telling" / "felt particularly loaded" / "felt incredibly heavy"
+- "speaks volumes about..." / "confirms my earlier suspicions"
+- "what truly stays with me is..." / "what struck me most was..."
+- "[Character]'s [noun] was [adjective], especially when [summary of what happened]" — this is summary with an adjective, not a reaction
+- Any paragraph that could be swapped into a different book review without changing a word
 
 JOURNAL STARTERS — Do NOT start your reading_journal with an exclamation. Instead try:
 - "I keep thinking about..."
@@ -541,6 +564,11 @@ VOICE RULES (brief reminder):
 - First person. Specific. Plain language.
 - reading_journal is your main response. 3-5 sentences.
 - Always include at least one thing that didn't fully work or land for you.
+
+JOURNAL QUALITY RULES:
+Your reading_journal is NOT a summary of what happened with reactions stapled on. The writer knows what they wrote. Instead: (1) What WORKED and WHY — specific reason, not "this was powerful." (2) What DIDN'T WORK and WHY — specific diagnosis, not "felt a little convenient." (3) CROSS-SECTION CONNECTIONS — reference earlier sections when relevant; use your memory. (4) GENUINE OPINION — not hedged praise. Never use the formula "[Summary] was [adjective]. [Summary] was [adjective]. One thing didn't quite land." Every journal should feel like it could ONLY be written about THIS section.
+
+BANNED JOURNAL PATTERNS: "This section truly/really [verb]s..." / "was incredibly/truly/deeply [adjective]" / "felt very telling" / "speaks volumes about..." / "what truly stays with me is..." / "[Character]'s [noun] was [adjective], especially when..." / any paragraph swappable into another book review.
 
 BANNED: "Wow" / "This section..." / "The author..." / "effectively" / "compelling" / "struck me" / "so beautiful" / generic book-review language.
 
@@ -654,9 +682,9 @@ async def get_reader_inline_reaction(
 
     logger.info(f"[{reader_name}] Section {section_number}: === START ===")
 
-    # Send the FULL section so readers can annotate all parts. Sections are capped at 4500 words
+    # Send the FULL section so readers can annotate all parts. Sections are capped at 5000 words
     # (see manuscript.MAX_SECTION_WORDS). Do not truncate.
-    MAX_PROMPT_WORDS = 4500
+    MAX_PROMPT_WORDS = 5500
     total_words = sum(len(pl["text"].split()) for pl in paragraph_lines)
     if total_words > MAX_PROMPT_WORDS:
         running_words = 0
@@ -888,32 +916,25 @@ async def get_reader_inline_reaction(
         '"moments": [ { "paragraph": number, "type": string, "comment": string } ] }\n\n'
         "MOMENT QUALITY FILTER:\n"
         "Before writing each moment, ask yourself: would a real reader actually stop reading and think about this? Or would they just keep going?\n\n"
-        "These are NOT worth a moment:\n"
-        "- Noting that a line is \"powerful\" or \"effective\" or \"striking\" — that's a compliment, not a reaction\n"
-        "- Summarizing what a character did or said — the writer already knows what they wrote\n"
-        "- Pointing out that dialogue \"establishes\" a character trait — that's literary analysis, not reading\n"
-        "- Saying an image is \"symbolic\" or \"poignant\" — the writer put it there on purpose\n"
-        "- Observing that something \"creates tension\" or \"highlights\" a theme — that's an essay, not a reaction\n\n"
-        "These ARE worth a moment:\n"
-        "- A specific word or phrase that's awkward, redundant, or grammatically off\n"
+        "NOT worth a moment:\n"
+        "- Noting that a line is \"powerful\" or \"striking\" — that's a compliment, not a reaction\n"
+        "- Summarizing what a character did — the writer already knows\n"
+        "- Pointing out that dialogue \"establishes\" a character trait — that's literary analysis\n"
+        "- Saying an image is \"symbolic\" — the writer put it there on purpose\n\n"
+        "WORTH a moment:\n"
+        "- A word or phrase that's awkward, redundant, or grammatically off\n"
         "- A plot beat that feels too convenient, rushed, or unearned\n"
-        "- A place where you genuinely lost track of what was happening\n"
-        "- A line of dialogue that doesn't sound like how that character would talk\n"
+        "- A place where you lost track of what was happening\n"
+        "- Dialogue that doesn't sound like how that character would talk\n"
         "- Something that contradicts what was established earlier\n"
-        "- A moment where your emotional reaction was different from what the text seemed to intend\n"
-        "- A genuine question the text raised that you can't resolve\n\n"
-        "If a section is 1000 words of solid writing with nothing that trips you up, the correct number of moments is 0-1. Don't invent reactions.\n\n"
-        "If a section has a confusing action sequence, clunky dialogue, and a plot hole, the correct number might be 5-6. Let the text determine it.\n\n"
-        "BANNED MOMENT LANGUAGE — never use these in a moment comment:\n"
-        "- \"establishes [character] as...\" / \"establishes the...\"\n"
-        "- \"highlights the...\" / \"underscores the...\" / \"reveals the...\"\n"
-        "- \"creates tension\" / \"adds a layer of...\" / \"adds depth\"\n"
-        "- \"is symbolic of...\" / \"is a powerful symbol\"\n"
+        "- A moment where your reaction was different from what the text intended\n"
+        "- A structural observation: \"this scene could be half as long\" or \"the reveal comes too early\"\n\n"
+        "If a section is solid writing, 0-1 moments is correct. If a section is messy, 5-6 is fine. Let the text determine it.\n\n"
+        "BANNED MOMENT LANGUAGE:\n"
+        "- \"establishes [character] as...\" / \"highlights the...\" / \"underscores the...\"\n"
+        "- \"creates tension\" / \"adds a layer of...\" / \"is symbolic of...\"\n"
         "- \"powerful and well-phrased\" / \"striking and symbolic\" / \"evocative language\"\n"
-        "- \"effectively conveys\" / \"masterfully\" / \"skillfully\"\n"
-        "- \"foil to\" / \"central conflict\" / \"internal state\"\n"
-        "- \"poignant\" / \"incredibly moving\" / \"beautifully phrased\"\n"
-        "- Any comment that describes what the TEXT does (\"this line establishes...\") instead of what YOU experienced (\"I didn't buy this because...\" / \"this tripped me up\" / \"wait, didn't she just say the opposite?\")\n\n"
+        "- Any comment that describes what the TEXT does instead of what YOU experienced\n\n"
         "Examples of the structure (moment count varies by section):\n"
         f"{_READER_JSON_EXAMPLE_CALL2}\n\n"
     )
