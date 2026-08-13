@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Upload, FileText, ChevronRight, RefreshCw, X, Plus, BookOpen, Trash2, CheckCircle } from "lucide-react";
 import axios from "axios";
 import { getApi } from "../apiConfig";
+import { rememberManuscriptAccess, manuscriptRequestConfig } from "../manuscriptAccess";
 
 const API = getApi();
 
@@ -56,7 +57,8 @@ export default function SetupPage() {
   const [loading, setLoading] = useState(false);
   const [manuscript, setManuscript] = useState(null);
   const [genre, setGenre] = useState({});
-  const [model, setModel] = useState("gpt-4o-mini");
+  const [model, setModel] = useState("gemini-2.5-flash");
+  const [pipelineConfig, setPipelineConfig] = useState(null);
   const [comparableInput, setComparableInput] = useState("");
   const [personas, setPersonas] = useState([]);
   const [selectedReaderIds, setSelectedReaderIds] = useState([]);
@@ -95,6 +97,12 @@ export default function SetupPage() {
   useEffect(() => {
     fetchUsage();
   }, [fetchUsage]);
+
+  useEffect(() => {
+    axios.get(`${API}/config/models`)
+      .then((res) => setPipelineConfig(res.data))
+      .catch(() => setPipelineConfig(null));
+  }, []);
 
   const handleFeedbackSubmit = async (e) => {
     e.preventDefault();
@@ -152,6 +160,7 @@ export default function SetupPage() {
         const token = localStorage.getItem("session_token");
         if (token) headers["Authorization"] = `Bearer ${token}`;
         const res = await axios.post(`${API}/manuscripts/upload`, formData, { headers, withCredentials: true });
+        rememberManuscriptAccess(res.data);
         // docx/pdf upload goes straight to the manuscript — skip text paste step
         setManuscript(res.data);
         setGenre({
@@ -160,6 +169,7 @@ export default function SetupPage() {
           age_range: res.data.age_range,
           comparable_books: res.data.comparable_books || [],
         });
+        setModel(res.data.model || "gemini-2.5-flash");
         setUploadedFileName(name);
         setTitle((t) => t || name.replace(/\.(docx|pdf)$/, ""));
         setStep("genre");
@@ -212,6 +222,7 @@ export default function SetupPage() {
       let res;
       if (bodySizeBytes <= SAFE_BODY_SIZE) {
         res = await axios.post(`${API}/manuscripts`, payload, { headers, withCredentials: true });
+        rememberManuscriptAccess(res.data);
       } else {
         // Chunked upload to avoid 413 (proxy body limit)
         const firstChunk = text.slice(0, CHUNK_CHARS);
@@ -220,6 +231,7 @@ export default function SetupPage() {
           raw_text: firstChunk,
           model: model,
         }, { headers, withCredentials: true });
+        rememberManuscriptAccess(res.data);
         const manuscriptId = res?.data?.id;
         if (!manuscriptId) {
           throw new Error("Server did not return a manuscript id. Cannot append remaining text.");
@@ -229,7 +241,7 @@ export default function SetupPage() {
           res = await axios.patch(
             `${API}/manuscripts/${manuscriptId}/append-text`,
             { raw_text_chunk: chunk },
-            { headers, withCredentials: true }
+            manuscriptRequestConfig(manuscriptId)
           );
         }
       }
@@ -240,7 +252,7 @@ export default function SetupPage() {
         age_range: res.data.age_range,
         comparable_books: res.data.comparable_books || [],
       });
-      setModel(res.data.model || "gpt-4o-mini");
+      setModel(res.data.model || "gemini-2.5-flash");
       setStep("genre");
     } catch (err) {
       const status = err.response?.status;
@@ -279,9 +291,9 @@ export default function SetupPage() {
   const saveGenreAndProceed = async () => {
     setLoading(true);
     try {
-      await axios.patch(`${API}/manuscripts/${manuscript.id}/genre`, { ...genre, model });
+      await axios.patch(`${API}/manuscripts/${manuscript.id}/genre`, { ...genre, model }, manuscriptRequestConfig(manuscript.id));
       // Generate personas — can take 20-40s for 5 parallel LLM calls
-      const res = await axios.get(`${API}/manuscripts/${manuscript.id}/personas`, { timeout: 120000 });
+      const res = await axios.get(`${API}/manuscripts/${manuscript.id}/personas`, manuscriptRequestConfig(manuscript.id, { timeout: 120000 }));
       if (!res.data || res.data.length === 0) {
         throw new Error("No personas returned");
       }
@@ -303,7 +315,7 @@ export default function SetupPage() {
     try {
       const res = await axios.post(`${API}/manuscripts/${manuscript.id}/personas/regenerate`, {
         reader_id: readerId,
-      });
+      }, manuscriptRequestConfig(manuscript.id));
       setPersonas((prev) => prev.map((p) => (p.id === readerId ? res.data : p)));
       toast.success("Reader regenerated");
     } catch (err) {
@@ -316,7 +328,7 @@ export default function SetupPage() {
   const regenerateAll = async () => {
     setLoading(true);
     try {
-      const res = await axios.post(`${API}/manuscripts/${manuscript.id}/personas/regenerate`, {});
+      const res = await axios.post(`${API}/manuscripts/${manuscript.id}/personas/regenerate`, {}, manuscriptRequestConfig(manuscript.id));
       setPersonas(res.data);
       setSelectedReaderIds(res.data.map((p) => p.id));
       toast.success("All readers regenerated");
@@ -331,7 +343,7 @@ export default function SetupPage() {
     if (selectedReaderIds.length >= MAX_READERS) return;
     setLoading(true);
     try {
-      const res = await axios.post(`${API}/manuscripts/${manuscript.id}/personas/add`);
+      const res = await axios.post(`${API}/manuscripts/${manuscript.id}/personas/add`, {}, manuscriptRequestConfig(manuscript.id));
       const newPersona = res.data;
       setPersonas((prev) => [...prev, newPersona]);
       setSelectedReaderIds((prev) => [...prev, newPersona.id]);
@@ -731,6 +743,56 @@ export default function SetupPage() {
                       <Plus className="w-4 h-4" strokeWidth={1.5} />
                     </button>
                   </div>
+                </div>
+
+                {/* Reader model — this value is stored on the manuscript and
+                    directly controls every reader call. */}
+                <div>
+                  <label className="text-xs text-ink-400 uppercase tracking-widest block mb-2">Reader quality</label>
+                  {pipelineConfig?.pipeline_version === "v2" ? (
+                    <div className="border border-sage/30 bg-sage/5 p-4" style={{ borderRadius: "2px" }}>
+                      <span className="block text-sm font-medium text-ink-900">Reader V2 evaluation panel</span>
+                      <span className="block text-xs text-ink-500 mt-1">
+                        Provider and model roles are configured by the local evaluation settings. This manuscript will use the active panel.
+                      </span>
+                    </div>
+                  ) : (
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    {[
+                      {
+                        value: "gemini-2.5-flash",
+                        label: "Standard",
+                        detail: "Gemini 2.5 Flash · faster and lower cost",
+                      },
+                      {
+                        value: "gemini-2.5-pro",
+                        label: "Deep reading",
+                        detail: "Gemini 2.5 Pro · slower and more expensive",
+                      },
+                    ].map((option) => (
+                      <button
+                        type="button"
+                        key={option.value}
+                        data-testid={`reader-model-${option.value}`}
+                        onClick={() => setModel(option.value)}
+                        className={`text-left border p-3 transition-colors ${
+                          model === option.value
+                            ? "border-clay bg-clay/5"
+                            : "border-ink-900/10 hover:border-ink-900/25"
+                        }`}
+                        style={{ borderRadius: "2px" }}
+                      >
+                        <span className="block text-sm font-medium text-ink-900">{option.label}</span>
+                        <span className="block text-xs text-ink-400 mt-1">{option.detail}</span>
+                      </button>
+                    ))}
+                  </div>
+                  )}
+                  <p className="text-xs text-ink-400 mt-2">
+                    {pipelineConfig?.pipeline_version === "v2"
+                      ? "Reader reactions use one model call that also updates continuity state."
+                      : "The final Editor report uses Gemini 2.5 Pro in both modes."}
+                  </p>
                 </div>
 
                 {/* Sections detected */}

@@ -7,6 +7,7 @@ from typing import Dict, List
 
 from utils import make_chat, now_iso, UserMessage
 from config import db
+import config as _cfg
 from models import ReaderPersonaResponse
 from services.readers import DEFAULT_ATTENTION_BY_AVATAR
 
@@ -101,6 +102,40 @@ async def generate_single_persona(
 ) -> Dict:
     min_age, max_age = _age_range_for_audience(age_range_label)
     default_age = _varied_age_for_reader(min_age, max_age, avatar_index)
+
+    if _cfg.MOCK_LLM:
+        name = FALLBACK_NAMES[avatar_index % len(FALLBACK_NAMES)]
+        occupation = {
+            "emotional": "community counselor",
+            "analytical": "project manager",
+            "skeptical": "research librarian",
+            "genre_savvy": "independent bookseller",
+            "casual": "product designer",
+        }.get(archetype_info["archetype"], "reader")
+        return {
+            "id": str(uuid.uuid4()),
+            "manuscript_id": manuscript_id,
+            "name": name,
+            "age": default_age,
+            "occupation": occupation,
+            "personality": archetype_info["archetype"],
+            "reading_habits": "Reads several books a month for pleasure.",
+            "favorite_genres": genre,
+            "genre_preferences": genre,
+            "reading_priority": archetype_info["default_instructions"].split(".")[0] + ".",
+            "liked_tropes": [],
+            "disliked_tropes": [],
+            "voice_style": "plainspoken and specific",
+            "temperature": archetype_info["temperature"],
+            "quote": "I want to forget I'm reading and just follow the story.",
+            "avatar_index": avatar_index,
+            "personality_specific_instructions": archetype_info["default_instructions"],
+            "persona_block": (
+                f"You are {name}, {default_age}, a {occupation} who reads for pleasure. "
+                f"{archetype_info['default_instructions']} You're one ordinary reader, and your reactions do not need to be unusual."
+            ),
+            "created_at": now_iso(),
+        }
 
     system = """You are a creative writing assistant. Generate a realistic reader persona for a book club member.
 You MUST return a valid JSON object (no markdown). Every field must be specific and non-generic.

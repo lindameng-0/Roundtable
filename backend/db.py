@@ -3,6 +3,11 @@ Supabase-backed DB layer with a MongoDB-like async interface.
 Runs sync Supabase client calls in asyncio.to_thread to keep endpoints async.
 """
 import asyncio
+import copy
+import uuid
+import json
+from pathlib import Path
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from supabase import create_client, Client
@@ -182,6 +187,358 @@ class _SupabaseDb:
     def feedback(self) -> _SupabaseTable:
         return _SupabaseTable(self._client, "feedback")
 
+    @property
+    def report_versions(self) -> _SupabaseTable:
+        return _SupabaseTable(self._client, "report_versions")
+
+    @property
+    def workflow_tasks(self) -> _SupabaseTable:
+        return _SupabaseTable(self._client, "workflow_tasks")
+
 
 def get_db(url: str, key: str) -> _SupabaseDb:
     return _SupabaseDb(url, key)
+
+
+_JSON_COLUMNS = {
+    "manuscripts": {"comparable_books", "sections"},
+    "reader_personas": {"liked_tropes", "disliked_tropes"},
+    "reader_memories": {"memory_json"},
+    "reader_reactions": {"inline_comments", "response_json"},
+    "editor_reports": {"report_json"},
+    "report_versions": {"report_json"},
+}
+
+_TIMESTAMP_COLUMNS = {"created_at", "updated_at", "expires_at"}
+
+
+class _PostgresCursor:
+    def __init__(self, database: "_PostgresDb", table: str, filters: Dict[str, Any]):
+        self._database, self._table, self._filters = database, table, filters
+        self._order_column, self._order_desc, self._limit_num = None, True, None
+
+    def sort(self, key: str, direction: int):
+        self._database.validate_name(key)
+        self._order_column, self._order_desc = key, direction == -1
+        return self
+
+    def limit(self, n: int):
+        self._limit_num = n
+        return self
+
+    async def to_list(self, n: int) -> List[Dict]:
+        limit = min(n, self._limit_num) if self._limit_num is not None else n
+        return await self._database.fetch(self._table, self._filters, self._order_column, self._order_desc, limit)
+
+
+class _PostgresTable:
+    def __init__(self, database: "_PostgresDb", name: str):
+        self._database, self._name = database, name
+
+    def find(self, filter_dict: Dict, projection: Optional[Dict] = None) -> _PostgresCursor:
+        return _PostgresCursor(self._database, self._name, filter_dict)
+
+    async def find_one(self, filter_dict: Dict, projection: Optional[Dict] = None) -> Optional[Dict]:
+        rows = await self._database.fetch(self._name, filter_dict, None, True, 1)
+        return rows[0] if rows else None
+
+    async def insert_one(self, doc: Dict) -> Dict:
+        return await self._database.insert(self._name, doc)
+
+    async def insert_many(self, docs: List[Dict]) -> None:
+        for doc in docs:
+            await self.insert_one(doc)
+
+    async def update_one(self, filter_dict: Dict, update: Dict) -> None:
+        await self._database.update(self._name, filter_dict, update.get("$set", update))
+
+    async def replace_one(self, filter_dict: Dict, doc: Dict) -> None:
+        if await self.find_one(filter_dict):
+            await self.update_one(filter_dict, {"$set": doc})
+        else:
+            await self.insert_one(doc)
+
+    async def delete_many(self, filter_dict: Dict) -> None:
+        await self._database.delete(self._name, filter_dict, one=False)
+
+    async def delete_one(self, filter_dict: Dict) -> None:
+        await self._database.delete(self._name, filter_dict, one=True)
+
+    async def count_documents(self, filter_dict: Dict) -> int:
+        return await self._database.count(self._name, filter_dict)
+
+
+class _PostgresDb:
+    TABLES = {
+        "manuscripts", "reader_personas", "reader_memories", "reader_reactions",
+        "editor_reports", "report_versions", "workflow_tasks", "users", "user_sessions",
+        "waitlist", "feedback",
+    }
+
+    def __init__(self, url: str, migrations_dir: Path):
+        self._url, self._migrations_dir, self._pool = url, Path(migrations_dir), None
+
+    def __getattr__(self, name: str) -> _PostgresTable:
+        if name in self.TABLES:
+            return _PostgresTable(self, name)
+        raise AttributeError(name)
+
+    @staticmethod
+    def validate_name(value: str) -> None:
+        if not value or not value.replace("_", "").isalnum():
+            raise ValueError("Invalid database identifier")
+
+    def _validate_table(self, table: str) -> None:
+        if table not in self.TABLES:
+            raise ValueError("Invalid database table")
+
+    async def initialize(self) -> None:
+        if self._pool:
+            return
+        import asyncpg
+        self._pool = await asyncpg.create_pool(self._url, min_size=1, max_size=10, command_timeout=60)
+        async with self._pool.acquire() as conn:
+            await conn.execute("CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())")
+            applied = {row["version"] for row in await conn.fetch("SELECT version FROM schema_migrations")}
+            for path in sorted(self._migrations_dir.glob("*.sql")):
+                if path.name in applied:
+                    continue
+                async with conn.transaction():
+                    await conn.execute(path.read_text(encoding="utf-8"))
+                    await conn.execute("INSERT INTO schema_migrations(version) VALUES($1)", path.name)
+
+    async def close(self) -> None:
+        if self._pool:
+            await self._pool.close()
+            self._pool = None
+
+    async def ping(self) -> bool:
+        return bool(self._pool and await self._pool.fetchval("SELECT TRUE"))
+
+    def _where(self, filters: Dict[str, Any], offset: int = 1):
+        clauses, values = [], []
+        for index, (key, value) in enumerate(filters.items(), offset):
+            self.validate_name(key)
+            if value is None:
+                clauses.append(f'"{key}" IS NULL')
+            else:
+                placeholder = offset + len(values)
+                clauses.append(f'"{key}" = ${placeholder}')
+                values.append(self._value("", key, value))
+        return (" WHERE " + " AND ".join(clauses) if clauses else "", values)
+
+    def _decode(self, table: str, row) -> Dict:
+        data = dict(row)
+        for key in _JSON_COLUMNS.get(table, set()):
+            if isinstance(data.get(key), str):
+                data[key] = json.loads(data[key])
+        for key, value in list(data.items()):
+            if hasattr(value, "isoformat"):
+                data[key] = value.isoformat()
+        return data
+
+    def _value(self, table: str, key: str, value: Any):
+        if key in _JSON_COLUMNS.get(table, set()):
+            return json.dumps(value, ensure_ascii=False)
+        if key in _TIMESTAMP_COLUMNS and isinstance(value, str):
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return value
+
+    async def fetch(self, table, filters, order, desc, limit):
+        self._validate_table(table)
+        where, values = self._where(filters)
+        order_sql = f' ORDER BY "{order}" {"DESC" if desc else "ASC"}' if order else ""
+        rows = await self._pool.fetch(f'SELECT * FROM "{table}"{where}{order_sql} LIMIT ${len(values)+1}', *values, limit)
+        return [self._decode(table, row) for row in rows]
+
+    async def insert(self, table, doc):
+        self._validate_table(table)
+        data = dict(doc)
+        if table != "users":
+            data.setdefault("id", str(uuid.uuid4()))
+        columns = list(data)
+        for key in columns: self.validate_name(key)
+        values = [self._value(table, key, data[key]) for key in columns]
+        quoted = ", ".join('"' + key + '"' for key in columns)
+        placeholders = ", ".join(f"${i}" for i in range(1, len(values) + 1))
+        row = await self._pool.fetchrow(f'INSERT INTO "{table}" ({quoted}) VALUES ({placeholders}) RETURNING *', *values)
+        return self._decode(table, row)
+
+    async def update(self, table, filters, values):
+        self._validate_table(table)
+        if not values: return
+        columns = list(values)
+        for key in columns: self.validate_name(key)
+        args = [self._value(table, key, values[key]) for key in columns]
+        assignments = ", ".join(f'"{key}" = ${i}' for i, key in enumerate(columns, 1))
+        where, filter_values = self._where(filters, len(args) + 1)
+        await self._pool.execute(f'UPDATE "{table}" SET {assignments}{where}', *(args + filter_values))
+
+    async def delete(self, table, filters, one=False):
+        self._validate_table(table)
+        where, values = self._where(filters)
+        sql = f'DELETE FROM "{table}"{where}'
+        if one:
+            sql = f'DELETE FROM "{table}" WHERE ctid IN (SELECT ctid FROM "{table}"{where} LIMIT 1)'
+        await self._pool.execute(sql, *values)
+
+    async def count(self, table, filters):
+        self._validate_table(table)
+        where, values = self._where(filters)
+        return int(await self._pool.fetchval(f'SELECT count(*) FROM "{table}"{where}', *values))
+
+
+def get_postgres_db(url: str, migrations_dir: Path) -> _PostgresDb:
+    return _PostgresDb(url, migrations_dir)
+
+
+def _matches(document: Dict[str, Any], filters: Dict[str, Any]) -> bool:
+    return all(document.get(key) == value for key, value in filters.items())
+
+
+class _MemoryCursor:
+    def __init__(self, table: "_MemoryTable", filter_dict: Dict[str, Any]):
+        self._table = table
+        self._filter = filter_dict
+        self._order_column: Optional[str] = None
+        self._order_desc = True
+        self._limit_num: Optional[int] = None
+
+    def sort(self, key: str, direction: int):
+        self._order_column = key
+        self._order_desc = direction == -1
+        return self
+
+    def limit(self, n: int):
+        self._limit_num = n
+        return self
+
+    async def to_list(self, n: int) -> List[Dict]:
+        rows = [copy.deepcopy(row) for row in self._table._rows if _matches(row, self._filter)]
+        if self._order_column:
+            rows.sort(
+                key=lambda row: (row.get(self._order_column) is not None, row.get(self._order_column)),
+                reverse=self._order_desc,
+            )
+        limit = min(n, self._limit_num) if self._limit_num is not None else n
+        return rows[:limit]
+
+
+class _MemoryTable:
+    """Small async Mongo-like table used for local development and tests."""
+
+    def __init__(self, name: str, rows: List[Dict]):
+        self._name = name
+        self._rows = rows
+
+    def find(self, filter_dict: Dict, projection: Optional[Dict] = None) -> _MemoryCursor:
+        return _MemoryCursor(self, filter_dict)
+
+    async def find_one(self, filter_dict: Dict, projection: Optional[Dict] = None) -> Optional[Dict]:
+        for row in self._rows:
+            if _matches(row, filter_dict):
+                return copy.deepcopy(row)
+        return None
+
+    def _unique_key(self, document: Dict) -> Optional[tuple]:
+        if document.get("id") is not None:
+            return ("id", document["id"])
+        if self._name == "users" and document.get("user_id"):
+            return ("user_id", document["user_id"])
+        return None
+
+    def _has_conflict(self, document: Dict) -> bool:
+        key = self._unique_key(document)
+        if key and any(row.get(key[0]) == key[1] for row in self._rows):
+            return True
+        unique_fields = {
+            "users": "email",
+            "user_sessions": "session_token",
+            "waitlist": "email",
+            "editor_reports": "manuscript_id",
+        }
+        unique_field = unique_fields.get(self._name)
+        if unique_field and document.get(unique_field) is not None:
+            return any(row.get(unique_field) == document.get(unique_field) for row in self._rows)
+        if self._name in {"reader_reactions", "reader_memories"}:
+            composite = ("manuscript_id", "reader_id", "section_number")
+            return any(all(row.get(key) == document.get(key) for key in composite) for row in self._rows)
+        if self._name == "report_versions":
+            return any(
+                row.get("manuscript_id") == document.get("manuscript_id")
+                and row.get("version") == document.get("version")
+                for row in self._rows
+            )
+        return False
+
+    async def insert_one(self, doc: Dict) -> Dict:
+        document = copy.deepcopy(doc)
+        document.setdefault("id", str(uuid.uuid4()))
+        if self._has_conflict(document):
+            raise ValueError("duplicate key value violates unique constraint (23505)")
+        self._rows.append(document)
+        return copy.deepcopy(document)
+
+    async def insert_many(self, docs: List[Dict]) -> None:
+        for doc in docs:
+            await self.insert_one(doc)
+
+    async def update_one(self, filter_dict: Dict, update: Dict) -> None:
+        set_dict = update.get("$set", update)
+        for row in self._rows:
+            if _matches(row, filter_dict):
+                row.update(copy.deepcopy(set_dict))
+
+    async def replace_one(self, filter_dict: Dict, doc: Dict) -> None:
+        for index, row in enumerate(self._rows):
+            if _matches(row, filter_dict):
+                self._rows[index] = copy.deepcopy(doc)
+                return
+        await self.insert_one(doc)
+
+    async def delete_many(self, filter_dict: Dict) -> None:
+        self._rows[:] = [row for row in self._rows if not _matches(row, filter_dict)]
+
+    async def delete_one(self, filter_dict: Dict) -> None:
+        for index, row in enumerate(self._rows):
+            if _matches(row, filter_dict):
+                del self._rows[index]
+                return
+
+    async def count_documents(self, filter_dict: Dict) -> int:
+        return sum(1 for row in self._rows if _matches(row, filter_dict))
+
+
+class _MemoryDb:
+    """Process-local database. Data is intentionally cleared on restart."""
+
+    TABLES = (
+        "manuscripts",
+        "reader_personas",
+        "reader_memories",
+        "reader_reactions",
+        "editor_reports",
+        "users",
+        "user_sessions",
+        "waitlist",
+        "feedback",
+        "workflow_tasks",
+        "report_versions",
+    )
+
+    def __init__(self):
+        self._data: Dict[str, List[Dict]] = {name: [] for name in self.TABLES}
+        self._tables = {name: _MemoryTable(name, self._data[name]) for name in self.TABLES}
+
+    def __getattr__(self, name: str) -> _MemoryTable:
+        if name in self._tables:
+            return self._tables[name]
+        raise AttributeError(name)
+
+    def clear(self) -> None:
+        for rows in self._data.values():
+            rows.clear()
+
+
+def get_memory_db() -> _MemoryDb:
+    return _MemoryDb()

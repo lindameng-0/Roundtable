@@ -139,3 +139,11 @@ body {
 }
 
 [data-debug-wrapper="true"] { display: contents !important; }
+@keyframes reader-nav-flash {
+  0%, 100% { background-color: transparent; }
+  20%, 70% { background-color: rgba(200, 107, 86, 0.14); }
+}
+
+.reader-nav-highlight {
+  animation: reader-nav-flash 1.8s ease-out;
+}

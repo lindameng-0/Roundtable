@@ -1,5 +1,6 @@
 import os
 import logging
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
@@ -12,10 +13,26 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    initialize = getattr(db, "initialize", None)
+    if initialize:
+        await initialize()
+    yield
+    close = getattr(db, "close", None)
+    if close:
+        await close()
+
+
+app = FastAPI(lifespan=lifespan)
 app.include_router(api_router)
 app.include_router(auth_router)
-origins_raw = os.environ.get("CORS_ORIGINS", "https://roundtable.works")
+default_origins = (
+    "https://roundtable.works"
+    if os.environ.get("ENVIRONMENT", "development").strip().lower() == "production"
+    else "http://localhost:3000,http://127.0.0.1:3000,https://roundtable.works"
+)
+origins_raw = os.environ.get("CORS_ORIGINS", default_origins)
 allow_origins = [o.strip() for o in origins_raw.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,

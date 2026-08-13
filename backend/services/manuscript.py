@@ -236,7 +236,8 @@ def split_manuscript(raw_text: str) -> Tuple[List[Dict], int]:
     Split manuscript into reading sections using smart boundaries (6k target, natural breaks).
     Returns (sections, total_lines) where each section has section_number, title, text,
     line_start, line_end, paragraph_lines, word_count. Global paragraph numbering is preserved.
-    paragraph_lines: one entry per non-empty LINE (split by newline), so display and annotations match line numbers.
+    paragraph_lines: one entry per non-empty line with a stable paragraph_id.
+    Numeric line values remain for compatibility with existing reactions.
     """
     raw_text = raw_text.strip()
     if not raw_text:
@@ -258,7 +259,11 @@ def split_manuscript(raw_text: str) -> Tuple[List[Dict], int]:
             for line in para_text.split("\n"):
                 stripped = line.strip()
                 if stripped:
-                    paragraph_lines.append({"line": global_line, "text": stripped})
+                    paragraph_lines.append({
+                        "line": global_line,
+                        "paragraph_id": f"p-{global_line:06d}",
+                        "text": stripped,
+                    })
                     global_line += 1
         if not paragraph_lines:
             continue

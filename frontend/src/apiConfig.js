@@ -11,6 +11,9 @@ export function getApiBase() {
     if (fromEnv && fromEnv.trim()) {
       return fromEnv.trim().replace(/\/$/, "");
     }
+    if (["localhost", "127.0.0.1"].includes(window.location.hostname)) {
+      return "http://localhost:8000";
+    }
     const meta = document.querySelector('meta[name="backend-url"]');
     const fromMeta = meta && meta.getAttribute('content');
     let url = (fromMeta && fromMeta.trim()) || "http://localhost:8000";

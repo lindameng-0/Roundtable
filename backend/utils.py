@@ -5,7 +5,6 @@ import logging
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 
-import litellm
 import config as _cfg  # import module so we always read the live (mutable) LLM_MODEL/PROVIDER
 
 logger = logging.getLogger(__name__)
@@ -30,6 +29,16 @@ def _get_api_key_for_provider(provider: str) -> Optional[str]:
 def _litellm_model_string(provider: str, model: str) -> str:
     """LiteLLM expects provider/model for routing (e.g. openai/gpt-4o)."""
     return f"{provider}/{model}"
+
+
+def supports_custom_temperature(provider: str, model: str) -> bool:
+    """Whether a route safely accepts a non-default sampling temperature.
+
+    GPT-5-family reasoning routes vary by version and reasoning settings. The
+    portable behavior is to omit temperature and let the model use its
+    supported default; prompt/schema constraints provide determinism here.
+    """
+    return not (provider == "openai" and str(model).lower().startswith("gpt-5"))
 
 
 class LiteLLMChat:
@@ -62,6 +71,10 @@ class LiteLLMChat:
         return self
 
     async def send_message(self, user_message: UserMessage) -> str:
+        # LiteLLM performs provider/model initialization at import time. Keep it
+        # out of the local mock startup path, where no live call is needed.
+        import litellm
+
         provider = getattr(self, "_provider", _cfg.LLM_PROVIDER)
         model = getattr(self, "_model", _cfg.LLM_MODEL)
         model_str = _litellm_model_string(provider, model)
@@ -82,7 +95,7 @@ class LiteLLMChat:
         }
         if self._max_tokens is not None:
             kwargs["max_tokens"] = self._max_tokens
-        if self._temperature is not None:
+        if self._temperature is not None and supports_custom_temperature(provider, model):
             kwargs["temperature"] = self._temperature
         if self._response_format is not None:
             kwargs["response_format"] = self._response_format

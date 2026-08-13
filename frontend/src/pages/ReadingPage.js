@@ -8,6 +8,7 @@ import { ProgressBar } from "../components/ProgressBar";
 import { ManuscriptView } from "../components/ManuscriptView";
 import { ReaderSidebar } from "../components/ReaderSidebar";
 import { getApi } from "../apiConfig";
+import { manuscriptRequestConfig } from "../manuscriptAccess";
 
 const API = getApi();
 
@@ -29,7 +30,7 @@ export default function ReadingPage() {
     commentsByLine, readerStatus, reflections, allComments,
     thinkingReaders, readingDone, setReadingDone, processingSection, totalSections,
     setTotalSections, isStalled, esRef, startReadingAll, loadExistingReactions,
-    handleRetry, handleViewPartial,
+    handleRetry, handleViewPartial, workflowProgress, workflowUsage, workflowModels,
   } = useReadingStream(manuscriptId);
 
   // Close stream when user leaves the page so the backend pauses reader pipelines
@@ -46,8 +47,8 @@ export default function ReadingPage() {
   const loadData = async () => {
     try {
       const [mRes, pRes] = await Promise.all([
-        axios.get(`${API}/manuscripts/${manuscriptId}`),
-        axios.get(`${API}/manuscripts/${manuscriptId}/personas`),
+        axios.get(`${API}/manuscripts/${manuscriptId}`, manuscriptRequestConfig(manuscriptId)),
+        axios.get(`${API}/manuscripts/${manuscriptId}/personas`, manuscriptRequestConfig(manuscriptId)),
       ]);
       const personaList = Array.isArray(pRes.data) ? pRes.data : [];
       setManuscript(mRes.data);
@@ -59,13 +60,15 @@ export default function ReadingPage() {
         : personaList;
       setPersonas(personaListToUse);
 
-      const rRes = await axios.get(`${API}/manuscripts/${manuscriptId}/all-reactions`);
+      const rRes = await axios.get(`${API}/manuscripts/${manuscriptId}/all-reactions`, manuscriptRequestConfig(manuscriptId));
       const totalSecs = mRes.data.total_sections || 0;
       const existing = rRes.data || [];
-      const sectionsWithReactions = new Set(existing.map((r) => r.section_number));
-      const allDone = totalSecs > 0 && personaListToUse.length > 0 && sectionsWithReactions.size >= totalSecs && existing.length >= totalSecs * personaListToUse.length;
+      const selectedPersonaIds = new Set(personaListToUse.map((persona) => persona.id));
+      const selectedExisting = existing.filter((reaction) => selectedPersonaIds.has(reaction.reader_id));
+      const completedPairs = new Set(selectedExisting.map((reaction) => `${reaction.reader_id}|${reaction.section_number}`));
+      const allDone = totalSecs > 0 && personaListToUse.length > 0 && completedPairs.size >= totalSecs * personaListToUse.length;
 
-      if (existing.length > 0) loadExistingReactions(existing, personaListToUse);
+      if (selectedExisting.length > 0) loadExistingReactions(selectedExisting, personaListToUse);
       if (allDone) {
         setTotalSections(mRes.data.total_sections || 0);
         setReadingDone(true);
@@ -86,10 +89,24 @@ export default function ReadingPage() {
 
   useEffect(() => { loadData(); }, [manuscriptId, selectedReaderIdsFromState]);
 
-  const generateReport = async () => {
+  useEffect(() => {
+    if (!manuscript || !window.location.hash) return;
+    const paragraphId = window.location.hash.slice(1);
+    const timer = setTimeout(() => {
+      document.getElementById(paragraphId)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [manuscript]);
+
+  const openOrGenerateReport = async () => {
     setLoadingReport(true);
     try {
-      await axios.post(`${API}/manuscripts/${manuscriptId}/editor-report`);
+      const config = manuscriptRequestConfig(manuscriptId);
+      const existing = await axios.get(`${API}/manuscripts/${manuscriptId}/editor-report`, config).catch((error) => {
+        if (error.response?.status === 404) return null;
+        throw error;
+      });
+      if (!existing) await axios.post(`${API}/manuscripts/${manuscriptId}/editor-report`, {}, config);
       navigate(`/report/${manuscriptId}`);
     } catch (err) {
       const detail = err.response?.data?.detail ?? err.response?.data?.message;
@@ -100,6 +117,17 @@ export default function ReadingPage() {
     }
   };
 
+  const navigateToManuscript = useCallback((targetId, openLine = null) => {
+    if (!targetId) return;
+    const element = document.getElementById(targetId);
+    if (!element) return;
+    setOpenPopoverLine(openLine);
+    window.history.replaceState(null, "", `#${targetId}`);
+    element.scrollIntoView({ behavior: "smooth", block: "center" });
+    element.classList.add("reader-nav-highlight");
+    window.setTimeout(() => element.classList.remove("reader-nav-highlight"), 1800);
+  }, []);
+
   const handleOpenPopover = useCallback((lineNumber) => {
     setOpenPopoverLine((prev) => (prev === lineNumber ? null : lineNumber));
   }, []);
@@ -108,8 +136,8 @@ export default function ReadingPage() {
     setActiveTypes((prev) => { const next = new Set(prev); next.has(type) ? next.delete(type) : next.add(type); return next; });
   };
 
-  const progress = totalSections > 0 && processingSection
-    ? ((processingSection - 1) / totalSections) * 100
+  const progress = workflowProgress.total > 0
+    ? (workflowProgress.completed / workflowProgress.total) * 100
     : readingDone ? 100 : 0;
 
   const totalCommentCount = allComments.length;
@@ -131,8 +159,11 @@ export default function ReadingPage() {
         processingSection={processingSection}
         totalSections={totalSections}
         loadingReport={loadingReport}
-        generateReport={generateReport}
+        generateReport={openOrGenerateReport}
         progress={progress}
+        workflowProgress={workflowProgress}
+        workflowUsage={workflowUsage}
+        workflowModels={workflowModels}
       />
 
       <div className="flex flex-1 overflow-hidden">
@@ -145,10 +176,12 @@ export default function ReadingPage() {
           readingDone={readingDone}
           totalSections={totalSections}
           totalCommentCount={totalCommentCount}
-          generateReport={generateReport}
+          generateReport={openOrGenerateReport}
           loadingReport={loadingReport}
         />
         <ReaderSidebar
+          manuscriptId={manuscriptId}
+          onNavigate={navigateToManuscript}
           personas={personas}
           readerStatus={readerStatus}
           reflections={reflections}

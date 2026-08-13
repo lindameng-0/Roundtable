@@ -16,7 +16,11 @@ export function ProgressBar({
   loadingReport,
   generateReport,
   progress,
+  workflowProgress,
+  workflowUsage,
+  workflowModels,
 }) {
+  const cost = workflowUsage?.estimated_cost_usd;
   return (
     <header className="border-b border-ink-900/8 bg-paper flex-shrink-0 z-20">
       <div className="px-6 py-3 flex items-center justify-between">
@@ -50,6 +54,15 @@ export function ProgressBar({
               <span>Starting...</span>
             )}
           </div>
+          {workflowProgress?.total > 0 && (
+            <div className="hidden md:block text-right text-xs text-ink-400" title="Estimated from recorded model token usage; provider billing is authoritative.">
+              <p>{workflowProgress.completed}/{workflowProgress.total} reader tasks</p>
+              {workflowModels?.length > 0 && <p>{workflowModels.join(" · ")}</p>}
+              {cost !== undefined && cost !== null && (
+                <p>{workflowUsage?.has_unknown_cost ? "Known cost " : "Estimated "}${Number(cost).toFixed(4)}</p>
+              )}
+            </div>
+          )}
 
           <button
             data-testid="generate-report-btn"

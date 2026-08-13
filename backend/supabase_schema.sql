@@ -25,17 +25,20 @@ CREATE TABLE IF NOT EXISTS manuscripts (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
   user_id TEXT REFERENCES users(user_id) ON DELETE SET NULL,
+  access_token_hash TEXT,
   raw_text TEXT NOT NULL,
   genre TEXT,
   target_audience TEXT,
   age_range TEXT,
   comparable_books JSONB DEFAULT '[]',
+  model TEXT NOT NULL DEFAULT 'gemini-2.5-flash',
   sections JSONB DEFAULT '[]',
   total_sections INT DEFAULT 0,
   total_lines INT DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_manuscripts_user_id ON manuscripts(user_id);
+CREATE INDEX IF NOT EXISTS idx_manuscripts_access_token_hash ON manuscripts(access_token_hash);
 
 -- Reader personas (5 per manuscript)
 CREATE TABLE IF NOT EXISTS reader_personas (
@@ -99,6 +102,37 @@ CREATE TABLE IF NOT EXISTS editor_reports (
 );
 CREATE INDEX IF NOT EXISTS idx_editor_reports_manuscript_id ON editor_reports(manuscript_id);
 
+CREATE TABLE IF NOT EXISTS report_versions (
+  id TEXT PRIMARY KEY,
+  manuscript_id TEXT NOT NULL REFERENCES manuscripts(id) ON DELETE CASCADE,
+  version INT NOT NULL,
+  report_json JSONB NOT NULL DEFAULT '{}',
+  reason TEXT NOT NULL DEFAULT 'generated',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(manuscript_id, version)
+);
+CREATE INDEX IF NOT EXISTS idx_report_versions_manuscript ON report_versions(manuscript_id, version DESC);
+
+-- Deterministic Phase 3 task ledger (one reader task per manuscript section)
+CREATE TABLE IF NOT EXISTS workflow_tasks (
+  id TEXT PRIMARY KEY,
+  manuscript_id TEXT NOT NULL REFERENCES manuscripts(id) ON DELETE CASCADE,
+  reader_id TEXT NOT NULL,
+  reader_name TEXT NOT NULL,
+  section_number INT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'failed')),
+  attempts INT NOT NULL DEFAULT 0,
+  planned_provider TEXT,
+  planned_model TEXT,
+  actual_provider TEXT,
+  actual_model TEXT,
+  last_error TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (manuscript_id, reader_id, section_number)
+);
+CREATE INDEX IF NOT EXISTS idx_workflow_tasks_manuscript ON workflow_tasks(manuscript_id);
+
 -- Waitlist (when user hits manuscript limit)
 CREATE TABLE IF NOT EXISTS waitlist (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -107,6 +141,15 @@ CREATE TABLE IF NOT EXISTS waitlist (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE UNIQUE INDEX IF NOT EXISTS waitlist_email_unique ON waitlist(email);
+
+-- Product feedback submitted from the setup/usage-limit screen
+CREATE TABLE IF NOT EXISTS feedback (
+  id TEXT PRIMARY KEY,
+  user_id TEXT REFERENCES users(user_id) ON DELETE SET NULL,
+  message TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_feedback_user_id ON feedback(user_id);
 
 -- Enable RLS if you want row-level security (optional; use service_role key to bypass)
 -- ALTER TABLE manuscripts ENABLE ROW LEVEL SECURITY;

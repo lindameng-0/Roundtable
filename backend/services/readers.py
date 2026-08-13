@@ -8,13 +8,20 @@ import logging
 from typing import Dict, List
 
 from google import genai
-import tiktoken
 from utils import now_iso, validate_moments
 from config import db
 import config as _cfg
+from services.reader_memory import (
+    count_tokens as _count_tokens,
+    format_memory_for_prompt as compress_memory_for_prompt,
+    latest_memory as compress_memory,
+    normalize_memory_update as _normalize_memory_update,
+)
+from services.workflow import update_task
 
 # Reader pipeline uses Gemini 2.5 Flash. TODO: If Gemini is unavailable or rate-limited, fall back to OpenAI GPT-4.1-mini.
 READER_MODEL = "gemini-2.5-flash"
+SUPPORTED_READER_MODELS = {"gemini-2.5-flash", "gemini-2.5-pro"}
 
 logger = logging.getLogger(__name__)
 
@@ -205,80 +212,6 @@ def repair_call2_json(raw_text: str) -> dict:
     result["moments"] = moments
 
     return result
-
-
-def _normalize_memory_update(mu: Dict) -> Dict:
-    """Normalize memory_update from LLM response to DB shape. New schema: facts, impressions, watching_for, feeling."""
-    if not mu or not isinstance(mu, dict):
-        return mu
-    out = {
-        "facts": "",
-        "impressions": "",
-        "watching_for": "",
-        "feeling": "",
-    }
-    for key in ("facts", "impressions", "watching_for", "feeling"):
-        val = mu.get(key)
-        if isinstance(val, str) and val.strip():
-            out[key] = val.strip()[:500]  # cap length
-    return out
-
-
-
-def compress_memory(memories: List[Dict], personality: str) -> Dict:
-    """Use the most recent memory. New shape: facts, impressions, watching_for, feeling. Legacy shape: plot_events, etc. converted for prompt."""
-    if not memories:
-        return {}
-    last = memories[-1]
-    mj = last.get("memory_json", {})
-    if not isinstance(mj, dict):
-        return {}
-    if isinstance(mj.get("facts"), str) or isinstance(mj.get("impressions"), str):
-        return {
-            "facts": (mj.get("facts") or "") if isinstance(mj.get("facts"), str) else "",
-            "impressions": (mj.get("impressions") or "") if isinstance(mj.get("impressions"), str) else "",
-            "watching_for": (mj.get("watching_for") or "") if isinstance(mj.get("watching_for"), str) else "",
-            "feeling": (mj.get("feeling") or "") if isinstance(mj.get("feeling"), str) else "",
-        }
-    # Legacy: build minimal facts/feeling from old shape so prompt still has something
-    pe = mj.get("plot_events") or []
-    facts = " ".join(str(p) for p in (pe if isinstance(pe, list) else [])[-2:])
-    feeling = (mj.get("emotional_state") or "") if isinstance(mj.get("emotional_state"), str) else ""
-    return {"facts": facts[:400], "impressions": "", "watching_for": "", "feeling": feeling[:80]}
-
-
-def _count_tokens(text: str) -> int:
-    """Approximate token count for OpenAI models (cl100k_base)."""
-    try:
-        enc = tiktoken.get_encoding("cl100k_base")
-        return len(enc.encode(text))
-    except Exception:
-        return len(text.split()) * 2  # fallback rough estimate
-
-
-def compress_memory_for_prompt(memory: Dict, max_tokens: int = 200) -> str:
-    """
-    Format the reader's last memory for injection into the next section's prompt.
-    Returns a string framed as the reader's own notes (not raw JSON).
-    """
-    if not memory or not isinstance(memory, dict):
-        return "No previous sections read yet."
-    facts = (memory.get("facts") or "").strip() if isinstance(memory.get("facts"), str) else ""
-    impressions = (memory.get("impressions") or "").strip() if isinstance(memory.get("impressions"), str) else ""
-    watching_for = (memory.get("watching_for") or "").strip() if isinstance(memory.get("watching_for"), str) else ""
-    feeling = (memory.get("feeling") or "").strip() if isinstance(memory.get("feeling"), str) else ""
-    if not any([facts, impressions, watching_for, feeling]):
-        return "No previous sections read yet."
-    lines = ["YOUR NOTES FROM LAST TIME:"]
-    if facts:
-        lines.append(f"What happened: {facts}")
-    if impressions:
-        lines.append(f"What you thought about it: {impressions}")
-    if watching_for:
-        lines.append(f"What you're watching for: {watching_for}")
-    if feeling:
-        lines.append(f"How you were feeling: {feeling}")
-    return "\n".join(lines)
 
 
 def build_reader_system_prompt(
@@ -638,6 +571,10 @@ async def get_reader_inline_reaction(
     genre: str,
     manuscript_id: str,
 ) -> Dict:
+    if _cfg.READER_PIPELINE_VERSION == "v2":
+        from services.reader_v2 import get_reader_reaction_v2
+        return await get_reader_reaction_v2(reader, section, genre, manuscript_id)
+
     section_number = section["section_number"]
     line_start = section["line_start"]
     line_end = section["line_end"]
@@ -676,6 +613,68 @@ async def get_reader_inline_reaction(
             "what_i_think_the_writer_is_doing": None,
             "moments": [],
             "questions_for_writer": [],
+            "reaction_id": reaction_doc["id"],
+            "_parse_warning": False,
+        }
+
+    if _cfg.MOCK_LLM:
+        first_paragraph = paragraph_lines[0]
+        paragraph_id = first_paragraph.get("paragraph_id") or f"p-{int(first_paragraph['line']):06d}"
+        moment = {
+            "paragraph": first_paragraph["line"],
+            "paragraph_id": paragraph_id,
+            "type": "reaction",
+            "comment": f"I noticed this is where section {section_number} starts to establish its direction.",
+        }
+        reading_journal = (
+            f"I followed section {section_number} without losing the thread. "
+            "This is deterministic mock feedback for local interface testing, not a real beta-reading judgment."
+        )
+        response_json = {
+            "checking_in": "I'm ready to see where the story goes next.",
+            "reading_journal": reading_journal,
+            "what_i_think_the_writer_is_doing": "The writer is moving the story into its next beat.",
+            "moments": [moment],
+            "questions_for_writer": [],
+        }
+        reaction_doc = {
+            "id": str(uuid.uuid4()),
+            "manuscript_id": manuscript_id,
+            "reader_id": reader["id"],
+            "reader_name": reader_name,
+            "section_number": section_number,
+            "inline_comments": [{
+                "line": moment["paragraph"],
+                "paragraph_id": paragraph_id,
+                "type": moment["type"],
+                "comment": moment["comment"],
+            }],
+            "section_reflection": reading_journal,
+            "response_json": response_json,
+            "created_at": now_iso(),
+        }
+        await db.reader_reactions.insert_one(reaction_doc)
+        memory_update = {
+            "facts": f"Completed section {section_number} in local mock mode.",
+            "impressions": "The story remains readable.",
+            "watching_for": "What changes in the next section.",
+            "feeling": "curious",
+        }
+        await db.reader_memories.insert_one({
+            "id": str(uuid.uuid4()),
+            "manuscript_id": manuscript_id,
+            "reader_id": reader["id"],
+            "section_number": section_number,
+            "memory_json": memory_update,
+            "created_at": now_iso(),
+        })
+        return {
+            "reader_id": reader["id"],
+            "reader_name": reader_name,
+            "avatar_index": reader.get("avatar_index", 0),
+            "personality": reader.get("personality", ""),
+            "section_number": section_number,
+            **response_json,
             "reaction_id": reaction_doc["id"],
             "_parse_warning": False,
         }
@@ -761,6 +760,7 @@ async def get_reader_inline_reaction(
         temperature = DEFAULT_TEMPERATURE_BY_AVATAR[avatar_idx % len(DEFAULT_TEMPERATURE_BY_AVATAR)]
 
     total_sections = section.get("total_sections") or 1
+    reader_model = section.get("model") if section.get("model") in SUPPORTED_READER_MODELS else READER_MODEL
     READER_LLM_TIMEOUT = 150  # seconds per attempt
 
     client = _get_genai_client()
@@ -791,7 +791,7 @@ async def get_reader_inline_reaction(
     async def _call_gemini_async_call1():
         """Async wrapper around client.aio.models.generate_content for Call 1."""
         return await client.aio.models.generate_content(
-            model=READER_MODEL,
+            model=reader_model,
             contents=user_text_call1,
             config=generation_config_call1,
         )
@@ -958,7 +958,7 @@ async def get_reader_inline_reaction(
     async def _call_gemini_async_call2():
         """Async wrapper around client.aio.models.generate_content for Call 2."""
         return await client.aio.models.generate_content(
-            model=READER_MODEL,
+            model=reader_model,
             contents=user_text_call2,
             config=generation_config_call2,
         )
@@ -1087,6 +1087,15 @@ async def get_reader_inline_reaction(
     if not isinstance(raw_moments, list):
         raw_moments = []
     moments = validate_moments(raw_moments, line_start, prompt_line_end)
+    paragraph_ids_by_line = {
+        pl.get("line"): pl.get("paragraph_id") or f"p-{int(pl.get('line', 0)):06d}"
+        for pl in paragraph_lines
+        if pl.get("line") is not None
+    }
+    moments = [
+        {**moment, "paragraph_id": paragraph_ids_by_line.get(moment["paragraph"])}
+        for moment in moments
+    ]
     memory_update_raw = call2_result.get("memory_update", {})
     if isinstance(memory_update_raw, dict):
         memory_update = _normalize_memory_update(memory_update_raw)
@@ -1104,7 +1113,15 @@ async def get_reader_inline_reaction(
     }
 
     # Legacy shape for DB: inline_comments = moments with "line" key; section_reflection = reading_journal
-    inline_comments = [{"line": m["paragraph"], "type": m["type"], "comment": m["comment"]} for m in moments]
+    inline_comments = [
+        {
+            "line": moment["paragraph"],
+            "paragraph_id": moment.get("paragraph_id"),
+            "type": moment["type"],
+            "comment": moment["comment"],
+        }
+        for moment in moments
+    ]
     section_reflection = reading_journal
 
     response_json = {
@@ -1235,6 +1252,9 @@ async def reader_pipeline(
     """
     reader_name = (reader.get("name") or "").strip() or f"Reader {reader.get('avatar_index', 0) + 1}"
     logger.info(f"Starting reader pipeline: {reader_name}")
+    await update_task(
+        manuscript_id, reader["id"], sec["section_number"], "running", increment_attempt=True,
+    )
     try:
         # Duplicate guard: if two concurrent SSE connections both try to process
         # the same section, the second one reuses the saved reaction.
@@ -1269,10 +1289,17 @@ async def reader_pipeline(
                 "what_i_think_the_writer_is_doing": rj.get("what_i_think_the_writer_is_doing"),
                 "moments": moments_reuse,
                 "questions_for_writer": rj.get("questions_for_writer", []),
+                "question_events": rj.get("question_events", []),
+                "question_updates": rj.get("question_updates", []),
                 "inline_comments": inline_comments_reuse,
                 "section_reflection": rj.get("reading_journal") or existing_reaction.get("section_reflection"),
                 "reaction_id": existing_reaction.get("id", ""),
+                "model": rj.get("model"),
+                "usage": rj.get("usage"),
             })
+            await update_task(
+                manuscript_id, reader["id"], sec["section_number"], "completed", model=rj.get("model"),
+            )
             return
 
         result = await get_reader_inline_reaction(reader, sec, genre, manuscript_id)
@@ -1288,11 +1315,18 @@ async def reader_pipeline(
                 "message": f"{reader_name} had a formatting issue, partial feedback saved",
             })
 
+        await update_task(
+            manuscript_id, reader["id"], sec["section_number"], "completed", model=result.get("model"),
+        )
         await queue.put({"type": "reader_complete", **result})
         logger.info(f"Reader {reader_name}: completed section {sec['section_number']}")
 
     except asyncio.TimeoutError:
         logger.error(f"Reader {reader_name}: TIMED OUT on section {sec['section_number']}")
+        await update_task(
+            manuscript_id, reader["id"], sec["section_number"], "failed",
+            error=f"{reader_name} timed out on section {sec['section_number']}",
+        )
         await queue.put({
             "type": "reader_error",
             "reader_id": reader["id"],
@@ -1304,11 +1338,15 @@ async def reader_pipeline(
 
     except Exception as e:
         logger.exception(f"Reader {reader_name}: ERROR on section {sec['section_number']}: {e}")
+        error_text = str(e)
+        await update_task(
+            manuscript_id, reader["id"], sec["section_number"], "failed", error=error_text,
+        )
         await queue.put({
             "type": "reader_error",
             "reader_id": reader["id"],
             "reader_name": reader_name,
             "section_number": sec["section_number"],
-            "error": str(e),
+            "error": error_text,
             "message": f"{reader_name} had an error on this section, moving on",
         })

@@ -1,5 +1,9 @@
 # Database setup (Supabase)
 
+Supabase is not required for local UI testing. With no Supabase variables,
+Roundtable automatically uses an in-memory database that is cleared whenever
+the backend restarts. See `../LOCAL-DEVELOPMENT.md`.
+
 The app needs these tables in your Supabase project. If you see:
 
 `Could not find the table 'public.manuscripts' in the schema cache`
@@ -24,3 +28,9 @@ If you see:
 run **`supabase_migration_reader_refactor.sql`** in the SQL Editor instead. It adds the `persona_block` and `response_json` columns required by the refactored reader pipeline.
 
 After it runs, retry the request that failed.
+
+### Phase 1 migration
+
+For an existing database, also run `supabase_phase1_migration.sql`. It adds the
+manuscript model and guest-token fields, feedback storage, and idempotency
+constraints used by the current application.

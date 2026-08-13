@@ -5,7 +5,7 @@ from typing import List, Optional, Dict, Any
 class ManuscriptCreate(BaseModel):
     title: Optional[str] = "Untitled Manuscript"
     raw_text: str
-    model: Optional[str] = "gpt-4o-mini"
+    model: Optional[str] = "gemini-2.5-flash"
 
 
 class ManuscriptResponse(BaseModel):
@@ -21,6 +21,9 @@ class ManuscriptResponse(BaseModel):
     total_sections: Optional[int] = None
     total_lines: Optional[int] = None
     created_at: str
+    # Returned only when an anonymous manuscript is first created. The database
+    # stores only its hash; clients persist the token for later access.
+    access_token: Optional[str] = None
 
 
 class ReaderPersonaResponse(BaseModel):
@@ -84,3 +87,4 @@ class WaitlistRequest(BaseModel):
 
 class FeedbackRequest(BaseModel):
     message: str
+

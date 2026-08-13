@@ -119,12 +119,12 @@ function CommentPopover({ lineNumber, commentsByLine, personas, onClose }) {
 }
 
 function AnnotatedParagraph({ lineData, commentsByLine, personas, openPopoverLine, onOpenPopover }) {
-  const { line, text } = lineData;
+  const { line, paragraph_id: paragraphId, text } = lineData;
   const hasComments = !!(commentsByLine[line]?.length);
   const isOpen = openPopoverLine === line;
 
   return (
-    <div className="relative mb-5 pl-8" style={{ minHeight: "1.5em" }}>
+    <div id={paragraphId || undefined} className="relative mb-5 pl-8 scroll-mt-24" style={{ minHeight: "1.5em" }}>
       <div className="absolute left-0 top-0 bottom-0 w-8 flex items-start pt-1">
         {hasComments && (
           <MarginDot lineNumber={line} comments={commentsByLine[line]} personas={personas} onOpen={onOpenPopover} />
@@ -132,6 +132,7 @@ function AnnotatedParagraph({ lineData, commentsByLine, personas, openPopoverLin
       </div>
       <p
         data-line={line}
+        data-paragraph-id={paragraphId || `p-${String(line).padStart(6, "0")}`}
         className={`manuscript-text transition-colors duration-200 ${hasComments ? "cursor-pointer" : ""}`}
         style={{
           fontFamily: "'Cormorant Garamond', serif",
@@ -194,7 +195,7 @@ export function ManuscriptView({
         </div>
 
         {manuscript.sections?.sort((a, b) => a.section_number - b.section_number).map((section) => (
-          <div key={section.section_number} className="mb-10">
+          <div id={`section-${section.section_number}`} key={section.section_number} className="mb-10 scroll-mt-24">
             <h2
               className="font-serif text-xl text-ink-900 mb-6 pt-4 border-t border-ink-900/8"
               style={{ fontFamily: "'Cormorant Garamond', serif" }}
@@ -203,7 +204,7 @@ export function ManuscriptView({
             </h2>
             {(section.paragraph_lines || []).map((lineData) => (
               <AnnotatedParagraph
-                key={lineData.line}
+                key={lineData.paragraph_id || lineData.line}
                 lineData={lineData}
                 commentsByLine={commentsByLine}
                 personas={personas}

@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronRight, Loader2, MessageSquare, HelpCircle } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, MessageSquare, HelpCircle, CheckCircle } from "lucide-react";
 import { StallBanner } from "./StallBanner";
 
 const READER_AVATAR_URLS = [
@@ -40,6 +40,12 @@ function getReaderDisplayName(persona, index) {
   const n = persona?.name;
   if (n != null && String(n).trim()) return String(n).trim();
   return `Reader ${(index ?? persona?.avatar_index ?? 0) + 1}`;
+}
+
+function NavigableText({ text, onNavigate }) {
+  return String(text || "").split(/(p-\d{6})/gi).map((part, index) => /^p-\d{6}$/i.test(part) ? (
+    <button key={index} onClick={(event) => { event.stopPropagation(); onNavigate?.(part.toLowerCase()); }} className="text-clay hover:underline font-medium">{part}</button>
+  ) : <React.Fragment key={index}>{part}</React.Fragment>);
 }
 
 function ThinkingStrip({ thinkingReaders, personas }) {
@@ -101,13 +107,13 @@ function ThinkingStrip({ thinkingReaders, personas }) {
  * Shows reading_journal (primary), what_i_think_the_writer_is_doing (secondary),
  * questions_for_writer (highlighted), checking_in (collapsible).
  */
-function SectionJournalEntry({ entry }) {
+function SectionJournalEntry({ entry, onNavigate }) {
   const [showCheckingIn, setShowCheckingIn] = useState(false);
   const { section_number, reading_journal, what_i_think_the_writer_is_doing, questions_for_writer, checking_in } = entry;
 
   return (
     <div className="pt-3 pb-4 border-b border-ink-900/5 last:border-0">
-      <p className="text-xs text-ink-400 uppercase tracking-widest mb-2">Section {section_number}</p>
+      <button onClick={() => onNavigate?.(`section-${section_number}`)} className="text-xs text-ink-400 hover:text-clay uppercase tracking-widest mb-2 transition-colors">Section {section_number}</button>
 
       {/* Primary: Reading Journal */}
       {reading_journal && (
@@ -120,7 +126,7 @@ function SectionJournalEntry({ entry }) {
             fontStyle: "italic",
           }}
         >
-          {reading_journal}
+          <NavigableText text={reading_journal} onNavigate={onNavigate} />
         </p>
       )}
 
@@ -129,7 +135,7 @@ function SectionJournalEntry({ entry }) {
         <div className="mb-3">
           <p className="text-xs text-ink-400 uppercase tracking-widest mb-1">Intent read</p>
           <p className="text-xs text-ink-600 leading-relaxed">
-            {what_i_think_the_writer_is_doing}
+            <NavigableText text={what_i_think_the_writer_is_doing} onNavigate={onNavigate} />
           </p>
         </div>
       )}
@@ -151,7 +157,7 @@ function SectionJournalEntry({ entry }) {
               }}
             >
               <HelpCircle className="w-3 h-3 flex-shrink-0 mt-0.5 text-clay" strokeWidth={1.5} />
-              <span>{q}</span>
+              <span><NavigableText text={q} onNavigate={onNavigate} /></span>
             </div>
           ))}
         </div>
@@ -190,7 +196,7 @@ function SectionJournalEntry({ entry }) {
   );
 }
 
-function ReaderPanel({ persona, readerStatus, reflections, totalComments, activeTypes, allComments }) {
+function ReaderPanel({ persona, readerStatus, reflections, totalComments, activeTypes, allComments, onNavigate }) {
   const [expanded, setExpanded] = useState(false);
   const [showMoments, setShowMoments] = useState(false);
   const color = PERSONALITY_COLORS[persona?.personality] || "#5C5855";
@@ -234,7 +240,7 @@ function ReaderPanel({ persona, readerStatus, reflections, totalComments, active
           <p className="text-sm font-semibold text-ink-900 truncate">{getReaderDisplayName(persona)}</p>
           <p className="text-xs" style={{ color }}>
             {done
-              ? `${journalCount} journal${journalCount !== 1 ? "s" : ""} · ${totalComments} moment${totalComments !== 1 ? "s" : ""}`
+              ? `${journalCount} journal${journalCount !== 1 ? "s" : ""} · ${totalComments} comment${totalComments !== 1 ? "s" : ""}`
               : currentSection
               ? `Reading section ${currentSection}...`
               : "Waiting..."}
@@ -253,7 +259,7 @@ function ReaderPanel({ persona, readerStatus, reflections, totalComments, active
               {sortedSections.length > 0 && (
                 <div className="mt-3 space-y-0">
                   {sortedSections.map((entry, i) => (
-                    <SectionJournalEntry key={`${entry.readerId}-${entry.section_number}-${i}`} entry={entry} />
+                    <SectionJournalEntry key={`${entry.readerId}-${entry.section_number}-${i}`} entry={entry} onNavigate={onNavigate} />
                   ))}
                 </div>
               )}
@@ -266,7 +272,7 @@ function ReaderPanel({ persona, readerStatus, reflections, totalComments, active
                     className="flex items-center gap-1 text-xs text-ink-400 hover:text-clay transition-colors"
                   >
                     <ChevronRight className={`w-3 h-3 transition-transform ${showMoments ? "rotate-90" : ""}`} strokeWidth={1.5} />
-                    {showMoments ? "Hide" : "Show"} {filteredMoments.length} moment{filteredMoments.length !== 1 ? "s" : ""}
+                    {showMoments ? "Hide" : "Show"} {filteredMoments.length} comment{filteredMoments.length !== 1 ? "s" : ""}
                   </button>
                   <AnimatePresence>
                     {showMoments && (
@@ -274,12 +280,12 @@ function ReaderPanel({ persona, readerStatus, reflections, totalComments, active
                         {filteredMoments.map((c, i) => {
                           const typeStyle = COMMENT_TYPE_COLORS[c.comment?.type] || COMMENT_TYPE_COLORS.reaction;
                           return (
-                            <div key={i} className="text-xs p-2 bg-paper" style={{ borderRadius: "2px" }}>
+                            <div key={i} role="button" tabIndex={0} onClick={() => onNavigate?.(c.comment?.paragraph_id || `p-${String(c.comment?.line || 0).padStart(6, "0")}`, c.comment?.line)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onNavigate?.(c.comment?.paragraph_id || `p-${String(c.comment?.line || 0).padStart(6, "0")}`, c.comment?.line); }} className="block w-full text-left text-xs p-2 bg-paper hover:bg-clay/5 transition-colors cursor-pointer" style={{ borderRadius: "2px" }} title="Jump to this comment in the manuscript">
                               <div className="flex items-center gap-1.5 mb-1">
                                 <span className="px-1.5 py-0.5 text-xs" style={{ background: typeStyle.bg, color: typeStyle.text, borderRadius: "2px" }}>{typeStyle.label}</span>
                                 <span className="text-ink-400">¶{c.comment?.line}</span>
                               </div>
-                              <p className="text-ink-600 leading-relaxed">{c.comment?.comment}</p>
+                              <p className="text-ink-600 leading-relaxed"><NavigableText text={c.comment?.comment} onNavigate={onNavigate} /></p>
                             </div>
                           );
                         })}
@@ -304,20 +310,56 @@ function ReaderPanel({ persona, readerStatus, reflections, totalComments, active
  * Aggregated questions panel: shows all questions from all readers, grouped.
  * Only shown when there are questions.
  */
-function AggregatedQuestions({ reflections, personas }) {
+function buildQuestionLedger(reflections, personas) {
+  const ledger = new Map();
+  [...reflections].sort((a, b) => (a.section_number || 0) - (b.section_number || 0)).forEach((entry) => {
+    const persona = personas.find((item) => item.id === entry.readerId);
+    const readerName = getReaderDisplayName(persona, persona?.avatar_index);
+    const events = entry.question_events?.length ? entry.question_events : (entry.questions_for_writer || []).map((question, index) => ({
+      question_id: `legacy-${entry.readerId}-${entry.section_number}-${index}`, question,
+      kind: "story_question", raised_section: entry.section_number,
+    }));
+    events.forEach((event) => {
+      if (!event.question_id || !event.question || ledger.has(event.question_id)) return;
+      ledger.set(event.question_id, { ...event, readerId: entry.readerId, readerName, status: "open", raised_section: event.raised_section || entry.section_number });
+    });
+    (entry.question_updates || []).forEach((update) => {
+      const question = ledger.get(update.question_id);
+      if (!question) return;
+      ledger.set(update.question_id, { ...question, status: update.status, resolution: update.resolution, resolved_section: update.status === "resolved" ? entry.section_number : null, paragraph_id: update.paragraph_id });
+    });
+  });
+  return [...ledger.values()];
+}
+
+function QuestionItem({ item, manuscriptId, onNavigate }) {
+  const [showResolution, setShowResolution] = useState(false);
+  const resolved = item.status === "resolved";
+  const statusLabel = { open: "Open", partially_resolved: "Partly understood", resolved: `Resolved in §${item.resolved_section}`, reinterpreted: "Interpretation changed" }[item.status] || item.status;
+  return <div className={`pt-3 ${resolved ? "opacity-60" : ""}`}>
+    <button className="w-full text-left" onClick={() => item.resolution && setShowResolution((value) => !value)}>
+      <div className="flex gap-2 items-start">
+        {resolved ? <CheckCircle className="w-3.5 h-3.5 text-sage mt-0.5 flex-shrink-0" /> : <HelpCircle className="w-3.5 h-3.5 text-clay mt-0.5 flex-shrink-0" />}
+        <div className="flex-1">
+          <p className={`text-sm text-ink-700 leading-relaxed ${resolved ? "line-through decoration-ink-400/40" : ""}`} style={{ fontFamily: "'Cormorant Garamond', serif", fontStyle: "italic" }}>{item.question}</p>
+          <div className="flex flex-wrap gap-2 mt-1 text-xs text-ink-400"><span>{item.readerName} · raised §{item.raised_section}</span><span className={resolved ? "text-sage" : item.status === "open" ? "text-clay" : "text-amber-700"}>{statusLabel}</span></div>
+        </div>
+        {item.resolution && <ChevronRight className={`w-3 h-3 text-ink-400 transition-transform ${showResolution ? "rotate-90" : ""}`} />}
+      </div>
+    </button>
+    <AnimatePresence>{showResolution && item.resolution && <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden ml-5 mt-2 pl-3 border-l border-sage/30">
+      <p className="text-xs uppercase tracking-widest text-ink-400 mb-1">What I understand now</p><p className="text-xs text-ink-600 leading-relaxed">{item.resolution}</p>
+      {item.paragraph_id && <button onClick={() => onNavigate?.(item.paragraph_id)} className="block text-xs text-clay mt-2 hover:underline">Show resolving passage</button>}
+    </motion.div>}</AnimatePresence>
+  </div>;
+}
+
+function AggregatedQuestions({ reflections, personas, manuscriptId, onNavigate }) {
   const [expanded, setExpanded] = useState(false);
 
-  const allQuestions = useMemo(() => {
-    const list = [];
-    reflections.forEach((r) => {
-      const persona = personas.find((p) => p.id === r.readerId);
-      const readerName = getReaderDisplayName(persona, persona?.avatar_index);
-      (r.questions_for_writer || []).forEach((q) => {
-        list.push({ question: q, readerName, section_number: r.section_number });
-      });
-    });
-    return list;
-  }, [reflections, personas]);
+  const allQuestions = useMemo(() => buildQuestionLedger(reflections, personas), [reflections, personas]);
+  const openCount = allQuestions.filter((item) => item.status !== "resolved").length;
+  const resolvedCount = allQuestions.length - openCount;
 
   if (allQuestions.length === 0) return null;
 
@@ -335,7 +377,7 @@ function AggregatedQuestions({ reflections, personas }) {
         <div className="flex items-center gap-2">
           <HelpCircle className="w-3.5 h-3.5 text-clay" strokeWidth={1.5} />
           <p className="text-xs text-clay uppercase tracking-widest font-medium">
-            {allQuestions.length} question{allQuestions.length !== 1 ? "s" : ""} for you
+            {openCount} open question{openCount !== 1 ? "s" : ""}{resolvedCount ? ` · ${resolvedCount} resolved` : ""}
           </p>
         </div>
         <ChevronDown className={`w-3 h-3 text-clay/60 transition-transform ${expanded ? "rotate-180" : ""}`} strokeWidth={1.5} />
@@ -350,19 +392,7 @@ function AggregatedQuestions({ reflections, personas }) {
             className="overflow-hidden"
           >
             <div className="px-3 pb-3 space-y-2 border-t border-clay/10">
-              {allQuestions.map((item, i) => (
-                <div key={i} className="pt-2">
-                  <p
-                    className="text-xs text-ink-700 leading-relaxed"
-                    style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "0.9rem", fontStyle: "italic" }}
-                  >
-                    {item.question}
-                  </p>
-                  <p className="text-xs text-ink-400 mt-0.5">
-                    {item.readerName} · §{item.section_number}
-                  </p>
-                </div>
-              ))}
+              {allQuestions.map((item) => <QuestionItem key={item.question_id} item={item} manuscriptId={manuscriptId} onNavigate={onNavigate} />)}
             </div>
           </motion.div>
         )}
@@ -375,6 +405,8 @@ function AggregatedQuestions({ reflections, personas }) {
  * The right sidebar: reader cards, type filters, thinking strip, stall banner.
  */
 export function ReaderSidebar({
+  manuscriptId,
+  onNavigate,
   personas,
   readerStatus,
   reflections,
@@ -404,7 +436,7 @@ export function ReaderSidebar({
           <h3 className="text-xs text-ink-400 uppercase tracking-widest">Your Readers</h3>
           {totalCommentCount > 0 && (
             <span className="text-xs text-ink-400">
-              {totalCommentCount} moment{totalCommentCount !== 1 ? "s" : ""}
+              {totalCommentCount} comment{totalCommentCount !== 1 ? "s" : ""}
             </span>
           )}
         </div>
@@ -412,7 +444,7 @@ export function ReaderSidebar({
         {/* Moment type filter — only show if there are moments */}
         {totalCommentCount > 0 && (
           <div className="mb-4">
-            <p className="text-xs text-ink-400 mb-2">Filter moments</p>
+            <p className="text-xs text-ink-400 mb-2">Filter comments</p>
             <div className="flex flex-wrap gap-1.5">
               {CURRENT_TYPES.map((type) => {
                 const typeStyle = COMMENT_TYPE_COLORS[type];
@@ -453,7 +485,7 @@ export function ReaderSidebar({
 
         {/* Aggregated questions panel */}
         {totalQuestions > 0 && (
-          <AggregatedQuestions reflections={reflections} personas={personas} />
+          <AggregatedQuestions reflections={reflections} personas={personas} manuscriptId={manuscriptId} onNavigate={onNavigate} />
         )}
 
         {personas.map((persona) => {
@@ -467,6 +499,7 @@ export function ReaderSidebar({
               totalComments={status.totalComments || 0}
               activeTypes={activeTypes}
               allComments={allComments}
+              onNavigate={onNavigate}
             />
           );
         })}

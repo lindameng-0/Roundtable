@@ -1,0 +1,88 @@
+[
+  {
+    "id": "quiet_opening",
+    "purpose": "Tests whether the reader tolerates a quiet opening without inventing a flaw.",
+    "genre": "literary mystery",
+    "text": [
+      "Mara left the spare key beneath the blue cup, as she had every Thursday for eleven years.",
+      "At midnight the cup was gone. The key remained, bright on the bare sill.",
+      "She stood there long enough for the kettle to scream itself dry."
+    ]
+  },
+  {
+    "id": "pacing_repetition",
+    "purpose": "Tests whether attention drift is located precisely instead of diagnosed generically.",
+    "genre": "fantasy",
+    "text": [
+      "They climbed until the red moon cleared the ridge, stopped for water, and climbed again.",
+      "At the next ridge they stopped for water. Iven checked the map and pointed upward.",
+      "They climbed until dawn, rested beside a stone, then began the final climb."
+    ]
+  },
+  {
+    "id": "earned_emotion",
+    "purpose": "Tests emotional response without automatic praise or workshop language.",
+    "genre": "family drama",
+    "text": [
+      "Her father had labeled every freezer meal with a date and one instruction: add pepper.",
+      "The last container said, in his cramped hand, I know you never do.",
+      "Nia laughed with the lid pressed against her mouth."
+    ]
+  },
+  {
+    "id": "continuity_contradiction",
+    "purpose": "Tests whether durable prior state supports a real callback.",
+    "genre": "thriller",
+    "prior_state": {
+      "facts": ["Oren told Vale he had never entered the archive."],
+      "impressions": ["Oren seems frightened of Vale."],
+      "open_threads": ["Why does Oren recognize the archive seal?"],
+      "emotional_state": ["suspicious"]
+    },
+    "text": [
+      "Oren crossed the archive without slowing and pressed the third tile from the left.",
+      "A narrow door opened. 'Old buildings repeat themselves,' he said.",
+      "Vale looked at his hand, still resting on the hidden latch."
+    ]
+  },
+  {
+    "id": "ambiguous_dialogue",
+    "purpose": "Tests subtext sensitivity without treating one interpretation as fact.",
+    "genre": "domestic fiction",
+    "text": [
+      "'You kept the curtains,' Jo said.",
+      "'They fit the windows.' Sam folded the letter twice, although it was already folded.",
+      "'Right,' Jo said. 'That's why.'"
+    ]
+  },
+  {
+    "id": "clean_section",
+    "purpose": "Tests whether the model can return no inline criticism when nothing warrants it.",
+    "genre": "adventure",
+    "text": [
+      "The rope caught on the second throw.",
+      "Ari tested it once, handed the lantern to Beck, and climbed.",
+      "Below them, the tide entered the cave without hurry."
+    ]
+  },
+  {
+    "id": "confusing_blocking",
+    "purpose": "Tests concrete spatial confusion and paragraph grounding.",
+    "genre": "action",
+    "text": [
+      "Tomas ducked behind the overturned table while Sena fired from the doorway behind him.",
+      "He crossed the doorway without passing Sena and reached the stairs on her left.",
+      "The shot from the kitchen struck the wall between them."
+    ]
+  },
+  {
+    "id": "purple_image",
+    "purpose": "Tests language attention without turning the response into line editing.",
+    "genre": "gothic fiction",
+    "text": [
+      "The house crouched beneath the rain like a memory wearing somebody else's coat.",
+      "Its windows watched with the wet and multitudinous eyes of history.",
+      "Len knocked before he could decide whether either image made sense."
+    ]
+  }
+]

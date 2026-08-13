@@ -3,6 +3,9 @@ import re
 import uuid
 import asyncio
 import logging
+import hashlib
+import hmac
+import secrets
 from typing import Dict, Any, List
 
 from fastapi import APIRouter, HTTPException, Request, Query
@@ -31,13 +34,23 @@ from services.personas import (
     add_one_persona,
 )
 from services.readers import reader_pipeline
-from services.editor import generate_editor_report as _build_editor_report
+from services.editor import (
+    generate_copy_edit_appendix as _build_copy_edit_appendix,
+    generate_editor_report as _build_editor_report,
+)
+from services.workflow import ensure_task_ledger, update_task, workflow_status
+from services.report_versions import append_report_version, list_report_versions
 from routers.auth import _get_session_user
 
 api_router = APIRouter(prefix="/api")
 logger = logging.getLogger(__name__)
 
 WORDS_LIMIT = 30_000
+AVAILABLE_READER_MODELS = {
+    "gemini-2.5-flash": "Gemini 2.5 Flash",
+    "gemini-2.5-pro": "Gemini 2.5 Pro",
+}
+DEFAULT_READER_MODEL = "gemini-2.5-flash"
 
 
 def _count_words(text: str) -> int:
@@ -57,36 +70,104 @@ def _is_admin(email: str) -> bool:
     return email and (email.strip().lower() in [e.strip().lower() for e in getattr(_cfg, "ADMIN_EMAILS", [])])
 
 
+def _hash_manuscript_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+async def _get_owned_manuscript(manuscript_id: str, request: Request) -> Dict[str, Any]:
+    """Load a manuscript and enforce account or guest-capability ownership."""
+    manuscript = await db.manuscripts.find_one({"id": manuscript_id}, {"_id": 0})
+    if not manuscript:
+        raise HTTPException(404, "Manuscript not found")
+
+    owner_id = manuscript.get("user_id")
+    if owner_id:
+        user = await _get_optional_user(request)
+        if not user or user.get("user_id") != owner_id:
+            raise HTTPException(403, "You do not have access to this manuscript")
+        return manuscript
+
+    token_hash = manuscript.get("access_token_hash")
+    if token_hash:
+        supplied = (request.headers.get("x-manuscript-token") or "").strip()
+        if not supplied or not hmac.compare_digest(_hash_manuscript_token(supplied), token_hash):
+            raise HTTPException(403, "A valid manuscript access token is required")
+    # Legacy anonymous rows predate capability tokens and remain accessible.
+    return manuscript
+
+
+def _selected_readers_complete(existing_reactions: List[Dict], readers: List[Dict]) -> bool:
+    completed_reader_ids = {
+        reaction.get("reader_id") for reaction in existing_reactions
+        if reaction.get("reader_id")
+    }
+    selected_reader_ids = {reader.get("id") for reader in readers if reader.get("id")}
+    return bool(selected_reader_ids) and selected_reader_ids.issubset(completed_reader_ids)
+
+
+def _enforce_cost_budget(status: Dict[str, Any]) -> None:
+    """Refuse new paid work once the configured manuscript budget is spent."""
+    limit = float(getattr(_cfg, "MAX_WORKFLOW_COST_USD", 0) or 0)
+    spent = float((status.get("usage") or {}).get("estimated_cost_usd") or 0)
+    if limit > 0 and spent >= limit:
+        raise HTTPException(
+            402,
+            f"This manuscript has reached its ${limit:.2f} AI cost limit. "
+            "Raise MAX_WORKFLOW_COST_USD to continue.",
+        )
+
+
 # ─── Root & Config ────────────────────────────────────────────────────────────
 
 @api_router.get("/")
 async def root():
-    return {"message": "Roundtable API"}
+    return {
+        "message": "Roundtable API",
+        "database_backend": _cfg.DATABASE_BACKEND,
+        "llm_backend": _cfg.LLM_BACKEND,
+    }
+
+
+@api_router.get("/health")
+async def health():
+    ping = getattr(db, "ping", None)
+    database_ready = await ping() if ping else True
+    if not database_ready:
+        raise HTTPException(503, "Database is not ready")
+    return {"status": "ready", "database_backend": _cfg.DATABASE_BACKEND, "database_ready": True}
 
 
 @api_router.get("/config/models")
 async def get_available_models():
+    from services.model_routing import reader_routes, route_for_role
+    routes = reader_routes()
     return {
-        "current_provider": _cfg.LLM_PROVIDER,
-        "current_model": _cfg.LLM_MODEL,
+        "current_provider": routes[0].provider,
+        "current_model": routes[0].model,
+        "scope": "manuscript_reader",
+        "pipeline_version": _cfg.READER_PIPELINE_VERSION,
+        "reader_pool": [{"provider": route.provider, "model": route.model} for route in routes],
+        "memory_strategy": "state_delta_in_reader_call" if _cfg.READER_PIPELINE_VERSION == "v2" else "second_model_call",
+        "editor_model": route_for_role("editor").model,
         "available": [
-            {"provider": "openai", "model": "gpt-4o", "label": "GPT-4o"},
-            {"provider": "openai", "model": "gpt-4.1", "label": "GPT-4.1"},
-            {"provider": "openai", "model": "gpt-4.1-mini", "label": "GPT-4.1 Mini"},
-            {"provider": "openai", "model": "gpt-4.1-nano", "label": "GPT-4.1 Nano"},
-            {"provider": "anthropic", "model": "claude-4-sonnet-20250514", "label": "Claude Sonnet 4"},
-            {"provider": "anthropic", "model": "claude-haiku-4-5-20251001", "label": "Claude Haiku 4.5"},
-            {"provider": "gemini", "model": "gemini-2.5-flash", "label": "Gemini 2.5 Flash"},
-            {"provider": "gemini", "model": "gemini-2.5-pro", "label": "Gemini 2.5 Pro"},
+            {"provider": "gemini", "model": model, "label": label}
+            for model, label in AVAILABLE_READER_MODELS.items()
         ],
     }
 
 
 @api_router.post("/config/model")
 async def update_model(req: ModelConfigRequest):
+    if req.provider != "gemini" or req.model not in AVAILABLE_READER_MODELS:
+        raise HTTPException(400, "This reading pipeline currently supports Gemini 2.5 Flash or Pro")
     _cfg.LLM_MODEL = req.model
-    _cfg.LLM_PROVIDER = req.provider
-    return {"provider": _cfg.LLM_PROVIDER, "model": _cfg.LLM_MODEL}
+    _cfg.LLM_PROVIDER = "gemini"
+    return {
+        "provider": _cfg.LLM_PROVIDER,
+        "model": _cfg.LLM_MODEL,
+        "scope": "setup_generation_default",
+        "note": "Set the reader model per manuscript when creating or updating it.",
+    }
 
 
 # ─── User usage (word-budget limit) ──────────────────────────────────────────
@@ -244,6 +325,8 @@ async def create_manuscript(manuscript: ManuscriptCreate, request: Request):
     # Genre detection via LLM — fall back to defaults if key missing or API fails
     genre_data: Dict = {"genre": "Fiction", "target_audience": "General readers", "age_range": "Adult", "comparable_books": []}
     try:
+        if _cfg.MOCK_LLM:
+            raise RuntimeError("mock LLM mode")
         genre_prompt = """You are a literary analyst. Analyze the manuscript excerpt and return ONLY a JSON object (no markdown) with:
 {"genre":"primary genre","target_audience":"target reader description","age_range":"Adult/YA/Middle Grade/New Adult","comparable_books":["Book by Author","Book by Author","Book by Author"]}"""
         chat = make_chat(genre_prompt)
@@ -262,16 +345,18 @@ async def create_manuscript(manuscript: ManuscriptCreate, request: Request):
     except Exception as e:
         logger.warning("Genre detection failed, using defaults: %s", e)
 
+    guest_access_token = secrets.token_urlsafe(32) if not user_id else None
     doc = {
         "id": doc_id,
         "title": manuscript.title or "Untitled Manuscript",
         "user_id": user_id,
+        "access_token_hash": _hash_manuscript_token(guest_access_token) if guest_access_token else None,
         "raw_text": raw_text,
         "genre": genre_data.get("genre", "Fiction"),
         "target_audience": genre_data.get("target_audience", "General readers"),
         "age_range": genre_data.get("age_range", "Adult"),
         "comparable_books": genre_data.get("comparable_books", []),
-        "model": getattr(manuscript, "model", None) or "gpt-4o-mini",
+        "model": manuscript.model if manuscript.model in AVAILABLE_READER_MODELS else DEFAULT_READER_MODEL,
         "sections": sections,
         "total_sections": len(sections),
         "total_lines": total_lines,
@@ -284,7 +369,10 @@ async def create_manuscript(manuscript: ManuscriptCreate, request: Request):
     except Exception as e:
         logger.exception("Failed to save manuscript to database")
         raise HTTPException(503, f"Database error: {str(e)}")
-    return ManuscriptResponse(**doc)
+    response_doc = {**doc}
+    response_doc.pop("access_token_hash", None)
+    response_doc["access_token"] = guest_access_token
+    return ManuscriptResponse(**response_doc)
 
 
 @api_router.patch("/manuscripts/{manuscript_id}/append-text", response_model=ManuscriptResponse)
@@ -293,9 +381,7 @@ async def append_manuscript_text(manuscript_id: str, body: AppendTextRequest, re
     chunk = body.raw_text_chunk
     if not chunk:
         raise HTTPException(400, "raw_text_chunk cannot be empty")
-    doc = await db.manuscripts.find_one({"id": manuscript_id}, None)
-    if not doc:
-        raise HTTPException(404, "Manuscript not found")
+    doc = await _get_owned_manuscript(manuscript_id, request)
     new_raw = (doc.get("raw_text") or "") + chunk
     sections, total_lines = split_manuscript(new_raw)
     update = {
@@ -363,17 +449,18 @@ async def upload_manuscript(request: Request):
 
 
 @api_router.get("/manuscripts/{manuscript_id}", response_model=ManuscriptResponse)
-async def get_manuscript(manuscript_id: str):
-    doc = await db.manuscripts.find_one({"id": manuscript_id}, {"_id": 0})
-    if not doc:
-        raise HTTPException(404, "Manuscript not found")
+async def get_manuscript(manuscript_id: str, request: Request):
+    doc = await _get_owned_manuscript(manuscript_id, request)
     return ManuscriptResponse(**doc)
 
 
 @api_router.patch("/manuscripts/{manuscript_id}/genre")
-async def update_genre(manuscript_id: str, update: Dict[str, Any]):
+async def update_genre(manuscript_id: str, update: Dict[str, Any], request: Request):
+    await _get_owned_manuscript(manuscript_id, request)
     allowed = {"genre", "target_audience", "age_range", "comparable_books", "model"}
     filtered = {k: v for k, v in update.items() if k in allowed}
+    if "model" in filtered and filtered["model"] not in AVAILABLE_READER_MODELS:
+        raise HTTPException(400, "Unsupported reader model")
     await db.manuscripts.update_one({"id": manuscript_id}, {"$set": filtered})
     return {"updated": filtered}
 
@@ -381,7 +468,8 @@ async def update_genre(manuscript_id: str, update: Dict[str, Any]):
 # ─── Reader Personas ──────────────────────────────────────────────────────────
 
 @api_router.get("/manuscripts/{manuscript_id}/personas", response_model=List[ReaderPersonaResponse])
-async def get_personas(manuscript_id: str):
+async def get_personas(manuscript_id: str, request: Request):
+    await _get_owned_manuscript(manuscript_id, request)
     personas = await db.reader_personas.find({"manuscript_id": manuscript_id}, {"_id": 0}).to_list(10)
     if not personas:
         manuscript = await db.manuscripts.find_one({"id": manuscript_id}, {"_id": 0})
@@ -413,7 +501,8 @@ async def get_personas(manuscript_id: str):
 
 
 @api_router.post("/manuscripts/{manuscript_id}/personas/regenerate")
-async def regenerate_personas(manuscript_id: str, req: RegenerateRequest):
+async def regenerate_personas(manuscript_id: str, req: RegenerateRequest, request: Request):
+    await _get_owned_manuscript(manuscript_id, request)
     manuscript = await db.manuscripts.find_one({"id": manuscript_id}, {"_id": 0})
     if not manuscript:
         raise HTTPException(404, "Manuscript not found")
@@ -434,10 +523,12 @@ async def regenerate_personas(manuscript_id: str, req: RegenerateRequest):
         await db.reader_personas.replace_one({"id": req.reader_id}, {**new_persona})
         await db.reader_memories.delete_many({"reader_id": req.reader_id})
         await db.reader_reactions.delete_many({"reader_id": req.reader_id})
+        await db.workflow_tasks.delete_many({"reader_id": req.reader_id})
         return ReaderPersonaResponse(**new_persona)
     else:
         await db.reader_memories.delete_many({"manuscript_id": manuscript_id})
         await db.reader_reactions.delete_many({"manuscript_id": manuscript_id})
+        await db.workflow_tasks.delete_many({"manuscript_id": manuscript_id})
         existing_personas = await db.reader_personas.find({"manuscript_id": manuscript_id}).to_list(10)
         current_count = len(existing_personas)
         return await generate_all_personas(
@@ -446,9 +537,10 @@ async def regenerate_personas(manuscript_id: str, req: RegenerateRequest):
 
 
 @api_router.post("/manuscripts/{manuscript_id}/personas/add", response_model=ReaderPersonaResponse)
-async def add_persona(manuscript_id: str):
+async def add_persona(manuscript_id: str, request: Request):
     """Add the next reader from the preset list (max 5)."""
     try:
+        await _get_owned_manuscript(manuscript_id, request)
         return await add_one_persona(manuscript_id)
     except ValueError as e:
         raise HTTPException(400, str(e))
@@ -463,14 +555,17 @@ async def read_all_sections_stream(
     reader_ids: str | None = Query(None, description="Comma-separated reader IDs to use; if omitted, all readers are used"),
 ):
     """SSE: auto-reads all sections sequentially, N readers in parallel per section. Pauses when client disconnects."""
-    manuscript = await db.manuscripts.find_one({"id": manuscript_id}, {"_id": 0})
-    if not manuscript:
-        raise HTTPException(404, "Manuscript not found")
+    manuscript = await _get_owned_manuscript(manuscript_id, request)
 
     sections = manuscript.get("sections", [])
     raw_text = (manuscript.get("raw_text") or "").strip()
     # Re-section if any section has no paragraph_lines (e.g. old manuscripts) so readers run on all sections
-    if raw_text and any(not (s.get("paragraph_lines")) or s.get("line_start", 0) > s.get("line_end", -1) for s in sections):
+    if raw_text and any(
+        not s.get("paragraph_lines")
+        or s.get("line_start", 0) > s.get("line_end", -1)
+        or any(not paragraph.get("paragraph_id") for paragraph in s.get("paragraph_lines", []))
+        for s in sections
+    ):
         logger.info("Manuscript has sections with no paragraph_lines or invalid range — re-sectioning from raw_text")
         new_sections, total_lines = split_manuscript(raw_text)
         update = {"sections": new_sections, "total_sections": len(new_sections), "total_lines": total_lines}
@@ -494,11 +589,16 @@ async def read_all_sections_stream(
     else:
         readers = all_readers
 
+    if not readers:
+        raise HTTPException(400, "Select at least one valid reader")
+
     genre = manuscript.get("genre", "Fiction")
+    initial_workflow = await workflow_status(manuscript, readers)
+    _enforce_cost_budget(initial_workflow)
 
     async def event_generator():
         total_sections = len(sections)
-        yield f"data: {json.dumps({'type': 'start', 'total_sections': total_sections, 'total_readers': len(readers)})}\n\n"
+        yield f"data: {json.dumps({'type': 'start', 'total_sections': total_sections, 'total_readers': len(readers), 'total_tasks': initial_workflow['total_tasks'], 'completed_tasks': initial_workflow['completed_tasks'], 'usage': initial_workflow['usage'], 'reader_models': sorted({task.get('actual_model') or task.get('planned_model') for task in initial_workflow['tasks'] if task.get('actual_model') or task.get('planned_model')})})}\n\n"
 
         for section in sorted(sections, key=lambda s: s["section_number"]):
             if await request.is_disconnected():
@@ -514,11 +614,14 @@ async def read_all_sections_stream(
                 yield f"data: {json.dumps({'type': 'section_skipped', 'section_number': sn})}\n\n"
                 continue
 
-            # Skip sections where all readers already have reactions (idempotent on reconnect)
-            existing = await db.reader_reactions.count_documents(
-                {"manuscript_id": manuscript_id, "section_number": sn}
-            )
-            if existing >= len(readers):
+            # A reconnect is idempotent per selected reader. A raw count can
+            # incorrectly skip work when the user changes the reader panel.
+            existing_reactions = await db.reader_reactions.find(
+                {"manuscript_id": manuscript_id, "section_number": sn}, {"_id": 0}
+            ).to_list(10)
+            completed_ids = {row.get("reader_id") for row in existing_reactions}
+            missing_readers = [reader for reader in readers if reader.get("id") not in completed_ids]
+            if not missing_readers:
                 yield f"data: {json.dumps({'type': 'section_skipped', 'section_number': sn})}\n\n"
                 continue
 
@@ -527,20 +630,22 @@ async def read_all_sections_stream(
             queue: asyncio.Queue = asyncio.Queue()
 
             # Emit thinking events immediately for all readers (before any await)
-            for reader in readers:
+            for reader in missing_readers:
                 rname = (reader.get("name") or "").strip() or f"Reader {reader.get('avatar_index', 0) + 1}"
                 yield f"data: {json.dumps({'type': 'reader_thinking', 'reader_id': reader['id'], 'reader_name': rname, 'avatar_index': reader.get('avatar_index', 0), 'personality': reader.get('personality', ''), 'section_number': sn})}\n\n"
 
-            # Stagger reader starts by 6s each to reduce concurrent output TPM pressure
+            semaphore = asyncio.Semaphore(_cfg.READER_MAX_CONCURRENCY)
+
             async def run_reader_with_delay(delay: float, r: dict, sec: dict, g: str, mid: str, q: asyncio.Queue):
                 if delay > 0:
                     await asyncio.sleep(delay)
-                return await reader_pipeline(r, sec, g, mid, q)
+                async with semaphore:
+                    return await reader_pipeline(r, sec, g, mid, q)
 
-            section_with_total = {**section, "total_sections": total_sections, "model": manuscript.get("model") or "gpt-4o-mini"}
+            section_with_total = {**section, "total_sections": total_sections, "model": manuscript.get("model") or DEFAULT_READER_MODEL}
             reader_tasks = [
-                asyncio.create_task(run_reader_with_delay(i * 6, r, section_with_total, genre, manuscript_id, queue))
-                for i, r in enumerate(readers)
+                asyncio.create_task(run_reader_with_delay(i * _cfg.READER_START_STAGGER_SECONDS, r, section_with_total, genre, manuscript_id, queue))
+                for i, r in enumerate(missing_readers)
             ]
 
             # Drain queue counting terminal events.
@@ -548,8 +653,9 @@ async def read_all_sections_stream(
             # connection alive through nginx and browser proxies.
             # Overall 120-second section safety net via elapsed time.
             terminal_count = 0
+            terminal_reader_ids = set()
             section_deadline = asyncio.get_event_loop().time() + 180
-            while terminal_count < len(readers):
+            while terminal_count < len(missing_readers):
                 if await request.is_disconnected():
                     logger.info("Client disconnected — cancelling reader tasks for section %s", sn)
                     for t in reader_tasks:
@@ -561,6 +667,15 @@ async def read_all_sections_stream(
                 if remaining <= 0:
                     logger.error(f"Section {sn}: section deadline reached — some readers stalled. Moving on.")
                     yield f"data: {json.dumps({'type': 'section_error', 'section_number': sn, 'message': 'Some readers stalled on this section'})}\n\n"
+                    for task in reader_tasks:
+                        if not task.done():
+                            task.cancel()
+                    for reader in missing_readers:
+                        if reader["id"] not in terminal_reader_ids:
+                            await update_task(
+                                manuscript_id, reader["id"], sn, "failed",
+                                error="Section execution deadline reached",
+                            )
                     break
                 try:
                     result = await asyncio.wait_for(queue.get(), timeout=min(15, remaining))
@@ -571,16 +686,26 @@ async def read_all_sections_stream(
                 yield f"data: {json.dumps(result)}\n\n"
                 if result.get("type") in ("reader_complete", "reader_error"):
                     terminal_count += 1
+                    if result.get("reader_id"):
+                        terminal_reader_ids.add(result["reader_id"])
 
             await asyncio.gather(*reader_tasks, return_exceptions=True)
             yield f"data: {json.dumps({'type': 'section_complete', 'section_number': sn})}\n\n"
             yield ": keep-alive\n\n"
 
+            current_workflow = await workflow_status(manuscript, readers)
+            limit = float(getattr(_cfg, "MAX_WORKFLOW_COST_USD", 0) or 0)
+            spent = float((current_workflow.get("usage") or {}).get("estimated_cost_usd") or 0)
+            if limit > 0 and spent >= limit:
+                yield f"data: {json.dumps({'type': 'budget_exhausted', 'limit_usd': limit, 'spent_usd': spent, 'workflow': current_workflow})}\n\n"
+                return
+
             # 2s pause between sections so we don't slam the API when all readers start section N+1
             await asyncio.sleep(2)
 
         logger.info("All reader pipelines complete. Sending reading_complete event.")
-        yield f"data: {json.dumps({'type': 'all_complete'})}\n\n"
+        final_workflow = await workflow_status(manuscript, readers)
+        yield f"data: {json.dumps({'type': 'all_complete', 'workflow': final_workflow})}\n\n"
 
     return StreamingResponse(
         event_generator(),
@@ -590,7 +715,8 @@ async def read_all_sections_stream(
 
 
 @api_router.get("/manuscripts/{manuscript_id}/all-reactions")
-async def get_all_reactions(manuscript_id: str):
+async def get_all_reactions(manuscript_id: str, request: Request):
+    await _get_owned_manuscript(manuscript_id, request)
     reactions = await db.reader_reactions.find(
         {"manuscript_id": manuscript_id}, {"_id": 0}
     ).sort("section_number", 1).to_list(1000)
@@ -598,33 +724,32 @@ async def get_all_reactions(manuscript_id: str):
 
 
 @api_router.get("/manuscripts/{manuscript_id}/reading-status")
-async def get_reading_status(manuscript_id: str):
-    manuscript = await db.manuscripts.find_one({"id": manuscript_id}, {"_id": 0})
-    if not manuscript:
-        raise HTTPException(404, "Manuscript not found")
-    total_sections = manuscript.get("total_sections", 0)
+async def get_reading_status(manuscript_id: str, request: Request):
+    manuscript = await _get_owned_manuscript(manuscript_id, request)
     readers = await db.reader_personas.find({"manuscript_id": manuscript_id}, {"_id": 0}).to_list(10)
-    total_readers = len(readers)
-    reactions = await db.reader_reactions.find({"manuscript_id": manuscript_id}, {"_id": 0}).to_list(1000)
-    sections_covered = set(r.get("section_number") for r in reactions)
-    complete = (
-        total_sections > 0
-        and total_readers > 0
-        and len(sections_covered) >= total_sections
-        and len(reactions) >= total_sections * total_readers
-    )
+    status = await workflow_status(manuscript, readers)
     return {
-        "complete": complete,
-        "total_sections": total_sections,
-        "total_readers": total_readers,
-        "reactions_count": len(reactions),
-        "expected_reactions": total_sections * total_readers,
-        "sections_covered": sorted(sections_covered),
+        **status,
+        "total_sections": manuscript.get("total_sections", 0),
+        "total_readers": len(readers),
+        "reactions_count": status["completed_tasks"],
+        "expected_reactions": status["total_tasks"],
+        "sections_covered": sorted({
+            task["section_number"] for task in status["tasks"] if task.get("status") == "completed"
+        }),
     }
 
 
+@api_router.get("/manuscripts/{manuscript_id}/workflow-status")
+async def get_workflow_status(manuscript_id: str, request: Request):
+    manuscript = await _get_owned_manuscript(manuscript_id, request)
+    readers = await db.reader_personas.find({"manuscript_id": manuscript_id}, {"_id": 0}).to_list(10)
+    return await workflow_status(manuscript, readers)
+
+
 @api_router.get("/manuscripts/{manuscript_id}/reactions/{section_number}")
-async def get_reactions(manuscript_id: str, section_number: int):
+async def get_reactions(manuscript_id: str, section_number: int, request: Request):
+    await _get_owned_manuscript(manuscript_id, request)
     reactions = await db.reader_reactions.find(
         {"manuscript_id": manuscript_id, "section_number": section_number}, {"_id": 0}
     ).to_list(10)
@@ -634,15 +759,26 @@ async def get_reactions(manuscript_id: str, section_number: int):
 # ─── Editor Report ────────────────────────────────────────────────────────────
 
 @api_router.post("/manuscripts/{manuscript_id}/editor-report")
-async def create_editor_report(manuscript_id: str):
+async def create_editor_report(
+    manuscript_id: str,
+    request: Request,
+    force: bool = Query(False, description="Explicitly regenerate an existing report"),
+):
     manuscript_id = (manuscript_id or "").strip()
     if not manuscript_id or manuscript_id.lower() == "undefined":
         raise HTTPException(400, "Manuscript ID is missing. Open the report from the reading page or use a valid report URL.")
 
-    manuscript = await db.manuscripts.find_one({"id": manuscript_id}, None)
-    if not manuscript:
-        logger.warning("create_editor_report: manuscript not found for id=%r", manuscript_id)
-        raise HTTPException(404, "Manuscript not found")
+    manuscript = await _get_owned_manuscript(manuscript_id, request)
+
+    existing_report = await db.editor_reports.find_one({"manuscript_id": manuscript_id}, {"_id": 0})
+    if existing_report and not force:
+        return {
+            "id": existing_report.get("id"),
+            "manuscript_id": manuscript_id,
+            "report": existing_report.get("report_json") or {},
+            "created_at": existing_report.get("created_at"),
+            "cached": True,
+        }
 
     total_sections = manuscript.get("total_sections", 0)
     readers = await db.reader_personas.find({"manuscript_id": manuscript_id}, {"_id": 0}).to_list(10)
@@ -662,8 +798,15 @@ async def create_editor_report(manuscript_id: str):
     if not reactions:
         raise HTTPException(400, "No reader reactions found. Read at least one section first.")
 
+    current_status = await workflow_status(manuscript, readers)
+    _enforce_cost_budget(current_status)
+
     # Generate report from whatever reactions we have (partial OK if some readers/sections errored)
-    report_data = await _build_editor_report(manuscript, reactions)
+    try:
+        report_data = await _build_editor_report(manuscript, reactions)
+    except Exception as exc:
+        logger.exception("Editor V3 generation failed")
+        raise HTTPException(502, str(exc))
 
     report_doc = {
         "id": str(uuid.uuid4()),
@@ -684,25 +827,103 @@ async def create_editor_report(manuscript_id: str):
             )
             existing = await db.editor_reports.find_one({"manuscript_id": manuscript_id}, {"_id": 0})
             if existing:
+                version = await append_report_version(manuscript_id, report_data, "regenerated")
                 return {
                     "id": existing.get("id", report_doc["id"]),
                     "manuscript_id": manuscript_id,
                     "report": report_data,
                     "created_at": existing.get("created_at", report_doc["created_at"]),
+                    "version": version["version"],
                 }
         raise
 
+    version = await append_report_version(manuscript_id, report_data, "generated")
     return {
         "id": report_doc["id"],
         "manuscript_id": manuscript_id,
         "report": report_data,
         "created_at": report_doc["created_at"],
+        "version": version["version"],
     }
 
 
+@api_router.post("/manuscripts/{manuscript_id}/editor-report/copy-edit")
+async def create_copy_edit_appendix(manuscript_id: str, request: Request):
+    manuscript = await _get_owned_manuscript(manuscript_id, request)
+    readers = await db.reader_personas.find({"manuscript_id": manuscript_id}, {"_id": 0}).to_list(10)
+    _enforce_cost_budget(await workflow_status(manuscript, readers))
+    report = await db.editor_reports.find_one({"manuscript_id": manuscript_id}, {"_id": 0})
+    if not report:
+        raise HTTPException(400, "Generate the Editor V3 report before running the optional copy edit.")
+    try:
+        appendix = await _build_copy_edit_appendix(manuscript)
+    except Exception as exc:
+        logger.exception("Copy-edit appendix generation failed")
+        raise HTTPException(502, str(exc))
+    report_json = report.get("report_json") or {}
+    report_json["copy_edit_appendix"] = appendix
+    await db.editor_reports.update_one(
+        {"manuscript_id": manuscript_id},
+        {"$set": {"report_json": report_json, "created_at": now_iso()}},
+    )
+    version = await append_report_version(manuscript_id, report_json, "copy_edit")
+    return {"manuscript_id": manuscript_id, "copy_edit_appendix": appendix, "version": version["version"]}
+
+
 @api_router.get("/manuscripts/{manuscript_id}/editor-report")
-async def get_editor_report(manuscript_id: str):
+async def get_editor_report(manuscript_id: str, request: Request):
+    await _get_owned_manuscript(manuscript_id, request)
     report = await db.editor_reports.find_one({"manuscript_id": manuscript_id}, {"_id": 0})
     if not report:
         raise HTTPException(404, "No editor report found")
     return report
+
+
+@api_router.get("/manuscripts/{manuscript_id}/editor-report/versions")
+async def get_editor_report_versions(manuscript_id: str, request: Request):
+    await _get_owned_manuscript(manuscript_id, request)
+    return await list_report_versions(manuscript_id)
+
+
+@api_router.get("/manuscripts/{manuscript_id}/editor-report/versions/{version}")
+async def get_editor_report_version(manuscript_id: str, version: int, request: Request):
+    await _get_owned_manuscript(manuscript_id, request)
+    row = await db.report_versions.find_one({"manuscript_id": manuscript_id, "version": version}, {"_id": 0})
+    if not row:
+        raise HTTPException(404, "Report version not found")
+    return row
+
+
+@api_router.get("/manuscripts/{manuscript_id}/export")
+async def export_manuscript_workspace(manuscript_id: str, request: Request):
+    manuscript = await _get_owned_manuscript(manuscript_id, request)
+    safe_manuscript = {key: value for key, value in manuscript.items() if key != "access_token_hash"}
+    async def rows(table, limit=5000):
+        return await table.find({"manuscript_id": manuscript_id}, {"_id": 0}).to_list(limit)
+    current_report = await db.editor_reports.find_one({"manuscript_id": manuscript_id}, {"_id": 0})
+    return {
+        "format": "roundtable-workspace", "schema_version": 1, "exported_at": now_iso(),
+        "manuscript": safe_manuscript,
+        "personas": await rows(db.reader_personas),
+        "reactions": await rows(db.reader_reactions),
+        "memories": await rows(db.reader_memories),
+        "workflow_tasks": await rows(db.workflow_tasks),
+        "current_report": current_report,
+        "report_versions": await rows(db.report_versions, 100),
+    }
+
+
+@api_router.delete("/manuscripts/{manuscript_id}")
+async def delete_manuscript(manuscript_id: str, request: Request, confirm: bool = Query(False)):
+    await _get_owned_manuscript(manuscript_id, request)
+    if not confirm:
+        raise HTTPException(400, "Deletion requires confirm=true")
+    # PostgreSQL/Supabase cascade from manuscripts. Explicit cleanup preserves
+    # identical behavior in the local memory backend.
+    for table in (
+        db.report_versions, db.editor_reports, db.workflow_tasks, db.reader_memories,
+        db.reader_reactions, db.reader_personas,
+    ):
+        await table.delete_many({"manuscript_id": manuscript_id})
+    await db.manuscripts.delete_one({"id": manuscript_id})
+    return {"deleted": True, "manuscript_id": manuscript_id}

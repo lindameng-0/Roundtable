@@ -1,213 +1,373 @@
-import json
-import re
+"""Editor V3: manuscript-aware synthesis with evidence-backed findings."""
 import logging
-from typing import Dict, List, Any
+import re
+from typing import Any, Dict, List
 
-from google import genai
 import config as _cfg
+from services.editor_evidence import aggregate_editor_evidence, evidence_json, manuscript_for_editor
+from services.llm_gateway import structured_completion
+from services.model_routing import route_for_role
 
 logger = logging.getLogger(__name__)
 
-EDITOR_MODEL = "gemini-2.5-pro"
-EDITOR_TEMPERATURE = 0.3
-# Cap total editor input to stay within context; Editor needs to see all sections but not unbounded
-MAX_EDITOR_INPUT_CHARS = 120000
+EDITOR_TEMPERATURE = 0.2
+FINDING_CLASSES = {
+    "confirmed_contradiction",
+    "likely_inconsistency",
+    "reader_confusion",
+    "ambiguity_or_insufficient_evidence",
+}
+PRIORITIES = {"critical", "important", "optional"}
 
 
-def _reactions_to_editor_input(reactions: List[Dict]) -> str:
-    """
-    Build editor input: ALL reader responses per section as full JSON.
-    Structure: Section 1:\\n  ReaderName: {json}\\n  ...\\nSection 2:\\n  ...
-    """
-    by_section: Dict[int, List[Dict]] = {}
-    for r in reactions:
-        sn = r.get("section_number", 0)
-        if sn not in by_section:
-            by_section[sn] = []
-        by_section[sn].append(r)
-
-    lines = []
-    for sn in sorted(by_section.keys()):
-        lines.append(f"Section {sn}:")
-        for r in by_section[sn]:
-            reader_name = r.get("reader_name", "Reader")
-            # Full reader response: response_json preferred, else build from legacy fields
-            rj = r.get("response_json") or {}
-            if not rj:
-                rj = {
-                    "checking_in": r.get("checking_in"),
-                    "reading_journal": r.get("reading_journal") or r.get("section_reflection"),
-                    "what_i_think_the_writer_is_doing": r.get("what_i_think_the_writer_is_doing"),
-                    "moments": r.get("moments") or r.get("inline_comments") or [],
-                    "questions_for_writer": r.get("questions_for_writer") or [],
-                }
-            try:
-                blob = json.dumps(rj, ensure_ascii=False)
-            except (TypeError, ValueError):
-                blob = "{}"
-            lines.append(f"  {reader_name}: {blob}")
-        lines.append("")
-
-    out = "\n".join(lines).strip()
-    if len(out) > MAX_EDITOR_INPUT_CHARS:
-        out = out[:MAX_EDITOR_INPUT_CHARS] + "\n[... input truncated ...]"
-        logger.warning(f"Editor input truncated to {MAX_EDITOR_INPUT_CHARS} chars")
-    return out or "No reader feedback available."
+def _evidence_ref(value: Any) -> Dict:
+    value = value if isinstance(value, dict) else {}
+    section = value.get("section")
+    try:
+        section = int(section) if section is not None else None
+    except (TypeError, ValueError):
+        section = None
+    return {
+        "section": section,
+        "paragraph_id": str(value.get("paragraph_id") or "") or None,
+        "reader": str(value.get("reader") or "") or None,
+        "evidence_id": str(value.get("evidence_id") or "") or None,
+        "note": str(value.get("note") or "")[:500],
+    }
 
 
-def _editor_system_prompt(genre: str) -> str:
-    return f"""You are a professional editor synthesizing feedback from multiple independent beta readers. You did not read the manuscript yourself. Your job is to find patterns, disagreements, and insights across the readers' responses.
+def _refs(value: Any) -> List[Dict]:
+    return [_evidence_ref(item) for item in value if isinstance(item, dict)][:8] if isinstance(value, list) else []
 
-RULES:
-- Never invent observations the readers didn't make. Only synthesize what's in their data.
-- Surface disagreements — they're the most valuable part. When readers see the same scene differently, that reveals ambiguity the writer needs to know about.
-- For "did_it_land": compare each reader's "what_i_think_the_writer_is_doing" per section. If they agree, the intent is clear. If they diverge, flag it.
-- For "character_perception_map": pull from reader impressions across ALL sections, not just the section where the character appeared most.
-- For "engagement_map": use journal length and moment count as engagement proxies. Short journals + few moments = cold spot.
-- For "unresolved_questions": track which questions_for_writer were never answered by a callback in later sections.
-- For "prediction_tracker": use readers' "watching_for" and "impressions" fields across sections.
-- For "moments_of_consensus": find paragraphs/scenes where ALL readers independently reacted.
-- For "heart_of_story": synthesize each reader's intent reads across the whole manuscript into their overall thematic read.
-- For "strongest_moments": curate 8-10 moments that are most specific and most strongly felt. Not "best" — strongest.
 
-Do NOT produce generic writing advice. No "consider tightening the pacing." Only observations grounded in what readers actually experienced.
+_INLINE_CITATION = re.compile(
+    r"\s*\[(?=[^\]\n]*(?:\bp-\d{6}\b|\bjournal\b|\bevidence\b))[^\]\n]{1,500}\]",
+    re.IGNORECASE,
+)
 
-Respond with valid JSON only. No markdown fences. Use this exact structure:
 
-{
-  "story_overview": { "genre": "...", "tone": "...", "premise": "1-2 sentences" },
-  "did_it_land": [
-    { "section": 1, "reader_intents": { "ReaderName": "..." }, "alignment": "aligned | divergent | mixed", "summary": "1-2 sentences" }
-  ],
-  "character_perception_map": [
-    { "character": "Name", "reader_impressions": { "ReaderName": "1 sentence" }, "consensus_or_split": "1 sentence" }
-  ],
-  "engagement_map": [
-    { "section": 1, "engagement_level": "high | medium | low", "notes": "1 sentence" }
-  ],
-  "disagreements": [
-    { "topic": "...", "positions": { "reader_name": "their take" }, "significance": "1 sentence" }
-  ],
-  "unresolved_questions": [
-    { "question": "...", "asked_by": ["names"], "section_first_asked": 1, "resolved": false }
-  ],
-  "prediction_tracker": [
-    { "reader": "Name", "prediction": "...", "section_predicted": 1, "outcome": "confirmed | denied | still open", "section_resolved": 2 }
-  ],
-  "strongest_moments": [
-    { "reader": "Name", "section": 1, "paragraph": 12, "comment": "...", "why_selected": "1 sentence" }
-  ],
-  "heart_of_story": { "reader_themes": { "ReaderName": "1 sentence" }, "synthesis": "2-3 sentences" },
-  "moments_of_consensus": [
-    { "section": 1, "paragraph": 14, "what_happened": "1 sentence", "who_reacted": ["all readers"], "significance": "1 sentence" }
-  ]
-}"""
+def _clean_prose(value: Any) -> str:
+    """Remove model-authored citation shorthand; evidence lives in its own field."""
+    text = _INLINE_CITATION.sub("", str(value or ""))
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    return re.sub(r" +([,.;:!?])", r"\1", text).strip()
+
+
+def _string(value: Any, limit: int = 4000) -> str:
+    return _clean_prose(value)[:limit]
+
+
+def _list(value: Any, limit: int = 20) -> List:
+    return value[:limit] if isinstance(value, list) else []
 
 
 def _default_editor_report(section_numbers: List[int]) -> Dict[str, Any]:
-    """Default 10-section report when parsing fails or fields are missing."""
     return {
-        "story_overview": {"genre": "", "tone": "", "premise": ""},
-        "did_it_land": [{"section": s, "reader_intents": {}, "alignment": "mixed", "summary": ""} for s in section_numbers],
-        "character_perception_map": [],
-        "engagement_map": [{"section": s, "engagement_level": "medium", "notes": ""} for s in section_numbers],
-        "disagreements": [],
-        "unresolved_questions": [],
-        "prediction_tracker": [],
-        "strongest_moments": [],
-        "heart_of_story": {"reader_themes": {}, "synthesis": ""},
-        "moments_of_consensus": [],
+        "schema_version": 3,
+        "executive_summary": {
+            "synopsis": "",
+            "overall_reader_experience": "",
+            "strongest_asset": "",
+            "main_friction": "",
+            "top_priorities": [],
+        },
+        "reader_response": {
+            "what_worked": [],
+            "friction_points": [],
+            "emotional_peaks": [],
+            "meaningful_disagreements": [],
+        },
+        "story_integrity": [],
+        "characters": [],
+        "pacing_and_structure": [
+            {"section": section, "engagement": "unknown", "diagnosis": "", "evidence": []}
+            for section in section_numbers
+        ],
+        "revision_plan": [],
+        "copy_edit_appendix": None,
+        "coverage": {"sections": section_numbers, "partial": False, "notes": ""},
     }
 
 
 def _normalize_editor_report(parsed: Dict, section_numbers: List[int]) -> Dict[str, Any]:
-    """Ensure all 10 sections exist with correct shape."""
     default = _default_editor_report(section_numbers)
-    out = {}
-    for key in default:
-        val = parsed.get(key)
-        if val is None:
-            out[key] = default[key]
-        elif key == "story_overview" and isinstance(val, dict):
-            out[key] = {
-                "genre": val.get("genre", ""),
-                "tone": val.get("tone", ""),
-                "premise": val.get("premise", ""),
-            }
-        elif key == "did_it_land" and isinstance(val, list):
-            out[key] = val
-        elif key == "character_perception_map" and isinstance(val, list):
-            out[key] = val
-        elif key == "engagement_map" and isinstance(val, list):
-            out[key] = val
-        elif key == "disagreements" and isinstance(val, list):
-            out[key] = val
-        elif key == "unresolved_questions" and isinstance(val, list):
-            out[key] = val
-        elif key == "prediction_tracker" and isinstance(val, list):
-            out[key] = val
-        elif key == "strongest_moments" and isinstance(val, list):
-            out[key] = val
-        elif key == "heart_of_story" and isinstance(val, dict):
-            out[key] = {
-                "reader_themes": val.get("reader_themes") if isinstance(val.get("reader_themes"), dict) else {},
-                "synthesis": val.get("synthesis", ""),
-            }
-        elif key == "moments_of_consensus" and isinstance(val, list):
-            out[key] = val
-        else:
-            out[key] = default[key]
-    return out
+    parsed = parsed if isinstance(parsed, dict) else {}
+    executive = parsed.get("executive_summary") if isinstance(parsed.get("executive_summary"), dict) else {}
+    response = parsed.get("reader_response") if isinstance(parsed.get("reader_response"), dict) else {}
+    coverage = parsed.get("coverage") if isinstance(parsed.get("coverage"), dict) else {}
+
+    def evidence_items(value):
+        result = []
+        for item in _list(value):
+            if not isinstance(item, dict):
+                continue
+            result.append({
+                "title": _string(item.get("title"), 300),
+                "analysis": _string(item.get("analysis")),
+                "evidence": _refs(item.get("evidence")),
+            })
+        return result
+
+    integrity = []
+    for item in _list(parsed.get("story_integrity")):
+        if not isinstance(item, dict):
+            continue
+        classification = item.get("classification")
+        if classification not in FINDING_CLASSES:
+            classification = "ambiguity_or_insufficient_evidence"
+        confidence = item.get("confidence")
+        try:
+            confidence = max(0.0, min(1.0, float(confidence)))
+        except (TypeError, ValueError):
+            confidence = 0.5
+        integrity.append({
+            "classification": classification,
+            "title": _string(item.get("title"), 300),
+            "explanation": _string(item.get("explanation")),
+            "confidence": confidence,
+            "severity": item.get("severity") if item.get("severity") in {"high", "medium", "low"} else "low",
+            "evidence": _refs(item.get("evidence")),
+        })
+
+    characters = []
+    for item in _list(parsed.get("characters")):
+        if isinstance(item, dict) and _string(item.get("name")):
+            characters.append({
+                "name": _string(item.get("name"), 200),
+                "reader_perception": _string(item.get("reader_perception")),
+                "motivation_and_consistency": _string(item.get("motivation_and_consistency")),
+                "relationship_notes": _string(item.get("relationship_notes")),
+                "evidence": _refs(item.get("evidence")),
+            })
+
+    pacing = []
+    for item in _list(parsed.get("pacing_and_structure"), 100):
+        if not isinstance(item, dict):
+            continue
+        try:
+            section = int(item.get("section"))
+        except (TypeError, ValueError):
+            continue
+        pacing.append({
+            "section": section,
+            "engagement": item.get("engagement") if item.get("engagement") in {"high", "medium", "low", "mixed"} else "mixed",
+            "diagnosis": _string(item.get("diagnosis")),
+            "evidence": _refs(item.get("evidence")),
+        })
+
+    revisions = []
+    for item in _list(parsed.get("revision_plan")):
+        if not isinstance(item, dict):
+            continue
+        priority = item.get("priority") if item.get("priority") in PRIORITIES else "important"
+        revisions.append({
+            "priority": priority,
+            "action": _string(item.get("action")),
+            "reason": _string(item.get("reason")),
+            "expected_impact": _string(item.get("expected_impact")),
+            "evidence": _refs(item.get("evidence")),
+        })
+
+    return {
+        "schema_version": 3,
+        "executive_summary": {
+            "synopsis": _string(executive.get("synopsis"), 6000),
+            "overall_reader_experience": _string(executive.get("overall_reader_experience")),
+            "strongest_asset": _string(executive.get("strongest_asset")),
+            "main_friction": _string(executive.get("main_friction")),
+            "top_priorities": [_string(item, 600) for item in _list(executive.get("top_priorities"), 5) if _string(item)],
+        },
+        "reader_response": {
+            "what_worked": evidence_items(response.get("what_worked")),
+            "friction_points": evidence_items(response.get("friction_points")),
+            "emotional_peaks": evidence_items(response.get("emotional_peaks")),
+            "meaningful_disagreements": evidence_items(response.get("meaningful_disagreements")),
+        },
+        "story_integrity": integrity,
+        "characters": characters,
+        "pacing_and_structure": pacing or default["pacing_and_structure"],
+        "revision_plan": revisions,
+        "copy_edit_appendix": parsed.get("copy_edit_appendix") if isinstance(parsed.get("copy_edit_appendix"), dict) else None,
+        "coverage": {
+            "sections": section_numbers,
+            "partial": bool(coverage.get("partial")),
+            "notes": _string(coverage.get("notes"), 1000),
+        },
+    }
+
+
+def validate_editor_report(report: Dict) -> List[str]:
+    errors = []
+    executive = report.get("executive_summary") or {}
+    for key in ("synopsis", "overall_reader_experience", "strongest_asset", "main_friction"):
+        if not _string(executive.get(key)):
+            errors.append(f"executive_summary.{key} is required")
+    if not executive.get("top_priorities"):
+        errors.append("executive_summary.top_priorities is required")
+    if not report.get("revision_plan"):
+        errors.append("revision_plan is required")
+    return errors
+
+
+def _ground_report_evidence(report: Dict, manuscript: Dict, aggregate: Dict) -> None:
+    """Drop invented references and enrich valid reaction references in place."""
+    paragraph_ids = {
+        paragraph.get("paragraph_id")
+        for section in manuscript.get("sections") or []
+        for paragraph in section.get("paragraph_lines") or []
+        if paragraph.get("paragraph_id")
+    }
+    evidence_by_id = {
+        item["evidence_id"]: item
+        for item in aggregate.get("evidence") or []
+        if item.get("evidence_id")
+    }
+
+    def clean_refs(container: Dict) -> None:
+        grounded = []
+        for ref in container.get("evidence") or []:
+            evidence_id = ref.get("evidence_id")
+            paragraph_id = ref.get("paragraph_id")
+            source = evidence_by_id.get(evidence_id)
+            if source:
+                grounded.append({
+                    "section": source.get("section"),
+                    "paragraph_id": source.get("paragraph_id"),
+                    "reader": source.get("reader"),
+                    "evidence_id": evidence_id,
+                    "note": ref.get("note") or source.get("comment", ""),
+                })
+            elif paragraph_id in paragraph_ids:
+                grounded.append({**ref, "evidence_id": None})
+            elif ref.get("section") in {s.get("section_number") for s in manuscript.get("sections") or []}:
+                grounded.append({**ref, "paragraph_id": None, "evidence_id": None})
+        container["evidence"] = grounded[:8]
+
+    response = report.get("reader_response") or {}
+    for group in response.values():
+        for item in group if isinstance(group, list) else []:
+            clean_refs(item)
+    for key in ("story_integrity", "characters", "pacing_and_structure", "revision_plan"):
+        for item in report.get(key) or []:
+            clean_refs(item)
+
+
+def _editor_system_prompt(genre: str) -> str:
+    return f"""You are Editor V3, synthesizing a {genre or 'fiction'} manuscript and independent beta-reader evidence.
+
+You have the manuscript itself, so write a genuine synopsis and inspect continuity directly. Reader feedback tells you what affected the reading experience; it is evidence, not ground truth.
+
+INTEGRITY RULES:
+- Never call confusion a plot hole by itself.
+- Classify each integrity finding as exactly one of: confirmed_contradiction, likely_inconsistency, reader_confusion, ambiguity_or_insufficient_evidence.
+- confirmed_contradiction requires two incompatible manuscript facts with paragraph evidence.
+- likely_inconsistency requires strong but incomplete evidence.
+- If ambiguity may be deliberate, use ambiguity_or_insufficient_evidence.
+- Include zero integrity findings if none are justified.
+- Every material claim and every revision recommendation needs evidence references using section, paragraph_id, reader, or evidence_id from the supplied data.
+- Put citations only in each item's structured evidence array. Never write bracketed citations, paragraph IDs, reader-journal labels, or source lists inside prose fields.
+- Separate reader taste from objective story logic.
+- Use question_lifecycle to distinguish successfully paid-off questions from still-open confusion. A resolved
+  question may be a strength, unless its history shows the reader remained unproductively confused too long.
+- Do not give generic advice. State the concrete change and expected reader impact.
+
+Return JSON only with this exact top-level shape:
+{{
+ "schema_version": 3,
+ "executive_summary": {{
+   "synopsis": "complete spoiler-aware story summary",
+   "overall_reader_experience": "balanced synthesis",
+   "strongest_asset": "single most important strength",
+   "main_friction": "single most important problem or 'No dominant friction identified'",
+   "top_priorities": ["3-5 ordered revision priorities"]
+ }},
+ "reader_response": {{
+   "what_worked": [{{"title":"...","analysis":"...","evidence":[{{"section":1,"paragraph_id":"p-000001","reader":"Name","evidence_id":"...","note":"..."}}]}}],
+   "friction_points": [same item shape],
+   "emotional_peaks": [same item shape],
+   "meaningful_disagreements": [same item shape]
+ }},
+ "story_integrity": [{{"classification":"confirmed_contradiction|likely_inconsistency|reader_confusion|ambiguity_or_insufficient_evidence","title":"...","explanation":"...","confidence":0.0,"severity":"high|medium|low","evidence":[]}}],
+ "characters": [{{"name":"...","reader_perception":"...","motivation_and_consistency":"...","relationship_notes":"...","evidence":[]}}],
+ "pacing_and_structure": [{{"section":1,"engagement":"high|medium|low|mixed","diagnosis":"...","evidence":[]}}],
+ "revision_plan": [{{"priority":"critical|important|optional","action":"specific revision","reason":"...","expected_impact":"...","evidence":[]}}],
+ "coverage": {{"partial":false,"notes":"..."}}
+}}"""
 
 
 async def generate_editor_report(manuscript: Dict, reactions: List[Dict]) -> Dict:
-    """
-    Build and call the Editor (Gemini 2.5 Pro) with ALL reader data across ALL sections.
-    Returns the 10-section report: story_overview, did_it_land, character_perception_map,
-    engagement_map, disagreements, unresolved_questions, prediction_tracker,
-    strongest_moments, heart_of_story, moments_of_consensus.
-    """
-    reactions_text = _reactions_to_editor_input(reactions)
-    section_numbers = sorted(set(r.get("section_number", 0) for r in reactions if r.get("section_number")))
+    evidence = aggregate_editor_evidence(reactions)
+    section_numbers = [row["section"] for row in evidence["sections"]]
+    if _cfg.MOCK_LLM:
+        report = _default_editor_report(section_numbers)
+        report["executive_summary"] = {
+            "synopsis": "Mock synopsis for local interface testing.",
+            "overall_reader_experience": "Mock readers completed the available sections.",
+            "strongest_asset": "Local workflow coverage.",
+            "main_friction": "Live literary judgment is unavailable in mock mode.",
+            "top_priorities": ["Run with a live editor model for substantive analysis."],
+        }
+        report["revision_plan"] = [{
+            "priority": "important", "action": "Enable a live editor model.",
+            "reason": "Mock mode does not analyze prose.", "expected_impact": "Produces a real report.", "evidence": [],
+        }]
+        return report
 
-    api_key = _cfg.GOOGLE_API_KEY or _cfg.GEMINI_API_KEY
-    if not api_key:
-        logger.error("No Gemini API key configured for Editor")
-        return _normalize_editor_report({}, section_numbers)
-
-    client = genai.Client(api_key=api_key)
-    genre = manuscript.get("genre", "fiction")
-    config = genai.types.GenerateContentConfig(
-        system_instruction=_editor_system_prompt(genre),
-        temperature=EDITOR_TEMPERATURE,
-        max_output_tokens=8192,
-        response_mime_type="application/json",
+    manuscript_text, manuscript_truncated = manuscript_for_editor(manuscript)
+    evidence_text, evidence_truncated = evidence_json(evidence)
+    user_message = (
+        "MANUSCRIPT WITH STABLE PARAGRAPH IDS:\n" + manuscript_text +
+        "\n\nDETERMINISTIC READER EVIDENCE:\n" + evidence_text +
+        "\n\nGenerate the complete Editor V3 report."
     )
+    route = route_for_role("editor")
+    completion = await structured_completion(
+        route=route, role="editor", system_prompt=_editor_system_prompt(manuscript.get("genre", "fiction")),
+        user_prompt=user_message, temperature=EDITOR_TEMPERATURE, max_tokens=12000,
+    )
+    report = _normalize_editor_report(completion.data, section_numbers)
+    _ground_report_evidence(report, manuscript, evidence)
+    report["coverage"]["partial"] = bool(manuscript_truncated or evidence_truncated)
+    if report["coverage"]["partial"] and not report["coverage"]["notes"]:
+        report["coverage"]["notes"] = "The manuscript or reader-evidence input was truncated to the editor budget."
+    errors = validate_editor_report(report)
+    if errors:
+        raise RuntimeError("Editor V3 returned an incomplete report: " + "; ".join(errors))
+    report["_generation"] = {
+        "provider": route.provider, "model": route.model, "usage": completion.usage.to_dict(),
+    }
+    return report
 
-    user_message = f"Reader feedback (each section lists readers with their full response JSON):\n\n{reactions_text}\n\nGenerate the editorial report as JSON."
 
-    report_data: Dict = {}
-    try:
-        response = await client.aio.models.generate_content(
-            model=EDITOR_MODEL,
-            contents=user_message,
-            config=config,
-        )
-        if not response or not getattr(response, "candidates", None):
-            logger.warning("Editor: Gemini returned no candidates")
-            return _normalize_editor_report({}, section_numbers)
-        raw = getattr(response, "text", None) or ""
-        if not raw.strip():
-            return _normalize_editor_report({}, section_numbers)
-
-        clean = re.sub(r"^```(?:json)?\s*\n?", "", raw.strip())
-        clean = re.sub(r"\n?```\s*$", "", clean.strip())
-        report_data = json.loads(clean)
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse editor report JSON: {e}")
-        report_data = {}
-    except Exception as e:
-        logger.exception("Editor Gemini call failed: %s", e)
-        return _normalize_editor_report({}, section_numbers)
-
-    return _normalize_editor_report(report_data, section_numbers)
+async def generate_copy_edit_appendix(manuscript: Dict) -> Dict:
+    manuscript_text, truncated = manuscript_for_editor(manuscript, max_chars=160_000)
+    route = route_for_role("copyedit")
+    system = """You are a conservative copy editor. Find only high-confidence mechanical issues: typos, missing or repeated words, incorrect word use, broken sentences, punctuation that changes meaning, and accidental tense or viewpoint shifts. Do not rewrite style, remove voice, enforce preferences, or report uncertain issues. Return JSON: {"summary":"...","items":[{"paragraph_id":"p-000001","category":"typo|word_usage|missing_or_repeated_word|broken_sentence|punctuation|tense_or_viewpoint","original":"short excerpt","suggestion":"minimal correction","explanation":"...","confidence":0.0}]}."""
+    completion = await structured_completion(
+        route=route, role="copyedit", system_prompt=system,
+        user_prompt="MANUSCRIPT:\n" + manuscript_text, temperature=0.0, max_tokens=6000,
+    )
+    raw = completion.data if isinstance(completion.data, dict) else {}
+    items = []
+    allowed = {"typo", "word_usage", "missing_or_repeated_word", "broken_sentence", "punctuation", "tense_or_viewpoint"}
+    for item in _list(raw.get("items"), 250):
+        if not isinstance(item, dict) or item.get("category") not in allowed:
+            continue
+        try:
+            confidence = float(item.get("confidence", 0))
+        except (TypeError, ValueError):
+            confidence = 0
+        if confidence < 0.75:
+            continue
+        items.append({
+            "paragraph_id": _string(item.get("paragraph_id"), 40),
+            "category": item["category"],
+            "original": _string(item.get("original"), 300),
+            "suggestion": _string(item.get("suggestion"), 300),
+            "explanation": _string(item.get("explanation"), 600),
+            "confidence": round(min(1.0, confidence), 2),
+        })
+    return {
+        "summary": _string(raw.get("summary"), 1200), "items": items, "partial": truncated,
+        "_generation": {"provider": route.provider, "model": route.model, "usage": completion.usage.to_dict()},
+    }
