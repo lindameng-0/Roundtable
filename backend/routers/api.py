@@ -1,5 +1,4 @@
 import json
-import re
 import uuid
 import asyncio
 import logging
@@ -17,13 +16,15 @@ from models import (
     ManuscriptCreate,
     ManuscriptResponse,
     ReaderPersonaResponse,
+    ReaderFocusUpdate,
     RegenerateRequest,
     ModelConfigRequest,
     AppendTextRequest,
     WaitlistRequest,
     FeedbackRequest,
+    BudgetUpdateRequest,
 )
-from utils import now_iso, make_chat, UserMessage
+from utils import now_iso
 
 from services.manuscript import split_manuscript
 from services.personas import (
@@ -40,6 +41,10 @@ from services.editor import (
 )
 from services.workflow import ensure_task_ledger, update_task, workflow_status
 from services.report_versions import append_report_version, list_report_versions
+from services.cost_control import CostLimitExceeded, budget_status, preflight_estimate
+from services.llm_gateway import structured_completion
+from services.model_routing import route_for_role
+from services.reader_focus import FOCUS_GROUPS
 from routers.auth import _get_session_user
 
 api_router = APIRouter(prefix="/api")
@@ -96,6 +101,20 @@ async def _get_owned_manuscript(manuscript_id: str, request: Request) -> Dict[st
     return manuscript
 
 
+async def _ensure_reader_config_unlocked(manuscript: Dict[str, Any]) -> None:
+    """Reader configuration becomes permanently immutable when a reading run starts."""
+    if manuscript.get("reader_config_locked"):
+        raise HTTPException(409, "Reader focus is locked because this manuscript's reading run has started.")
+    manuscript_id = manuscript["id"]
+    # Backfill the permanent flag for runs created before this column existed.
+    if (
+        await db.reader_reactions.count_documents({"manuscript_id": manuscript_id})
+        or await db.workflow_tasks.count_documents({"manuscript_id": manuscript_id})
+    ):
+        await db.manuscripts.update_one({"id": manuscript_id}, {"$set": {"reader_config_locked": True}})
+        raise HTTPException(409, "Reader focus is locked because this manuscript's reading run has started.")
+
+
 def _selected_readers_complete(existing_reactions: List[Dict], readers: List[Dict]) -> bool:
     completed_reader_ids = {
         reaction.get("reader_id") for reaction in existing_reactions
@@ -105,16 +124,15 @@ def _selected_readers_complete(existing_reactions: List[Dict], readers: List[Dic
     return bool(selected_reader_ids) and selected_reader_ids.issubset(completed_reader_ids)
 
 
-def _enforce_cost_budget(status: Dict[str, Any]) -> None:
-    """Refuse new paid work once the configured manuscript budget is spent."""
-    limit = float(getattr(_cfg, "MAX_WORKFLOW_COST_USD", 0) or 0)
-    spent = float((status.get("usage") or {}).get("estimated_cost_usd") or 0)
-    if limit > 0 and spent >= limit:
-        raise HTTPException(
-            402,
-            f"This manuscript has reached its ${limit:.2f} AI cost limit. "
-            "Raise MAX_WORKFLOW_COST_USD to continue.",
-        )
+def _require_affordable(estimate: Dict) -> None:
+    if not estimate.get("can_start"):
+        budget = estimate.get("budget") or {}
+        raise HTTPException(402, {
+            "code": "budget_insufficient",
+            "message": "The estimated cost is above this manuscript's remaining AI budget.",
+            "estimate": estimate,
+            "remaining_usd": budget.get("remaining_usd"),
+        })
 
 
 # ─── Root & Config ────────────────────────────────────────────────────────────
@@ -148,7 +166,15 @@ async def get_available_models():
         "pipeline_version": _cfg.READER_PIPELINE_VERSION,
         "reader_pool": [{"provider": route.provider, "model": route.model} for route in routes],
         "memory_strategy": "state_delta_in_reader_call" if _cfg.READER_PIPELINE_VERSION == "v2" else "second_model_call",
-        "editor_model": route_for_role("editor").model,
+        "editor_model": {
+            "provider": route_for_role("editor").provider,
+            "model": route_for_role("editor").model,
+        },
+        "editor_map_model": {
+            "provider": route_for_role("editor_map").provider,
+            "model": route_for_role("editor_map").model,
+        },
+        "reader_focus_options": FOCUS_GROUPS,
         "available": [
             {"provider": "gemini", "model": model, "label": label}
             for model, label in AVAILABLE_READER_MODELS.items()
@@ -276,6 +302,7 @@ async def list_manuscripts(request: Request):
     for d in docs:
         d.pop("raw_text", None)
         d.pop("sections", None)
+        d.pop("access_token_hash", None)
     return docs
 
 
@@ -324,22 +351,22 @@ async def create_manuscript(manuscript: ManuscriptCreate, request: Request):
 
     # Genre detection via LLM — fall back to defaults if key missing or API fails
     genre_data: Dict = {"genre": "Fiction", "target_audience": "General readers", "age_range": "Adult", "comparable_books": []}
+    genre_detection_cost = 0.0
     try:
         if _cfg.MOCK_LLM:
             raise RuntimeError("mock LLM mode")
         genre_prompt = """You are a literary analyst. Analyze the manuscript excerpt and return ONLY a JSON object (no markdown) with:
 {"genre":"primary genre","target_audience":"target reader description","age_range":"Adult/YA/Middle Grade/New Adult","comparable_books":["Book by Author","Book by Author","Book by Author"]}"""
-        chat = make_chat(genre_prompt)
         sample = raw_text[:3000]
-        response = await asyncio.wait_for(
-            chat.send_message(UserMessage(text=f"Analyze:\n\n{sample}")),
+        completion = await asyncio.wait_for(
+            structured_completion(
+                route=route_for_role("persona"), role="genre", system_prompt=genre_prompt,
+                user_prompt=f"Analyze:\n\n{sample}", max_tokens=500,
+            ),
             timeout=45.0,
         )
-        try:
-            clean = re.sub(r'```[a-z]*\n?', '', response).strip().rstrip('`')
-            genre_data = json.loads(clean)
-        except Exception:
-            pass  # keep defaults
+        genre_data = completion.data
+        genre_detection_cost = float(completion.usage.estimated_cost_usd or 0)
     except asyncio.TimeoutError:
         logger.warning("Genre detection timed out after 45s, using defaults")
     except Exception as e:
@@ -360,6 +387,10 @@ async def create_manuscript(manuscript: ManuscriptCreate, request: Request):
         "sections": sections,
         "total_sections": len(sections),
         "total_lines": total_lines,
+        "cost_limit_usd": manuscript.cost_limit_usd if manuscript.cost_limit_usd is not None else _cfg.MAX_WORKFLOW_COST_USD,
+        "cost_spent_usd": genre_detection_cost,
+        "cost_reserved_usd": 0,
+        "reader_config_locked": False,
         "created_at": now_iso(),
     }
     try:
@@ -502,8 +533,8 @@ async def get_personas(manuscript_id: str, request: Request):
 
 @api_router.post("/manuscripts/{manuscript_id}/personas/regenerate")
 async def regenerate_personas(manuscript_id: str, req: RegenerateRequest, request: Request):
-    await _get_owned_manuscript(manuscript_id, request)
-    manuscript = await db.manuscripts.find_one({"id": manuscript_id}, {"_id": 0})
+    manuscript = await _get_owned_manuscript(manuscript_id, request)
+    await _ensure_reader_config_unlocked(manuscript)
     if not manuscript:
         raise HTTPException(404, "Manuscript not found")
     genre = manuscript.get("genre", "Fiction")
@@ -540,10 +571,36 @@ async def regenerate_personas(manuscript_id: str, req: RegenerateRequest, reques
 async def add_persona(manuscript_id: str, request: Request):
     """Add the next reader from the preset list (max 5)."""
     try:
-        await _get_owned_manuscript(manuscript_id, request)
+        manuscript = await _get_owned_manuscript(manuscript_id, request)
+        await _ensure_reader_config_unlocked(manuscript)
         return await add_one_persona(manuscript_id)
     except ValueError as e:
         raise HTTPException(400, str(e))
+
+
+@api_router.patch("/manuscripts/{manuscript_id}/personas/{reader_id}/focus", response_model=ReaderPersonaResponse)
+async def update_reader_focus(
+    manuscript_id: str, reader_id: str, body: ReaderFocusUpdate, request: Request,
+):
+    manuscript = await _get_owned_manuscript(manuscript_id, request)
+    await _ensure_reader_config_unlocked(manuscript)
+    reader = await db.reader_personas.find_one({"id": reader_id, "manuscript_id": manuscript_id}, {"_id": 0})
+    if not reader:
+        raise HTTPException(404, "Reader not found")
+    # Generated tastes may be dismissed, but this endpoint cannot invent new tastes.
+    original_likes = set(reader.get("liked_tropes") or [])
+    original_dislikes = set(reader.get("disliked_tropes") or [])
+    if not set(body.liked_tropes).issubset(original_likes) or not set(body.disliked_tropes).issubset(original_dislikes):
+        raise HTTPException(400, "Generated personal tastes may be removed but not rewritten.")
+    values = {
+        "primary_focus": body.primary_focus,
+        "secondary_focuses": body.secondary_focuses,
+        "writer_focus_note": body.writer_focus_note,
+        "liked_tropes": body.liked_tropes,
+        "disliked_tropes": body.disliked_tropes,
+    }
+    await db.reader_personas.update_one({"id": reader_id}, {"$set": values})
+    return ReaderPersonaResponse(**{**reader, **values})
 
 
 # ─── Reading: SSE Stream ──────────────────────────────────────────────────────
@@ -593,12 +650,15 @@ async def read_all_sections_stream(
         raise HTTPException(400, "Select at least one valid reader")
 
     genre = manuscript.get("genre", "Fiction")
+    initial_estimate = await preflight_estimate(manuscript, readers, "readers")
+    _require_affordable(initial_estimate)
+    await db.manuscripts.update_one({"id": manuscript_id}, {"$set": {"reader_config_locked": True}})
+    manuscript["reader_config_locked"] = True
     initial_workflow = await workflow_status(manuscript, readers)
-    _enforce_cost_budget(initial_workflow)
 
     async def event_generator():
         total_sections = len(sections)
-        yield f"data: {json.dumps({'type': 'start', 'total_sections': total_sections, 'total_readers': len(readers), 'total_tasks': initial_workflow['total_tasks'], 'completed_tasks': initial_workflow['completed_tasks'], 'usage': initial_workflow['usage'], 'reader_models': sorted({task.get('actual_model') or task.get('planned_model') for task in initial_workflow['tasks'] if task.get('actual_model') or task.get('planned_model')})})}\n\n"
+        yield f"data: {json.dumps({'type': 'start', 'total_sections': total_sections, 'total_readers': len(readers), 'total_tasks': initial_workflow['total_tasks'], 'completed_tasks': initial_workflow['completed_tasks'], 'usage': initial_workflow['usage'], 'budget': initial_workflow.get('budget'), 'cost_estimate': initial_estimate, 'reader_models': sorted({task.get('actual_model') or task.get('planned_model') for task in initial_workflow['tasks'] if task.get('actual_model') or task.get('planned_model')})})}\n\n"
 
         for section in sorted(sections, key=lambda s: s["section_number"]):
             if await request.is_disconnected():
@@ -694,10 +754,9 @@ async def read_all_sections_stream(
             yield ": keep-alive\n\n"
 
             current_workflow = await workflow_status(manuscript, readers)
-            limit = float(getattr(_cfg, "MAX_WORKFLOW_COST_USD", 0) or 0)
-            spent = float((current_workflow.get("usage") or {}).get("estimated_cost_usd") or 0)
-            if limit > 0 and spent >= limit:
-                yield f"data: {json.dumps({'type': 'budget_exhausted', 'limit_usd': limit, 'spent_usd': spent, 'workflow': current_workflow})}\n\n"
+            current_budget = current_workflow.get("budget") or {}
+            if not current_budget.get("unlimited") and float(current_budget.get("remaining_usd") or 0) <= 0:
+                yield f"data: {json.dumps({'type': 'budget_exhausted', 'limit_usd': current_budget.get('limit_usd'), 'spent_usd': current_budget.get('spent_usd'), 'workflow': current_workflow})}\n\n"
                 return
 
             # 2s pause between sections so we don't slam the API when all readers start section N+1
@@ -745,6 +804,38 @@ async def get_workflow_status(manuscript_id: str, request: Request):
     manuscript = await _get_owned_manuscript(manuscript_id, request)
     readers = await db.reader_personas.find({"manuscript_id": manuscript_id}, {"_id": 0}).to_list(10)
     return await workflow_status(manuscript, readers)
+
+
+@api_router.get("/manuscripts/{manuscript_id}/cost-estimate")
+async def get_cost_estimate(
+    manuscript_id: str,
+    request: Request,
+    operation: str = Query("remaining", pattern="^(remaining|readers|editor|editor_regeneration|copyedit)$"),
+    reader_ids: str | None = Query(None),
+):
+    manuscript = await _get_owned_manuscript(manuscript_id, request)
+    readers = await db.reader_personas.find({"manuscript_id": manuscript_id}, {"_id": 0}).to_list(10)
+    if reader_ids:
+        selected = {item.strip() for item in reader_ids.split(",") if item.strip()}
+        readers = [reader for reader in readers if reader.get("id") in selected]
+    return await preflight_estimate(manuscript, readers, operation)
+
+
+@api_router.get("/manuscripts/{manuscript_id}/budget")
+async def get_manuscript_budget(manuscript_id: str, request: Request):
+    manuscript = await _get_owned_manuscript(manuscript_id, request)
+    return await budget_status(manuscript)
+
+
+@api_router.patch("/manuscripts/{manuscript_id}/budget")
+async def update_manuscript_budget(manuscript_id: str, body: BudgetUpdateRequest, request: Request):
+    manuscript = await _get_owned_manuscript(manuscript_id, request)
+    committed = float(manuscript.get("cost_spent_usd") or 0) + float(manuscript.get("cost_reserved_usd") or 0)
+    if body.cost_limit_usd > 0 and body.cost_limit_usd < committed:
+        raise HTTPException(409, f"Budget cannot be lower than the ${committed:.4f} already spent or reserved.")
+    await db.manuscripts.update_one({"id": manuscript_id}, {"$set": {"cost_limit_usd": body.cost_limit_usd}})
+    manuscript["cost_limit_usd"] = body.cost_limit_usd
+    return await budget_status(manuscript)
 
 
 @api_router.get("/manuscripts/{manuscript_id}/reactions/{section_number}")
@@ -798,12 +889,14 @@ async def create_editor_report(
     if not reactions:
         raise HTTPException(400, "No reader reactions found. Read at least one section first.")
 
-    current_status = await workflow_status(manuscript, readers)
-    _enforce_cost_budget(current_status)
+    editor_estimate = await preflight_estimate(manuscript, readers, "editor_regeneration" if force else "editor")
+    _require_affordable(editor_estimate)
 
     # Generate report from whatever reactions we have (partial OK if some readers/sections errored)
     try:
         report_data = await _build_editor_report(manuscript, reactions)
+    except CostLimitExceeded as exc:
+        raise HTTPException(402, {"code": "budget_insufficient", "message": str(exc), **exc.details})
     except Exception as exc:
         logger.exception("Editor V3 generation failed")
         raise HTTPException(502, str(exc))
@@ -851,12 +944,15 @@ async def create_editor_report(
 async def create_copy_edit_appendix(manuscript_id: str, request: Request):
     manuscript = await _get_owned_manuscript(manuscript_id, request)
     readers = await db.reader_personas.find({"manuscript_id": manuscript_id}, {"_id": 0}).to_list(10)
-    _enforce_cost_budget(await workflow_status(manuscript, readers))
+    copy_estimate = await preflight_estimate(manuscript, readers, "copyedit")
+    _require_affordable(copy_estimate)
     report = await db.editor_reports.find_one({"manuscript_id": manuscript_id}, {"_id": 0})
     if not report:
         raise HTTPException(400, "Generate the Editor V3 report before running the optional copy edit.")
     try:
         appendix = await _build_copy_edit_appendix(manuscript)
+    except CostLimitExceeded as exc:
+        raise HTTPException(402, {"code": "budget_insufficient", "message": str(exc), **exc.details})
     except Exception as exc:
         logger.exception("Copy-edit appendix generation failed")
         raise HTTPException(502, str(exc))

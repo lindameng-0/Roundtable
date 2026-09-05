@@ -147,3 +147,20 @@ body {
 .reader-nav-highlight {
   animation: reader-nav-flash 1.8s ease-out;
 }
+
+@page {
+  size: A4;
+  margin: 16mm 15mm 18mm;
+}
+
+@media print {
+  body { background: white !important; color: #211f1c; }
+  .no-print { display: none !important; }
+  .report-document { background: white !important; }
+  .report-document > div { max-width: none !important; padding: 0 !important; }
+  .report-document section { break-inside: avoid; margin-bottom: 9mm !important; }
+  .report-document section > div:last-child { border-color: #ddd !important; padding: 5mm !important; }
+  .report-document h1, .report-document h2, .report-document h3 { break-after: avoid; }
+  .report-document a { color: inherit !important; text-decoration: none !important; }
+  .chip { border-color: #bbb !important; }
+}

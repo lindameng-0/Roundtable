@@ -78,6 +78,8 @@ if (config.enableVisualEdits && babelMetadataPlugin) {
 }
 
 webpackConfig.devServer = (devServerConfig) => {
+  // BrowserRouter routes must remain directly openable during local testing.
+  devServerConfig.historyApiFallback = true;
   // Apply visual edits dev server setup only if enabled
   if (config.enableVisualEdits && setupDevServer) {
     devServerConfig = setupDevServer(devServerConfig);
@@ -99,6 +101,27 @@ webpackConfig.devServer = (devServerConfig) => {
       return middlewares;
     };
   }
+
+  // The visual-edit middleware replaces CRA's setupMiddlewares hook, which
+  // otherwise leaves direct BrowserRouter URLs returning 404 locally. Rewrite
+  // extensionless HTML navigations to the SPA entry before static middleware.
+  const configuredSetupMiddlewares = devServerConfig.setupMiddlewares;
+  devServerConfig.setupMiddlewares = (middlewares, devServer) => {
+    if (configuredSetupMiddlewares) {
+      middlewares = configuredSetupMiddlewares(middlewares, devServer);
+    }
+    middlewares.unshift({
+      name: "roundtable-spa-fallback",
+      middleware: (req, _res, next) => {
+        const acceptsHtml = String(req.headers.accept || "").includes("text/html");
+        if (req.method === "GET" && acceptsHtml && !path.extname(req.path)) {
+          req.url = "/index.html";
+        }
+        next();
+      },
+    });
+    return middlewares;
+  };
 
   return devServerConfig;
 };

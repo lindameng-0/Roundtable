@@ -52,9 +52,9 @@ MOCK_LLM = LLM_BACKEND == 'mock'
 LLM_MODEL = os.environ.get('LLM_MODEL', 'gemini-2.5-flash')
 LLM_PROVIDER = os.environ.get('LLM_PROVIDER', 'gemini')
 
-# Reader V2 is opt-in until its output has been judged against V1 on the same
-# excerpts. Role routes use ``provider:model`` and can be changed without code.
-READER_PIPELINE_VERSION = os.environ.get('READER_PIPELINE_VERSION', 'v1').strip().lower()
+# Reader V2 is the production path: it combines reaction and continuity state
+# in one budgeted provider call. V1 remains available only for compatibility.
+READER_PIPELINE_VERSION = os.environ.get('READER_PIPELINE_VERSION', 'v2').strip().lower()
 if READER_PIPELINE_VERSION not in {'v1', 'v2'}:
     raise RuntimeError("READER_PIPELINE_VERSION must be 'v1' or 'v2'")
 
@@ -66,10 +66,21 @@ MEMORY_MODEL_ROUTE = os.environ.get(
     'MEMORY_MODEL_ROUTE',
     'gemini:gemini-2.5-flash-lite',
 ).strip()
+PERSONA_MODEL_ROUTE = os.environ.get(
+    'PERSONA_MODEL_ROUTE',
+    'openai:gpt-5.6-luna',
+).strip()
 EDITOR_MODEL_ROUTE = os.environ.get(
     'EDITOR_MODEL_ROUTE',
     'gemini:gemini-2.5-pro',
 ).strip()
+EDITOR_MAP_MODEL_ROUTE = os.environ.get(
+    'EDITOR_MAP_MODEL_ROUTE',
+    'openai:gpt-5.6-luna',
+).strip()
+EDITOR_DIRECT_MAX_CHARS = max(20_000, int(os.environ.get('EDITOR_DIRECT_MAX_CHARS', '220000')))
+EDITOR_CHUNK_MAX_CHARS = max(20_000, int(os.environ.get('EDITOR_CHUNK_MAX_CHARS', '70000')))
+EDITOR_MAX_CHUNKS = max(2, int(os.environ.get('EDITOR_MAX_CHUNKS', '16')))
 COPYEDIT_MODEL_ROUTE = os.environ.get(
     'COPYEDIT_MODEL_ROUTE',
     'openai:gpt-5.6-luna',

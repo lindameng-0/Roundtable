@@ -1,7 +1,13 @@
 from services.editor import _clean_prose, _ground_report_evidence, _normalize_editor_report, validate_editor_report
 import json
 
-from services.editor_evidence import aggregate_editor_evidence, dedupe_reactions, evidence_json, manuscript_for_editor
+from services.editor_evidence import (
+    aggregate_editor_evidence,
+    dedupe_reactions,
+    evidence_json,
+    manuscript_editor_chunks,
+    manuscript_for_editor,
+)
 
 
 def _reaction(created_at="2026-01-01", comment="I stumbled here"):
@@ -77,3 +83,30 @@ def test_grounding_drops_invented_references_and_enriches_real_ones():
         "evidence_id": "r-reader-1-s1-m1",
         "note": "I stumbled here",
     }]
+
+
+def test_long_manuscript_chunks_preserve_all_sections_and_paragraph_ids():
+    manuscript = {"sections": [
+        {"section_number": section, "paragraph_lines": [
+            {"line": section, "paragraph_id": f"p-{section:06d}", "text": "x" * 12000},
+        ]}
+        for section in range(1, 7)
+    ]}
+    chunks, omitted = manuscript_editor_chunks(manuscript, max_chars=20000, max_chunks=10)
+    assert not omitted
+    assert [number for chunk in chunks for number in chunk["sections"]] == [1, 2, 3, 4, 5, 6]
+    rendered = "\n".join(chunk["text"] for chunk in chunks)
+    assert "[p-000001]" in rendered
+    assert "[p-000006]" in rendered
+
+
+def test_long_manuscript_chunk_limit_is_explicit():
+    manuscript = {"sections": [
+        {"section_number": section, "paragraph_lines": [
+            {"line": section, "paragraph_id": f"p-{section:06d}", "text": "x" * 12000},
+        ]}
+        for section in range(1, 7)
+    ]}
+    chunks, omitted = manuscript_editor_chunks(manuscript, max_chars=20000, max_chunks=2)
+    assert omitted
+    assert len(chunks) == 2

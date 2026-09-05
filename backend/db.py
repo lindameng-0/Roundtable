@@ -195,6 +195,36 @@ class _SupabaseDb:
     def workflow_tasks(self) -> _SupabaseTable:
         return _SupabaseTable(self._client, "workflow_tasks")
 
+    @property
+    def cost_reservations(self) -> _SupabaseTable:
+        return _SupabaseTable(self._client, "cost_reservations")
+
+    async def reserve_cost(self, reservation_id, manuscript_id, role, operation_key, estimated_cost_usd):
+        def _run():
+            response = self._client.rpc("reserve_ai_cost", {
+                "p_reservation_id": reservation_id, "p_manuscript_id": manuscript_id,
+                "p_role": role, "p_operation_key": operation_key,
+                "p_estimated_cost_usd": estimated_cost_usd,
+            }).execute()
+            return dict(response.data or {})
+        return await asyncio.to_thread(_run)
+
+    async def settle_cost(self, reservation_id, actual_cost_usd):
+        await asyncio.to_thread(lambda: self._client.rpc("settle_ai_cost", {
+            "p_reservation_id": reservation_id, "p_actual_cost_usd": actual_cost_usd,
+        }).execute())
+
+    async def release_cost(self, reservation_id):
+        await asyncio.to_thread(lambda: self._client.rpc("release_ai_cost", {
+            "p_reservation_id": reservation_id,
+        }).execute())
+
+    async def cleanup_stale_cost_reservations(self):
+        def _run():
+            response = self._client.rpc("release_stale_ai_cost", {"p_older_than_minutes": 120}).execute()
+            return int(response.data or 0)
+        return await asyncio.to_thread(_run)
+
 
 def get_db(url: str, key: str) -> _SupabaseDb:
     return _SupabaseDb(url, key)
@@ -202,7 +232,7 @@ def get_db(url: str, key: str) -> _SupabaseDb:
 
 _JSON_COLUMNS = {
     "manuscripts": {"comparable_books", "sections"},
-    "reader_personas": {"liked_tropes", "disliked_tropes"},
+    "reader_personas": {"liked_tropes", "disliked_tropes", "secondary_focuses"},
     "reader_memories": {"memory_json"},
     "reader_reactions": {"inline_comments", "response_json"},
     "editor_reports": {"report_json"},
@@ -272,7 +302,7 @@ class _PostgresDb:
     TABLES = {
         "manuscripts", "reader_personas", "reader_memories", "reader_reactions",
         "editor_reports", "report_versions", "workflow_tasks", "users", "user_sessions",
-        "waitlist", "feedback",
+        "waitlist", "feedback", "cost_reservations",
     }
 
     def __init__(self, url: str, migrations_dir: Path):
@@ -386,6 +416,22 @@ class _PostgresDb:
         self._validate_table(table)
         where, values = self._where(filters)
         return int(await self._pool.fetchval(f'SELECT count(*) FROM "{table}"{where}', *values))
+
+    async def reserve_cost(self, reservation_id, manuscript_id, role, operation_key, estimated_cost_usd):
+        value = await self._pool.fetchval(
+            "SELECT reserve_ai_cost($1, $2, $3, $4, $5)",
+            reservation_id, manuscript_id, role, operation_key, estimated_cost_usd,
+        )
+        return json.loads(value) if isinstance(value, str) else dict(value)
+
+    async def settle_cost(self, reservation_id, actual_cost_usd):
+        await self._pool.execute("SELECT settle_ai_cost($1, $2)", reservation_id, actual_cost_usd)
+
+    async def release_cost(self, reservation_id):
+        await self._pool.execute("SELECT release_ai_cost($1)", reservation_id)
+
+    async def cleanup_stale_cost_reservations(self):
+        return int(await self._pool.fetchval("SELECT release_stale_ai_cost(120)"))
 
 
 def get_postgres_db(url: str, migrations_dir: Path) -> _PostgresDb:
@@ -524,11 +570,13 @@ class _MemoryDb:
         "feedback",
         "workflow_tasks",
         "report_versions",
+        "cost_reservations",
     )
 
     def __init__(self):
         self._data: Dict[str, List[Dict]] = {name: [] for name in self.TABLES}
         self._tables = {name: _MemoryTable(name, self._data[name]) for name in self.TABLES}
+        self._cost_lock = asyncio.Lock()
 
     def __getattr__(self, name: str) -> _MemoryTable:
         if name in self._tables:
@@ -538,6 +586,48 @@ class _MemoryDb:
     def clear(self) -> None:
         for rows in self._data.values():
             rows.clear()
+
+    async def reserve_cost(self, reservation_id, manuscript_id, role, operation_key, estimated_cost_usd):
+        async with self._cost_lock:
+            manuscript = next((row for row in self._data["manuscripts"] if row.get("id") == manuscript_id), None)
+            if manuscript is None:
+                raise ValueError("Manuscript not found")
+            limit = float(manuscript.get("cost_limit_usd", 25) or 0)
+            spent = float(manuscript.get("cost_spent_usd") or 0)
+            reserved = float(manuscript.get("cost_reserved_usd") or 0)
+            estimate = float(estimated_cost_usd)
+            if limit > 0 and spent + reserved + estimate > limit:
+                return {"reserved": False, "limit_usd": limit, "spent_usd": spent, "reserved_usd": reserved, "requested_usd": estimate}
+            manuscript["cost_reserved_usd"] = reserved + estimate
+            self._data["cost_reservations"].append({
+                "id": reservation_id, "manuscript_id": manuscript_id, "role": role,
+                "operation_key": operation_key, "estimated_cost_usd": estimate,
+                "actual_cost_usd": None, "status": "reserved", "created_at": datetime.now().isoformat(),
+            })
+            return {"reserved": True, "limit_usd": limit, "spent_usd": spent, "reserved_usd": reserved + estimate}
+
+    async def settle_cost(self, reservation_id, actual_cost_usd):
+        async with self._cost_lock:
+            reservation = next((row for row in self._data["cost_reservations"] if row.get("id") == reservation_id), None)
+            if not reservation or reservation.get("status") != "reserved":
+                return
+            manuscript = next(row for row in self._data["manuscripts"] if row.get("id") == reservation["manuscript_id"])
+            estimate = float(reservation["estimated_cost_usd"])
+            manuscript["cost_reserved_usd"] = max(0, float(manuscript.get("cost_reserved_usd") or 0) - estimate)
+            manuscript["cost_spent_usd"] = float(manuscript.get("cost_spent_usd") or 0) + max(0, float(actual_cost_usd))
+            reservation.update({"actual_cost_usd": max(0, float(actual_cost_usd)), "status": "completed"})
+
+    async def release_cost(self, reservation_id):
+        async with self._cost_lock:
+            reservation = next((row for row in self._data["cost_reservations"] if row.get("id") == reservation_id), None)
+            if not reservation or reservation.get("status") != "reserved":
+                return
+            manuscript = next(row for row in self._data["manuscripts"] if row.get("id") == reservation["manuscript_id"])
+            manuscript["cost_reserved_usd"] = max(0, float(manuscript.get("cost_reserved_usd") or 0) - float(reservation["estimated_cost_usd"]))
+            reservation["status"] = "released"
+
+    async def cleanup_stale_cost_reservations(self):
+        return 0
 
 
 def get_memory_db() -> _MemoryDb:

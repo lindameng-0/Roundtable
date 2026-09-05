@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { UserMenu } from "../components/UserMenu";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
-import { Upload, FileText, ChevronRight, RefreshCw, X, Plus, BookOpen, Trash2, CheckCircle } from "lucide-react";
+import { Upload, FileText, ChevronRight, RefreshCw, X, Plus, BookOpen, Trash2, CheckCircle, SlidersHorizontal, Save } from "lucide-react";
 import axios from "axios";
 import { getApi } from "../apiConfig";
 import { rememberManuscriptAccess, manuscriptRequestConfig } from "../manuscriptAccess";
@@ -42,6 +42,24 @@ const ARCHETYPE_DESCRIPTIONS = {
   casual: "Reads for entertainment",
 };
 const MAX_READERS = 5;
+const FALLBACK_FOCUS_GROUPS = [
+  { group: "Character", options: [
+    ["emotional_authenticity", "Emotional authenticity"], ["character_motivation", "Character motivation"],
+    ["relationship_chemistry", "Relationship chemistry"], ["character_growth", "Character growth"], ["dialogue", "Dialogue"],
+  ].map(([id, label]) => ({ id, label })) },
+  { group: "Story", options: [
+    ["pacing_momentum", "Pacing and momentum"], ["plot_logic", "Plot logic"], ["continuity", "Continuity"],
+    ["tension_suspense", "Tension and suspense"], ["setup_payoff", "Setup and payoff"], ["mystery_clues", "Mystery clues"],
+  ].map(([id, label]) => ({ id, label })) },
+  { group: "Craft", options: [
+    ["prose_voice", "Prose and voice"], ["exposition_clarity", "Exposition clarity"],
+    ["viewpoint", "Viewpoint"], ["worldbuilding", "Worldbuilding"],
+  ].map(([id, label]) => ({ id, label })) },
+  { group: "Reader experience", options: [
+    ["immersion", "Immersion"], ["predictability", "Predictability"],
+    ["genre_expectations", "Genre expectations"], ["thematic_subtext", "Thematic subtext"],
+  ].map(([id, label]) => ({ id, label })) },
+];
 
 function getReaderDisplayName(p, index) {
   const n = p?.name;
@@ -62,7 +80,12 @@ export default function SetupPage() {
   const [comparableInput, setComparableInput] = useState("");
   const [personas, setPersonas] = useState([]);
   const [selectedReaderIds, setSelectedReaderIds] = useState([]);
+  const [costBudget, setCostBudget] = useState("5.00");
+  const [costEstimate, setCostEstimate] = useState(null);
   const [regeneratingId, setRegeneratingId] = useState(null);
+  const [editingReaderId, setEditingReaderId] = useState(null);
+  const [readerDraft, setReaderDraft] = useState(null);
+  const [savingReaderFocus, setSavingReaderFocus] = useState(false);
   const [dragOver, setDragOver] = useState(false);
 
   const [uploadedFileName, setUploadedFileName] = useState(null);
@@ -214,7 +237,7 @@ export default function SetupPage() {
     try {
       const token = localStorage.getItem("session_token");
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      const payload = { title: title || "Untitled Manuscript", raw_text: text, model: model };
+      const payload = { title: title || "Untitled Manuscript", raw_text: text, model: model, cost_limit_usd: Number(costBudget) };
       const payloadStr = JSON.stringify(payload);
       // Use byte length (UTF-8), not string length — so we compare bytes to bytes
       const bodySizeBytes = new TextEncoder().encode(payloadStr).length;
@@ -230,6 +253,7 @@ export default function SetupPage() {
           title: title || "Untitled Manuscript",
           raw_text: firstChunk,
           model: model,
+          cost_limit_usd: Number(costBudget),
         }, { headers, withCredentials: true });
         rememberManuscriptAccess(res.data);
         const manuscriptId = res?.data?.id;
@@ -317,6 +341,10 @@ export default function SetupPage() {
         reader_id: readerId,
       }, manuscriptRequestConfig(manuscript.id));
       setPersonas((prev) => prev.map((p) => (p.id === readerId ? res.data : p)));
+      if (editingReaderId === readerId) {
+        setEditingReaderId(null);
+        setReaderDraft(null);
+      }
       toast.success("Reader regenerated");
     } catch (err) {
       toast.error("Failed to regenerate reader");
@@ -359,10 +387,97 @@ export default function SetupPage() {
   const removeReader = (readerId) => {
     if (selectedReaderIds.length <= 1) return;
     setSelectedReaderIds((prev) => prev.filter((id) => id !== readerId));
+    if (editingReaderId === readerId) {
+      setEditingReaderId(null);
+      setReaderDraft(null);
+    }
   };
 
-  const startReading = () => {
-    navigate(`/read/${manuscript.id}`, { state: { selectedReaderIds } });
+  const focusGroups = pipelineConfig?.reader_focus_options || FALLBACK_FOCUS_GROUPS;
+  const focusLabel = (focusId) => focusGroups.flatMap((group) => group.options).find((option) => option.id === focusId)?.label || focusId;
+  const selectedPrimaryCounts = personas
+    .filter((reader) => selectedReaderIds.includes(reader.id) && reader.primary_focus)
+    .reduce((counts, reader) => ({ ...counts, [reader.primary_focus]: (counts[reader.primary_focus] || 0) + 1 }), {});
+  const repeatedPrimaryFocuses = Object.entries(selectedPrimaryCounts).filter(([, count]) => count > 1).map(([focus]) => focusLabel(focus));
+
+  const openReaderCustomization = (reader) => {
+    if (editingReaderId === reader.id) {
+      setEditingReaderId(null);
+      setReaderDraft(null);
+      return;
+    }
+    setEditingReaderId(reader.id);
+    setReaderDraft({
+      primary_focus: reader.primary_focus || "",
+      secondary_focuses: [...(reader.secondary_focuses || [])],
+      writer_focus_note: reader.writer_focus_note || "",
+      liked_tropes: [...(reader.liked_tropes || [])],
+      disliked_tropes: [...(reader.disliked_tropes || [])],
+    });
+  };
+
+  const toggleSecondaryFocus = (focusId) => {
+    setReaderDraft((current) => {
+      if (!current || focusId === current.primary_focus) return current;
+      const selected = current.secondary_focuses || [];
+      if (selected.includes(focusId)) return { ...current, secondary_focuses: selected.filter((item) => item !== focusId) };
+      if (selected.length >= 2) return current;
+      return { ...current, secondary_focuses: [...selected, focusId] };
+    });
+  };
+
+  const removeDraftTaste = (field, value) => {
+    setReaderDraft((current) => ({ ...current, [field]: current[field].filter((item) => item !== value) }));
+  };
+
+  const saveReaderCustomization = async () => {
+    if (!editingReaderId || !readerDraft) return;
+    setSavingReaderFocus(true);
+    try {
+      const payload = {
+        ...readerDraft,
+        primary_focus: readerDraft.primary_focus || null,
+        secondary_focuses: readerDraft.secondary_focuses.filter((item) => item !== readerDraft.primary_focus),
+      };
+      const res = await axios.patch(
+        `${API}/manuscripts/${manuscript.id}/personas/${editingReaderId}/focus`,
+        payload,
+        manuscriptRequestConfig(manuscript.id)
+      );
+      setPersonas((current) => current.map((reader) => reader.id === editingReaderId ? res.data : reader));
+      setEditingReaderId(null);
+      setReaderDraft(null);
+      toast.success("Reader focus saved");
+    } catch (err) {
+      const detail = err.response?.data?.detail;
+      toast.error(typeof detail === "string" ? detail : "Could not save reader focus");
+    } finally {
+      setSavingReaderFocus(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!manuscript?.id || step !== "readers" || selectedReaderIds.length === 0) return;
+    const timer = window.setTimeout(async () => {
+      try {
+        await axios.patch(`${API}/manuscripts/${manuscript.id}/budget`, { cost_limit_usd: Number(costBudget) }, manuscriptRequestConfig(manuscript.id));
+        const ids = encodeURIComponent(selectedReaderIds.join(","));
+        const res = await axios.get(`${API}/manuscripts/${manuscript.id}/cost-estimate?operation=remaining&reader_ids=${ids}`, manuscriptRequestConfig(manuscript.id));
+        setCostEstimate(res.data);
+      } catch (err) {
+        setCostEstimate(null);
+      }
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [manuscript?.id, step, selectedReaderIds, costBudget]);
+
+  const startReading = async () => {
+    try {
+      await axios.patch(`${API}/manuscripts/${manuscript.id}/budget`, { cost_limit_usd: Number(costBudget) }, manuscriptRequestConfig(manuscript.id));
+      navigate(`/read/${manuscript.id}`, { state: { selectedReaderIds } });
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Could not save the AI budget");
+    }
   };
 
   const addComparable = () => {
@@ -538,6 +653,25 @@ export default function SetupPage() {
                 <p className="text-ink-600 text-base">
                   Paste your text or upload a <strong>.txt</strong>, <strong>.docx</strong>, or <strong>.pdf</strong> file. Roundtable will assemble a panel of readers just for your story.
                 </p>
+              </div>
+
+              <div className="mb-8 border border-ink-900/10 bg-white p-5" data-testid="cost-control-panel">
+                <div className="flex flex-wrap items-end justify-between gap-4">
+                  <div>
+                    <p className="text-xs uppercase tracking-widest text-ink-400">AI spending limit</p>
+                    <p className="text-sm text-ink-600 mt-1">A hard cap for this manuscript. Reader quality and model routing stay unchanged.</p>
+                  </div>
+                  <label className="flex items-center gap-2 text-sm text-ink-700">
+                    <span>$</span>
+                    <input type="number" min="0.10" max="1000" step="0.50" value={costBudget} onChange={(event) => setCostBudget(event.target.value)} className="w-24 border border-ink-900/15 px-3 py-2 focus:outline-none focus:border-clay" aria-label="AI spending limit" />
+                  </label>
+                </div>
+                {costEstimate && (
+                  <div className="mt-4 pt-4 border-t border-ink-900/6 text-xs text-ink-500 flex flex-wrap justify-between gap-2">
+                    <span>Readers + first editor report: about ${Number(costEstimate.estimated_cost_usd || 0).toFixed(3)}</span>
+                    <span className={costEstimate.can_start ? "text-sage" : "text-red-600"}>{costEstimate.can_start ? "Within budget" : "Raise the limit before starting"}</span>
+                  </div>
+                )}
               </div>
 
               <div className="mb-4">
@@ -790,8 +924,8 @@ export default function SetupPage() {
                   )}
                   <p className="text-xs text-ink-400 mt-2">
                     {pipelineConfig?.pipeline_version === "v2"
-                      ? "Reader reactions use one model call that also updates continuity state."
-                      : "The final Editor report uses Gemini 2.5 Pro in both modes."}
+                      ? `Reader reactions use one model call that also updates continuity state. The final report uses ${pipelineConfig?.editor_model?.provider || "the configured provider"}:${pipelineConfig?.editor_model?.model || "editor model"}.`
+                      : `The final Editor report uses ${pipelineConfig?.editor_model?.provider || "the configured provider"}:${pipelineConfig?.editor_model?.model || "editor model"}.`}
                   </p>
                 </div>
 
@@ -928,6 +1062,7 @@ export default function SetupPage() {
                             <p className="text-xs text-ink-500">
                               {ARCHETYPE_DESCRIPTIONS[p.personality] || p.personality}
                             </p>
+                            <p className="text-xs text-ink-400 mt-0.5">{p.age} · {p.occupation}</p>
                           </div>
                         </div>
 
@@ -954,6 +1089,7 @@ export default function SetupPage() {
                         </blockquote>
 
                         <div className="mt-4 pt-3 border-t border-ink-900/6">
+                          <p className="text-[10px] uppercase tracking-widest text-ink-400 mb-2">Personal tastes</p>
                           <div className="flex flex-wrap gap-1">
                             {(p.liked_tropes || []).slice(0, 2).map((t, ti) => (
                               <span key={ti} className="text-xs text-sage bg-sage/10 px-2 py-0.5" style={{ borderRadius: "2px" }}>
@@ -967,10 +1103,120 @@ export default function SetupPage() {
                             ))}
                           </div>
                         </div>
+
+                        {(p.primary_focus || (p.secondary_focuses || []).length > 0) && (
+                          <div className="mt-3">
+                            <p className="text-[10px] uppercase tracking-widest text-ink-400 mb-1.5">Your assignment</p>
+                            <div className="flex flex-wrap gap-1">
+                              {p.primary_focus && <span className="text-xs text-clay bg-clay/10 px-2 py-0.5">Primary · {focusLabel(p.primary_focus)}</span>}
+                              {(p.secondary_focuses || []).map((focus) => <span key={focus} className="text-xs text-ink-500 bg-ink-900/5 px-2 py-0.5">{focusLabel(focus)}</span>)}
+                            </div>
+                          </div>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => openReaderCustomization(p)}
+                          className={`mt-4 w-full flex items-center justify-center gap-2 border px-3 py-2 text-xs transition-colors ${editingReaderId === p.id ? "border-clay text-clay bg-clay/5" : "border-ink-900/10 text-ink-500 hover:border-clay hover:text-clay"}`}
+                          data-testid={`customize-reader-${p.id}`}
+                        >
+                          <SlidersHorizontal className="w-3.5 h-3.5" />
+                          {p.primary_focus || p.writer_focus_note ? "Edit focus" : "Customize focus"}
+                        </button>
                       </motion.div>
                     ))}
                 </AnimatePresence>
               </div>
+
+              {editingReaderId && readerDraft && (() => {
+                const reader = personas.find((item) => item.id === editingReaderId);
+                if (!reader) return null;
+                return (
+                  <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mb-8 bg-white border border-clay/25 p-6" data-testid="reader-focus-editor">
+                    <div className="flex items-start justify-between gap-4 mb-6">
+                      <div>
+                        <p className="text-xs uppercase tracking-widest text-clay">Light customization</p>
+                        <h3 className="font-serif text-2xl text-ink-900 mt-1" style={{ fontFamily: "'Cormorant Garamond', serif" }}>Guide what {getReaderDisplayName(reader)} watches</h3>
+                        <p className="text-xs text-ink-500 mt-1">Focus changes attention, not opinion. Nothing here requires a comment.</p>
+                      </div>
+                      <button onClick={() => { setEditingReaderId(null); setReaderDraft(null); }} aria-label="Close reader customization"><X className="w-4 h-4 text-ink-400" /></button>
+                    </div>
+
+                    <div className="grid md:grid-cols-2 gap-7">
+                      <div>
+                        <label className="text-xs uppercase tracking-widest text-ink-400 block mb-2">Primary focus</label>
+                        <select
+                          value={readerDraft.primary_focus}
+                          onChange={(event) => setReaderDraft((current) => ({
+                            ...current,
+                            primary_focus: event.target.value,
+                            secondary_focuses: current.secondary_focuses.filter((item) => item !== event.target.value),
+                          }))}
+                          className="w-full border border-ink-900/12 bg-paper px-3 py-2.5 text-sm text-ink-700 focus:outline-none focus:border-clay"
+                        >
+                          <option value="">Use only their natural tendencies</option>
+                          {focusGroups.map((group) => <optgroup key={group.group} label={group.group}>{group.options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</optgroup>)}
+                        </select>
+
+                        <p className="text-xs uppercase tracking-widest text-ink-400 mt-5 mb-2">Secondary interests <span className="normal-case tracking-normal">({readerDraft.secondary_focuses.length}/2)</span></p>
+                        <div className="space-y-3 max-h-56 overflow-y-auto pr-2">
+                          {focusGroups.map((group) => (
+                            <div key={group.group}>
+                              <p className="text-[10px] uppercase tracking-widest text-ink-400 mb-1.5">{group.group}</p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {group.options.map((option) => {
+                                  const selected = readerDraft.secondary_focuses.includes(option.id);
+                                  const disabled = option.id === readerDraft.primary_focus || (!selected && readerDraft.secondary_focuses.length >= 2);
+                                  return <button key={option.id} type="button" disabled={disabled} onClick={() => toggleSecondaryFocus(option.id)} className={`text-xs border px-2 py-1.5 transition-colors disabled:opacity-30 ${selected ? "border-clay text-clay bg-clay/5" : "border-ink-900/10 text-ink-500 hover:border-clay"}`}>{option.label}</button>;
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <p className="text-xs uppercase tracking-widest text-ink-400 mb-2">Personal tastes</p>
+                        <p className="text-xs text-ink-500 mb-3">Generated parts of this reader's identity. Remove only those that feel exaggerated or unsuitable.</p>
+                        <div className="flex flex-wrap gap-1.5 min-h-8">
+                          {readerDraft.liked_tropes.map((taste) => <button key={`like-${taste}`} type="button" onClick={() => removeDraftTaste("liked_tropes", taste)} title="Remove this taste" className="flex items-center gap-1 text-xs text-sage bg-sage/10 px-2 py-1">+ {taste}<X className="w-3 h-3" /></button>)}
+                          {readerDraft.disliked_tropes.map((taste) => <button key={`dislike-${taste}`} type="button" onClick={() => removeDraftTaste("disliked_tropes", taste)} title="Remove this taste" className="flex items-center gap-1 text-xs text-clay bg-clay/10 px-2 py-1">− {taste}<X className="w-3 h-3" /></button>)}
+                          {readerDraft.liked_tropes.length === 0 && readerDraft.disliked_tropes.length === 0 && <span className="text-xs text-ink-400">No generated tastes retained.</span>}
+                        </div>
+
+                        <label className="text-xs uppercase tracking-widest text-ink-400 block mt-6 mb-2">Optional note to this reader</label>
+                        <textarea
+                          value={readerDraft.writer_focus_note}
+                          onChange={(event) => setReaderDraft((current) => ({ ...current, writer_focus_note: event.target.value.slice(0, 160) }))}
+                          placeholder="e.g. Watch whether the romance feels earned."
+                          className="w-full h-24 border border-ink-900/12 bg-paper p-3 text-sm text-ink-700 focus:outline-none focus:border-clay resize-none"
+                        />
+                        <p className="text-right text-[10px] text-ink-400 mt-1">{readerDraft.writer_focus_note.length}/160</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-6 pt-4 border-t border-ink-900/6 flex items-center justify-between gap-4">
+                      <p className="text-xs text-ink-400">This configuration locks permanently when reading begins.</p>
+                      <button onClick={saveReaderCustomization} disabled={savingReaderFocus} className="flex items-center gap-2 bg-clay text-white px-5 py-2.5 text-sm disabled:opacity-40" data-testid="save-reader-focus">
+                        {savingReaderFocus ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save focus
+                      </button>
+                    </div>
+                  </motion.div>
+                );
+              })()}
+
+              {repeatedPrimaryFocuses.length > 0 && (
+                <div className="mb-5 border border-gold/30 bg-gold/5 px-4 py-3 text-xs text-ink-600">
+                  Several readers share the same primary focus: {repeatedPrimaryFocuses.join(", ")}. That is allowed, but a more varied panel usually produces less repetitive feedback.
+                </div>
+              )}
+
+              {costEstimate && (
+                <div className="mb-5 border border-ink-900/10 bg-white px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-xs text-ink-500">
+                  <span>Selected readers + first editor report: about ${Number(costEstimate.estimated_cost_usd || 0).toFixed(3)}</span>
+                  <span className={costEstimate.can_start ? "text-sage" : "text-red-600"}>{costEstimate.can_start ? `Within your $${Number(costBudget || 0).toFixed(2)} limit` : "Raise the AI limit before starting"}</span>
+                </div>
+              )}
 
               <div className="mb-8">
                 <button
@@ -1000,7 +1246,7 @@ export default function SetupPage() {
                 <button
                   data-testid="start-reading-btn"
                   onClick={startReading}
-                  disabled={personas.length === 0 || selectedReaderIds.length === 0}
+                  disabled={personas.length === 0 || selectedReaderIds.length === 0 || costEstimate?.can_start === false}
                   className="flex items-center gap-2 bg-clay hover:bg-clay-hover text-white px-8 py-3 text-sm font-semibold transition-all duration-200 disabled:opacity-40"
                   style={{ borderRadius: "2px" }}
                 >

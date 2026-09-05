@@ -30,7 +30,7 @@ export default function ReadingPage() {
     commentsByLine, readerStatus, reflections, allComments,
     thinkingReaders, readingDone, setReadingDone, processingSection, totalSections,
     setTotalSections, isStalled, esRef, startReadingAll, loadExistingReactions,
-    handleRetry, handleViewPartial, workflowProgress, workflowUsage, workflowModels,
+    handleRetry, handleViewPartial, workflowProgress, workflowUsage, workflowModels, workflowBudget,
   } = useReadingStream(manuscriptId);
 
   // Close stream when user leaves the page so the backend pauses reader pipelines
@@ -106,7 +106,16 @@ export default function ReadingPage() {
         if (error.response?.status === 404) return null;
         throw error;
       });
-      if (!existing) await axios.post(`${API}/manuscripts/${manuscriptId}/editor-report`, {}, config);
+      if (!existing) {
+        const estimateRes = await axios.get(`${API}/manuscripts/${manuscriptId}/cost-estimate?operation=editor`, config);
+        const estimate = Number(estimateRes.data.estimated_cost_usd || 0);
+        if (!estimateRes.data.can_start) {
+          toast.error(`The editor is estimated at $${estimate.toFixed(3)}, above the remaining manuscript budget.`);
+          return;
+        }
+        if (!window.confirm(`Generate the editor report? This is estimated to use about $${estimate.toFixed(3)} of AI credit.`)) return;
+        await axios.post(`${API}/manuscripts/${manuscriptId}/editor-report`, {}, config);
+      }
       navigate(`/report/${manuscriptId}`);
     } catch (err) {
       const detail = err.response?.data?.detail ?? err.response?.data?.message;
@@ -164,6 +173,7 @@ export default function ReadingPage() {
         workflowProgress={workflowProgress}
         workflowUsage={workflowUsage}
         workflowModels={workflowModels}
+        workflowBudget={workflowBudget}
       />
 
       <div className="flex flex-1 overflow-hidden">

@@ -88,8 +88,12 @@ def route_for_role(role: str, reader: Optional[Dict] = None) -> ModelRoute:
         return route_for_reader(reader or {})
     if role == "memory":
         return parse_route(_cfg.MEMORY_MODEL_ROUTE)
+    if role == "persona":
+        return parse_route(_cfg.PERSONA_MODEL_ROUTE)
     if role == "editor":
         return parse_route(_cfg.EDITOR_MODEL_ROUTE)
+    if role == "editor_map":
+        return parse_route(_cfg.EDITOR_MAP_MODEL_ROUTE)
     if role == "copyedit":
         return parse_route(_cfg.COPYEDIT_MODEL_ROUTE)
     raise ValueError(f"Unknown model role '{role}'")

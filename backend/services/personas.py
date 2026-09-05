@@ -1,15 +1,15 @@
-import json
-import re
 import uuid
 import asyncio
 import logging
 from typing import Dict, List
 
-from utils import make_chat, now_iso, UserMessage
+from utils import now_iso
 from config import db
 import config as _cfg
 from models import ReaderPersonaResponse
 from services.readers import DEFAULT_ATTENTION_BY_AVATAR
+from services.llm_gateway import structured_completion
+from services.model_routing import route_for_role
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +134,9 @@ async def generate_single_persona(
                 f"You are {name}, {default_age}, a {occupation} who reads for pleasure. "
                 f"{archetype_info['default_instructions']} You're one ordinary reader, and your reactions do not need to be unusual."
             ),
+            "primary_focus": None,
+            "secondary_focuses": [],
+            "writer_focus_note": "",
             "created_at": now_iso(),
         }
 
@@ -173,12 +176,13 @@ Return ONLY this JSON (no other text):
         f"Set this persona's age to a specific number between {min_age} and {max_age} that fits the audience. "
         f"Give them a real full name and specific preferences—no generic placeholders."
     )
-    chat = make_chat(system)
-    response = await chat.send_message(UserMessage(text=user_text))
-
     try:
-        clean = re.sub(r'```[a-z]*\n?', '', response).strip().rstrip('`')
-        data = json.loads(clean)
+        completion = await structured_completion(
+            route=route_for_role("persona"), role="persona", system_prompt=system,
+            user_prompt=user_text, max_tokens=1200, manuscript_id=manuscript_id,
+            operation_key=f"persona:{avatar_index}",
+        )
+        data = completion.data
     except Exception:
         data = {}
 
@@ -258,6 +262,9 @@ Return ONLY this JSON (no other text):
             archetype_info["default_instructions"],
         ),
         "persona_block": persona_block,
+        "primary_focus": None,
+        "secondary_focuses": [],
+        "writer_focus_note": "",
         "created_at": now_iso(),
     }
 

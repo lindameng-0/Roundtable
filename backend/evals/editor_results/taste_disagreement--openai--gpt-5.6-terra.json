@@ -1,0 +1,313 @@
+{
+  "case_id": "taste_disagreement",
+  "purpose": "Tests whether conflicting reader tastes are synthesized rather than converted into an objective defect.",
+  "expectations": {
+    "required_topics": [
+      "grief",
+      "repetition"
+    ],
+    "requires_disagreement": true
+  },
+  "variant": "openai:gpt-5.6-terra",
+  "report": {
+    "schema_version": 3,
+    "executive_summary": {
+      "synopsis": "Nia spends three mornings sorting her absent father's labeled freezer meals back into place. On the fourth morning, she breaks the ritual by warming a soup, adding pepper, and eating it at the sink. Finding one of her father's notes beneath the bowl prompts a single laugh, turning a small domestic act into a tentative movement through grief and continued connection.",
+      "overall_reader_experience": "The piece creates a compressed, tactile portrait of mourning through repetition and a modest behavioral shift. Its central device strongly affected one reader as patient, physical grief, while another felt the same repetition made the brief piece drag before its emotional turn.",
+      "strongest_asset": "The restrained use of domestic ritual to make grief legible without explanatory backstory.",
+      "main_friction": "The three-morning repetition is emotionally effective for some readers but risks feeling overextended for others in a piece this short.",
+      "top_priorities": [
+        "Preserve the ritual structure while giving each of the three sorting mornings a distinct emotional or sensory progression.",
+        "Make the fourth-morning departure from ritual register more sharply before Nia warms the soup.",
+        "Retain the understated final laugh and the father's note as the emotional payoff."
+      ]
+    },
+    "reader_response": {
+      "what_worked": [
+        {
+          "title": "Repetition embodies grief",
+          "analysis": "The repeated sorting ritual gave one reader a bodily sense of grief's patience rather than merely informing them that Nia is grieving. The compression allows the act of returning meals to their shelves to carry the emotional weight.",
+          "evidence": [
+            {
+              "section": 1,
+              "paragraph_id": "p-000002",
+              "reader": "Mara",
+              "evidence_id": "r-reader-1-s1-m1",
+              "note": "Mara praised the repeated sorting, and her journal described the repetition as making grief feel physical and patient."
+            }
+          ]
+        },
+        {
+          "title": "A small act creates an emotional turn",
+          "analysis": "Nia's choice to warm the soup and add pepper changes the established ritual into participation. The later laugh at her father's note gives the ending a restrained note of connection rather than a declarative resolution.",
+          "evidence": [
+            {
+              "section": 1,
+              "paragraph_id": "p-000002",
+              "reader": "manuscript",
+              "evidence_id": null,
+              "note": "After three mornings of returning meals to their shelves, Nia warms soup and adds pepper on the fourth."
+            },
+            {
+              "section": 2,
+              "paragraph_id": "p-000003",
+              "reader": "manuscript",
+              "evidence_id": null,
+              "note": "Nia laughs when she finds her father's note beneath the bowl."
+            }
+          ]
+        }
+      ],
+      "friction_points": [
+        {
+          "title": "The repetition has divided pacing effects",
+          "analysis": "This is a reader-response and pacing issue, not a logic defect. Jon understood the emotional premise before the third morning and became impatient, whereas Mara found the same recurrence effective. The current sequence therefore needs more internal variation if it is meant to satisfy readers who need progression as well as ritual.",
+          "evidence": [
+            {
+              "section": 1,
+              "paragraph_id": "p-000002",
+              "reader": "Jon",
+              "evidence_id": "r-reader-2-s1-m1",
+              "note": "Jon said the repeated mornings slowed him down; his journal says he understood the point before the third morning and grew impatient."
+            },
+            {
+              "section": 1,
+              "paragraph_id": "p-000002",
+              "reader": "Mara",
+              "evidence_id": "r-reader-1-s1-m1",
+              "note": "Mara praised the repeated sorting and described the repetition as physically and patiently conveying grief."
+            }
+          ]
+        }
+      ],
+      "emotional_peaks": [
+        {
+          "title": "The father's note releases the held emotion",
+          "analysis": "The ending concentrates the story's emotional payoff in Nia's unexpected laugh. Because the manuscript does not explain the note or enlarge the response, the moment can hold both memory and a slight easing of the ritualized grief.",
+          "evidence": [
+            {
+              "section": 2,
+              "paragraph_id": "p-000003",
+              "reader": "manuscript",
+              "evidence_id": null,
+              "note": "Nia finds her father's note beneath the bowl and laughs once."
+            }
+          ]
+        }
+      ],
+      "meaningful_disagreements": [
+        {
+          "title": "Ritualistic pacing versus impatience",
+          "analysis": "Mara and Jon respond oppositely to the same formal choice. This disagreement appears to reflect reader preference and the intended tolerance for repetition, not an objective failure; revision should seek clearer incremental movement rather than automatically cutting the device.",
+          "evidence": [
+            {
+              "section": 1,
+              "paragraph_id": "p-000002",
+              "reader": "Mara",
+              "evidence_id": "r-reader-1-s1-m1",
+              "note": "Mara found the repeated sorting effective."
+            },
+            {
+              "section": 1,
+              "paragraph_id": "p-000002",
+              "reader": "Jon",
+              "evidence_id": "r-reader-2-s1-m1",
+              "note": "Jon found the repeated mornings slowing."
+            }
+          ]
+        }
+      ]
+    },
+    "story_integrity": [],
+    "characters": [
+      {
+        "name": "Nia",
+        "reader_perception": "Nia is presented through action rather than exposition: her repeated sorting suggests avoidance, care, or an attempt to preserve order, while warming and seasoning the soup marks a modest change. Readers received that ritual as grief-laden, though one reader wanted faster movement through it.",
+        "motivation_and_consistency": "Her behavior is internally coherent across the available text: she initially restores her father's prepared meals untouched, then chooses to consume one herself. The manuscript implies grief and attachment but does not explicitly define the father's circumstances, which remains a controlled literary ambiguity rather than an established inconsistency.",
+        "relationship_notes": "Nia's relationship with her father is conveyed through his labeled meals and the note left beneath the bowl. His practical care remains active in the scene even though he is not physically present.",
+        "evidence": [
+          {
+            "section": 1,
+            "paragraph_id": "p-000001",
+            "reader": "manuscript",
+            "evidence_id": null,
+            "note": "Nia sorts her father's labeled freezer meals and returns them to their shelves for three mornings."
+          },
+          {
+            "section": 1,
+            "paragraph_id": "p-000002",
+            "reader": "manuscript",
+            "evidence_id": null,
+            "note": "On the fourth morning, Nia warms soup and adds pepper."
+          },
+          {
+            "section": 2,
+            "paragraph_id": "p-000003",
+            "reader": "manuscript",
+            "evidence_id": null,
+            "note": "Nia finds a note from her father beneath the bowl and laughs."
+          },
+          {
+            "section": 1,
+            "paragraph_id": "p-000002",
+            "reader": "Mara",
+            "evidence_id": "r-reader-1-s1-m1",
+            "note": "Mara interpreted the repetition as making grief physical and patient."
+          }
+        ]
+      },
+      {
+        "name": "Nia's father",
+        "reader_perception": "The father functions as an intimate offstage presence through his organization of the meals and the hidden note, rather than as a fully delineated character in this short passage.",
+        "motivation_and_consistency": "The available text consistently associates him with practical preparation and a lingering written gesture. There is insufficient textual evidence to determine why he is absent or to specify his emotional intentions beyond the note.",
+        "relationship_notes": "The labeled meals and note establish an ongoing bond: Nia's domestic routine is organized around objects he prepared, and the note interrupts that routine with a moment of remembered contact.",
+        "evidence": [
+          {
+            "section": 1,
+            "paragraph_id": "p-000001",
+            "reader": "manuscript",
+            "evidence_id": null,
+            "note": "The freezer meals are labeled as belonging to Nia's father."
+          },
+          {
+            "section": 2,
+            "paragraph_id": "p-000003",
+            "reader": "manuscript",
+            "evidence_id": null,
+            "note": "A note from Nia's father is beneath the bowl."
+          }
+        ]
+      }
+    ],
+    "pacing_and_structure": [
+      {
+        "section": 1,
+        "engagement": "mixed",
+        "diagnosis": "The three-morning setup efficiently establishes a ritual, but it has no stated variation within the repetitions before the fourth-morning break. That spare structure produced a meaningful split: one reader experienced deliberate grief-time, while another felt the point arrived before the sequence ended.",
+        "evidence": [
+          {
+            "section": 1,
+            "paragraph_id": "p-000001",
+            "reader": "manuscript",
+            "evidence_id": null,
+            "note": "The manuscript summarizes three mornings of identical sorting behavior."
+          },
+          {
+            "section": 1,
+            "paragraph_id": "p-000002",
+            "reader": "Jon",
+            "evidence_id": "r-reader-2-s1-m1",
+            "note": "Jon reported that the repetition slowed him down and made him impatient."
+          },
+          {
+            "section": 1,
+            "paragraph_id": "p-000002",
+            "reader": "Mara",
+            "evidence_id": "r-reader-1-s1-m1",
+            "note": "Mara reported that the repeated sorting worked for her."
+          }
+        ]
+      },
+      {
+        "section": 2,
+        "engagement": "high",
+        "diagnosis": "The final beat is structurally effective because it follows the behavioral change rather than explaining it. The note and single laugh provide a compact emotional release while leaving the father's absence and Nia's future appropriately unstated.",
+        "evidence": [
+          {
+            "section": 2,
+            "paragraph_id": "p-000003",
+            "reader": "manuscript",
+            "evidence_id": null,
+            "note": "The section ends with Nia finding the note and laughing once."
+          }
+        ]
+      }
+    ],
+    "revision_plan": [
+      {
+        "priority": "important",
+        "action": "Keep the three-morning frame, but add one precise variation to the sorting sequence before the fourth morning: for example, let Nia pause over a label, notice a meal shifted out of its usual place, or nearly take one before returning it.",
+        "reason": "The current recurrence is emotionally successful for one reader but felt redundant to another. A small escalation would preserve the ritual's grief texture while making the fourth-morning choice feel like the culmination of visible pressure rather than simply the next stated day.",
+        "expected_impact": "Readers who value the repetition should retain its patient weight; readers who seek narrative movement should perceive a clearer progression before the turn.",
+        "evidence": [
+          {
+            "section": 1,
+            "paragraph_id": "p-000001",
+            "reader": "manuscript",
+            "evidence_id": null,
+            "note": "The three mornings are presented as the same act of sorting and returning meals."
+          },
+          {
+            "section": 1,
+            "paragraph_id": "p-000002",
+            "reader": "Jon",
+            "evidence_id": "r-reader-2-s1-m1",
+            "note": "Jon felt the repeated mornings slowed the piece."
+          },
+          {
+            "section": 1,
+            "paragraph_id": "p-000002",
+            "reader": "Mara",
+            "evidence_id": "r-reader-1-s1-m1",
+            "note": "Mara valued the repeated sorting."
+          }
+        ]
+      },
+      {
+        "priority": "important",
+        "action": "Sharpen the threshold immediately before Nia warms the soup by adding a brief cue that she is consciously breaking her own routine, such as a hesitation at the freezer door or attention to the pepper.",
+        "reason": "Warming the soup and adding pepper already provide the story's key action shift. Marking Nia's awareness of that shift would make the emotional turn more legible without adding explanatory grief narration.",
+        "expected_impact": "The ending's note and laugh will feel more strongly earned because readers can register that Nia has chosen a new relation to her father's preparations.",
+        "evidence": [
+          {
+            "section": 1,
+            "paragraph_id": "p-000001",
+            "reader": "manuscript",
+            "evidence_id": null,
+            "note": "Nia previously returns every meal to its shelf."
+          },
+          {
+            "section": 1,
+            "paragraph_id": "p-000002",
+            "reader": "manuscript",
+            "evidence_id": null,
+            "note": "On the fourth morning she instead warms soup and adds pepper."
+          }
+        ]
+      },
+      {
+        "priority": "optional",
+        "action": "Do not explain the father's absence or expand the final laugh unless the larger manuscript requires that information; preserve the note as a concrete, unexplained trigger.",
+        "reason": "The existing ending derives force from restraint and from the father's presence in objects and writing. No reader evidence identifies an unresolved question, and the supplied question lifecycle contains no open or repeated questions.",
+        "expected_impact": "The passage can maintain its literary compression and allow the emotional resonance of the note to exceed its literal explanation.",
+        "evidence": [
+          {
+            "section": 2,
+            "paragraph_id": "p-000003",
+            "reader": "manuscript",
+            "evidence_id": null,
+            "note": "The note is presented without explanation, followed by a single laugh."
+          }
+        ]
+      }
+    ],
+    "copy_edit_appendix": null,
+    "coverage": {
+      "sections": [
+        1,
+        2
+      ],
+      "partial": false,
+      "notes": "This report covers all three supplied manuscript paragraphs and both reader reactions. The source material is an extremely short excerpt, so conclusions about long-form arc, broader cast, and later payoffs are necessarily limited to the available text."
+    }
+  },
+  "validation_errors": [],
+  "usage": {
+    "provider": "openai",
+    "model": "gpt-5.6-terra",
+    "role": "editor",
+    "input_tokens": 1062,
+    "output_tokens": 3576,
+    "estimated_cost_usd": 0.045036
+  }
+}

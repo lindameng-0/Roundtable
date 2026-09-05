@@ -1,0 +1,311 @@
+{
+  "case_id": "ambiguity_not_plot_hole",
+  "purpose": "Tests whether deliberate uncertainty is distinguished from a contradiction.",
+  "expectations": {
+    "forbidden_integrity_classes": [
+      "confirmed_contradiction"
+    ],
+    "required_topics": [
+      "ambiguity",
+      "intent"
+    ]
+  },
+  "variant": "openai:gpt-5.6-terra",
+  "report": {
+    "schema_version": 3,
+    "executive_summary": {
+      "synopsis": "Nikolay cleans a pistol, removes its magazine, and studies a single remaining round. Vilena later finds him by an open window, but the narration withholds whether he intended to kill himself. In a later memory, Vilena recalls his promise that she would find him “after,” yet cannot determine whether he meant after an act or after death. The piece ends on that unresolved, potentially fatal ambiguity.",
+      "overall_reader_experience": "The manuscript creates an immediate, ominous psychological atmosphere through a tightly controlled unanswered question. Both readers understood the uncertainty around Nikolay’s intent as central, though the later reference to “after” deepens rather than resolves the uncertainty. Given the extreme brevity, the ambiguity currently functions more as a charged final impression than as a fully developed dramatic progression.",
+      "strongest_asset": "Its compact, deliberate construction of dread around Nikolay’s unstated intent and Vilena’s inability to interpret his promise.",
+      "main_friction": "The central ambiguity is evocative but has little contextual or emotional scaffolding, so the later memory intensifies uncertainty without substantially changing the reader’s understanding of the stakes.",
+      "top_priorities": [
+        "Preserve the unresolved intent while adding one concrete emotional or situational detail that clarifies what Vilena fears losing.",
+        "Make the remembered promise create a new interpretive pressure rather than only restating the existing uncertainty.",
+        "Give Vilena one more observable reaction, decision, or memory detail so the ending lands as her psychological crisis as well as Nikolay’s mystery."
+      ]
+    },
+    "reader_response": {
+      "what_worked": [
+        {
+          "title": "The withheld intent reads as deliberate suspense",
+          "analysis": "The manuscript’s refusal to state whether Nikolay intended suicide produced intrigue rather than a simple comprehension failure for Aisha. The pistol, single round, and open-window discovery establish danger economically while preserving uncertainty.",
+          "evidence": [
+            {
+              "section": 1,
+              "paragraph_id": "p-000002",
+              "reader": "Aisha",
+              "evidence_id": "r-reader-1-s1-m1",
+              "note": "Nikolay handles a pistol and a single round; Aisha says she is unsure whether he meant to die and that the uncertainty feels deliberate."
+            },
+            {
+              "section": 1,
+              "paragraph_id": "p-000002",
+              "reader": "Aisha",
+              "evidence_id": "r-reader-1-s1-m1",
+              "note": "The narration explicitly withholds whether the shot was intended to kill him; Aisha identifies the scene as withholding his exact intent."
+            }
+          ]
+        },
+        {
+          "title": "Vilena’s remembered promise extends the ominous question",
+          "analysis": "The promise that Vilena would find Nikolay “after” successfully broadens the possible meanings of the scene, linking the immediate threat to an unresolved prior relationship or plan.",
+          "evidence": [
+            {
+              "section": 2,
+              "paragraph_id": "p-000003",
+              "reader": "Mara",
+              "evidence_id": "r-reader-2-s2-m1",
+              "note": "Vilena remembers Nikolay’s promise but cannot determine what “after” meant; Mara says the memory deepens the ambiguity."
+            }
+          ]
+        }
+      ],
+      "friction_points": [
+        {
+          "title": "The second beat compounds ambiguity without adding a stable emotional foothold",
+          "analysis": "Mara can identify two plausible meanings of “after,” but the brief text supplies no further context for why either meaning matters specifically to Vilena. This is not a logic failure: it is a developmental limitation of a deliberately ambiguous ending.",
+          "evidence": [
+            {
+              "section": 2,
+              "paragraph_id": "p-000003",
+              "reader": "Mara",
+              "evidence_id": "r-reader-2-s2-m1",
+              "note": "Mara reports that “after” could mean after the act or after death, showing that the phrase opens alternatives without selecting or emotionally grounding one."
+            },
+            {
+              "section": 1,
+              "paragraph_id": "p-000002",
+              "reader": "Aisha",
+              "evidence_id": "r-reader-1-s1-m1",
+              "note": "Aisha experiences the original uncertainty as deliberate, indicating that the issue is not failure to understand the premise but limited expansion beyond it."
+            }
+          ]
+        }
+      ],
+      "emotional_peaks": [
+        {
+          "title": "The single round and the open-window discovery",
+          "analysis": "The strongest emotional peak is the transition from Nikolay contemplating the single round to Vilena finding him afterward. The juxtaposition creates immediate dread because the reader must infer what may have happened without confirmation.",
+          "evidence": [
+            {
+              "section": 1,
+              "paragraph_id": "p-000002",
+              "reader": "Aisha",
+              "evidence_id": "r-reader-1-s1-m1",
+              "note": "Nikolay removes the magazine and stares at a single round, establishing imminent danger."
+            },
+            {
+              "section": 1,
+              "paragraph_id": "p-000002",
+              "reader": "Aisha",
+              "evidence_id": "r-reader-1-s1-m1",
+              "note": "Vilena finds him at the open window and the narration withholds the shot’s intent; Aisha responds to that uncertainty as deliberate."
+            }
+          ]
+        }
+      ],
+      "meaningful_disagreements": []
+    },
+    "story_integrity": [
+      {
+        "classification": "ambiguity_or_insufficient_evidence",
+        "title": "Nikolay’s intent and the meaning of “after” remain deliberately unresolved",
+        "explanation": "The manuscript explicitly withholds whether the shot was intended to kill Nikolay, then gives Vilena an equally unresolved interpretation of his promise. The available text does not establish incompatible facts, and one reader experienced the withholding as deliberate. Mara’s uncertainty about “after” identifies an intended ambiguity that may need stronger emotional framing, not a confirmed continuity defect.",
+        "confidence": 0.94,
+        "severity": "low",
+        "evidence": [
+          {
+            "section": 1,
+            "paragraph_id": "p-000002",
+            "reader": "Aisha",
+            "evidence_id": "r-reader-1-s1-m1",
+            "note": "The narration says it never states whether the shot was intended to kill him; Aisha says this uncertainty feels deliberate."
+          },
+          {
+            "section": 2,
+            "paragraph_id": "p-000003",
+            "reader": "Mara",
+            "evidence_id": "r-reader-2-s2-m1",
+            "note": "Vilena cannot decide what “after” means, while Mara identifies the alternatives as after the act or after death."
+          }
+        ]
+      }
+    ],
+    "characters": [
+      {
+        "name": "Nikolay",
+        "reader_perception": "He is perceived as endangered, potentially suicidal, and intentionally unreadable. The controlled handling of the pistol creates menace, but his interior motive remains inaccessible by design.",
+        "motivation_and_consistency": "The available text supports only that he handles a pistol and leaves Vilena with a promise whose meaning is uncertain. There is insufficient evidence to determine a stable motive, emotional trajectory, or inconsistency.",
+        "relationship_notes": "His promise that Vilena would find him “after” implies a significant prior understanding between them, but the nature of that bond and whether the promise is protective, manipulative, or farewell-like remain unstated.",
+        "evidence": [
+          {
+            "section": 1,
+            "paragraph_id": "p-000002",
+            "reader": "Aisha",
+            "evidence_id": "r-reader-1-s1-m1",
+            "note": "Nikolay cleans the pistol, removes the magazine, and studies a single round."
+          },
+          {
+            "section": 2,
+            "paragraph_id": "p-000003",
+            "reader": "Mara",
+            "evidence_id": "r-reader-2-s2-m1",
+            "note": "Vilena recalls Nikolay’s promise that she would find him after, but cannot interpret it."
+          }
+        ]
+      },
+      {
+        "name": "Vilena",
+        "reader_perception": "She functions as the witness and interpreter of Nikolay’s possible self-destruction. Her uncertainty is the manuscript’s primary emotional lens.",
+        "motivation_and_consistency": "Her actions and motives are only minimally shown: she finds Nikolay and later revisits his promise. Nothing in the supplied text contradicts her characterization, but there is too little material to assess a fuller arc.",
+        "relationship_notes": "Vilena’s memory of Nikolay’s wording suggests that his possible death or act is personally consequential to her. Adding one specific emotional response could make that implication more legible without explaining the mystery.",
+        "evidence": [
+          {
+            "section": 1,
+            "paragraph_id": "p-000002",
+            "reader": "Aisha",
+            "evidence_id": "r-reader-1-s1-m1",
+            "note": "Vilena is the person who finds Nikolay beside the open window after the gun moment."
+          },
+          {
+            "section": 2,
+            "paragraph_id": "p-000003",
+            "reader": "Mara",
+            "evidence_id": "r-reader-2-s2-m1",
+            "note": "Vilena remembers the promise and cannot decide what it meant; Mara experiences this as deepened ambiguity."
+          }
+        ]
+      }
+    ],
+    "pacing_and_structure": [
+      {
+        "section": 1,
+        "engagement": "high",
+        "diagnosis": "The opening enters immediately at a moment of threat. The concrete sequence of pistol, removed magazine, and single round efficiently creates suspense, while Vilena’s discovery supplies a sharp turn into aftermath.",
+        "evidence": [
+          {
+            "section": 1,
+            "paragraph_id": "p-000002",
+            "reader": "Aisha",
+            "evidence_id": "r-reader-1-s1-m1",
+            "note": "The scene begins with Nikolay handling the pistol and a single round."
+          },
+          {
+            "section": 1,
+            "paragraph_id": "p-000002",
+            "reader": "Aisha",
+            "evidence_id": "r-reader-1-s1-m1",
+            "note": "Aisha reads the withheld intent as deliberate, supporting the effectiveness of the suspense structure."
+          }
+        ]
+      },
+      {
+        "section": 2,
+        "engagement": "mixed",
+        "diagnosis": "The memory preserves the atmosphere but does not yet create a distinct second escalation: it reframes “after” as ambiguous, but the reader receives no new concrete consequence, relationship detail, or decision from Vilena. Its function is promising, but it would land more forcefully if the ambiguity changed the meaning of a specific detail from section 1.",
+        "evidence": [
+          {
+            "section": 2,
+            "paragraph_id": "p-000003",
+            "reader": "Mara",
+            "evidence_id": "r-reader-2-s2-m1",
+            "note": "Mara says the later memory deepens ambiguity rather than answering it and identifies two possible meanings for “after.”"
+          },
+          {
+            "section": 1,
+            "paragraph_id": "p-000002",
+            "reader": "Aisha",
+            "evidence_id": "r-reader-1-s1-m1",
+            "note": "The earlier scene has already established the key uncertainty around Nikolay’s intent."
+          }
+        ]
+      }
+    ],
+    "revision_plan": [
+      {
+        "priority": "important",
+        "action": "Add one precise sensory, behavioral, or remembered detail from Vilena at the open window that identifies the personal stakes without confirming whether Nikolay intended suicide. For example, show her recognizing an object, a repeated phrase, or a reaction that reveals what she believes she may have lost.",
+        "reason": "The readers accept the central uncertainty, but the current text gives Vilena little individualized emotional presence beyond not knowing what Nikolay meant.",
+        "expected_impact": "Readers would retain the intended mystery while experiencing the scene as a more personal psychological event rather than solely an interpretive puzzle.",
+        "evidence": [
+          {
+            "section": 1,
+            "paragraph_id": "p-000002",
+            "reader": "Aisha",
+            "evidence_id": "r-reader-1-s1-m1",
+            "note": "The scene’s intended uncertainty is already effective and should be preserved."
+          },
+          {
+            "section": 2,
+            "paragraph_id": "p-000003",
+            "reader": "Mara",
+            "evidence_id": "r-reader-2-s2-m1",
+            "note": "Mara identifies unresolved alternatives for “after,” indicating room for emotional grounding without requiring explanation."
+          }
+        ]
+      },
+      {
+        "priority": "important",
+        "action": "Revise the “after” memory so that it recontextualizes one established image—the single round, the open window, or Vilena’s discovery—instead of only presenting another undecidable phrase. Keep both meanings viable, but make each meaning carry a different emotional implication for Vilena.",
+        "reason": "Section 2 currently deepens the same uncertainty introduced in section 1; it needs a sharper turn in meaning to operate as escalation.",
+        "expected_impact": "The final beat would feel like a revelation of emotional complexity rather than a repetition of mystery, while maintaining the manuscript’s ambiguous ending.",
+        "evidence": [
+          {
+            "section": 1,
+            "paragraph_id": "p-000002",
+            "reader": "Aisha",
+            "evidence_id": "r-reader-1-s1-m1",
+            "note": "The single round is the opening’s strongest concrete image of danger."
+          },
+          {
+            "section": 1,
+            "paragraph_id": "p-000002",
+            "reader": "Aisha",
+            "evidence_id": "r-reader-1-s1-m1",
+            "note": "The open-window discovery establishes the initial unanswered question."
+          },
+          {
+            "section": 2,
+            "paragraph_id": "p-000003",
+            "reader": "Mara",
+            "evidence_id": "r-reader-2-s2-m1",
+            "note": "Mara says the later memory deepens ambiguity; revising it to alter the earlier scene’s meaning would give that deepening a clearer dramatic function."
+          }
+        ]
+      },
+      {
+        "priority": "optional",
+        "action": "If this is intended as a standalone microfiction, end on a more image-specific version of Vilena’s uncertainty rather than an abstract statement that she cannot decide what “after” meant.",
+        "reason": "The existing ending states the interpretive problem directly. A concrete final image or bodily response could let readers inhabit the ambiguity rather than receive it as explanation.",
+        "expected_impact": "The ending could become more haunting and memorable while leaving Nikolay’s fate and intent unresolved.",
+        "evidence": [
+          {
+            "section": 2,
+            "paragraph_id": "p-000003",
+            "reader": "Mara",
+            "evidence_id": "r-reader-2-s2-m1",
+            "note": "The final phrase leaves Mara considering whether “after” refers to the act or to death."
+          }
+        ]
+      }
+    ],
+    "copy_edit_appendix": null,
+    "coverage": {
+      "sections": [
+        1,
+        2
+      ],
+      "partial": true,
+      "notes": "Assessment is necessarily limited by the manuscript’s three paragraphs and two reader reactions. No reader question lifecycle data was supplied, so there is no basis to determine whether the central question was eventually paid off, remained unproductively open over a longer work, or was intended as a terminal ambiguity."
+    }
+  },
+  "validation_errors": [],
+  "usage": {
+    "provider": "openai",
+    "model": "gpt-5.6-terra",
+    "role": "editor",
+    "input_tokens": 1081,
+    "output_tokens": 3800,
+    "estimated_cost_usd": 0.047762
+  }
+}

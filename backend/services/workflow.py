@@ -113,6 +113,9 @@ def _usage_rows(reactions: List[Dict], report: Optional[Dict]) -> List[Dict]:
     if isinstance(generation, dict):
         usage = generation.get("usage") if isinstance(generation.get("usage"), dict) else generation
         rows.append({**usage, "role": usage.get("role", "editor")})
+        for map_usage in generation.get("map_usage") or []:
+            if isinstance(map_usage, dict):
+                rows.append({**map_usage, "role": map_usage.get("role", "editor_map")})
     copy_generation = (report_json.get("copy_edit_appendix") or {}).get("_generation")
     if isinstance(copy_generation, dict):
         usage = copy_generation.get("usage") if isinstance(copy_generation.get("usage"), dict) else copy_generation
@@ -147,10 +150,12 @@ def summarize_usage(rows: List[Dict]) -> Dict:
 
 
 async def workflow_status(manuscript: Dict, readers: List[Dict]) -> Dict:
+    latest_manuscript = await db.manuscripts.find_one({"id": manuscript["id"]}, {"_id": 0}) or manuscript
     tasks = await ensure_task_ledger(manuscript, readers)
     counts = {state: sum(1 for task in tasks if task.get("status") == state) for state in TASK_STATES}
     reactions = await db.reader_reactions.find({"manuscript_id": manuscript["id"]}, {"_id": 0}).to_list(5000)
     report = await db.editor_reports.find_one({"manuscript_id": manuscript["id"]}, {"_id": 0})
+    from services.cost_control import budget_status
     return {
         "schema_version": 1,
         "manuscript_id": manuscript["id"],
@@ -162,4 +167,5 @@ async def workflow_status(manuscript: Dict, readers: List[Dict]) -> Dict:
         "complete": bool(tasks) and counts["completed"] == len(tasks),
         "tasks": tasks,
         "usage": summarize_usage(_usage_rows(reactions, report)),
+        "budget": await budget_status(latest_manuscript),
     }
