@@ -35,6 +35,10 @@ CREATE TABLE IF NOT EXISTS manuscripts (
   sections JSONB DEFAULT '[]',
   total_sections INT DEFAULT 0,
   total_lines INT DEFAULT 0,
+  cost_limit_usd NUMERIC(12,6) NOT NULL DEFAULT 25,
+  cost_spent_usd NUMERIC(12,6) NOT NULL DEFAULT 0,
+  cost_reserved_usd NUMERIC(12,6) NOT NULL DEFAULT 0,
+  reader_config_locked BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_manuscripts_user_id ON manuscripts(user_id);
@@ -61,6 +65,9 @@ CREATE TABLE IF NOT EXISTS reader_personas (
   personality_specific_instructions TEXT,
   persona_block TEXT,
   attention_mode TEXT,
+  primary_focus TEXT,
+  secondary_focuses JSONB NOT NULL DEFAULT '[]',
+  writer_focus_note TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 -- If table exists without new columns: run supabase_migration_reader_refactor.sql
@@ -150,6 +157,20 @@ CREATE TABLE IF NOT EXISTS feedback (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_feedback_user_id ON feedback(user_id);
+
+-- Phase 6 cost controls. Existing installations should run migrations/003_cost_control.sql
+-- so the atomic reserve/settle functions are installed as well.
+CREATE TABLE IF NOT EXISTS cost_reservations (
+  id TEXT PRIMARY KEY,
+  manuscript_id TEXT NOT NULL REFERENCES manuscripts(id) ON DELETE CASCADE,
+  role TEXT NOT NULL,
+  operation_key TEXT,
+  estimated_cost_usd NUMERIC(12,6) NOT NULL,
+  actual_cost_usd NUMERIC(12,6),
+  status TEXT NOT NULL DEFAULT 'reserved',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
 -- Enable RLS if you want row-level security (optional; use service_role key to bypass)
 -- ALTER TABLE manuscripts ENABLE ROW LEVEL SECURITY;

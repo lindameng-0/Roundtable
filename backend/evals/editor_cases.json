@@ -1,0 +1,44 @@
+[
+  {
+    "id": "ambiguity_not_plot_hole",
+    "purpose": "Tests whether deliberate uncertainty is distinguished from a contradiction.",
+    "genre": "psychological drama",
+    "sections": [
+      ["Nikolay cleaned the pistol, removed the magazine, and stared at the single round in his palm.", "Later Vilena found him beside the open window. The narration never states whether the shot was intended to kill him."],
+      ["Vilena remembered his promise that she would find him after, but could not decide what he had meant by after."]
+    ],
+    "reactions": [
+      {"reader":"Aisha","section":1,"journal":"I am unsure whether he meant to die, and that uncertainty feels deliberate.","moment":"The scene withholds his exact intent.","type":"theory"},
+      {"reader":"Mara","section":2,"journal":"The later memory deepens the ambiguity rather than answering it.","moment":"After could mean after the act or after death.","type":"confusion"}
+    ],
+    "expectations": {"forbidden_integrity_classes":["confirmed_contradiction"],"required_topics":["ambiguity","intent"]}
+  },
+  {
+    "id": "real_continuity_error",
+    "purpose": "Tests detection of an explicit manuscript contradiction without relying on reader confusion alone.",
+    "genre": "mystery",
+    "sections": [
+      ["Mara locked the only brass key inside the evidence safe. She watched the red seal harden across its door.", "The chief took the safe to the basement vault."],
+      ["Without returning to the station, Mara used the same brass key to open Tomas's apartment."]
+    ],
+    "reactions": [
+      {"reader":"Aisha","section":2,"journal":"I stopped because I thought the key was sealed at the station.","moment":"Mara suddenly has the brass key again.","type":"critique"},
+      {"reader":"Jon","section":2,"journal":"Unless she owns a duplicate, this looks like a continuity error.","moment":"The apartment action conflicts with the safe scene.","type":"confusion"}
+    ],
+    "expectations": {"required_integrity_classes":["confirmed_contradiction","likely_inconsistency"],"required_topics":["key","safe"]}
+  },
+  {
+    "id": "taste_disagreement",
+    "purpose": "Tests whether conflicting reader tastes are synthesized rather than converted into an objective defect.",
+    "genre": "literary fiction",
+    "sections": [
+      ["For three mornings Nia sorted her father's labeled freezer meals and returned each one to its shelf.", "On the fourth, she warmed the soup and finally added pepper."],
+      ["She ate standing at the sink, laughing once when she found his note beneath the bowl."]
+    ],
+    "reactions": [
+      {"reader":"Mara","section":1,"journal":"The repetition made grief feel physical and patient.","moment":"The repeated sorting worked for me.","type":"praise"},
+      {"reader":"Jon","section":1,"journal":"I understood the point before the third morning and grew impatient.","moment":"The repeated mornings slowed me down.","type":"critique"}
+    ],
+    "expectations": {"required_topics":["grief","repetition"],"requires_disagreement":true}
+  }
+]

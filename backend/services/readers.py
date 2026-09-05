@@ -253,7 +253,9 @@ def _get_persona_block(reader: Dict) -> str:
             except (TypeError, ValueError):
                 idx = 0
         base = DEFAULT_PERSONAS.get(idx % 5, DEFAULT_PERSONAS[0])
-    return base + _get_attention_mode_block(reader)
+    from services.reader_focus import focus_prompt
+    customization = focus_prompt(reader)
+    return base + _get_attention_mode_block(reader) + ("\n\n" + customization if customization else "")
 
 
 # Shared prompt blocks (patches 1, 6, 7) used in both section 1 and section 2+

@@ -20,6 +20,7 @@ import {
   History,
   Download,
   Trash2,
+  Printer,
 } from "lucide-react";
 import axios from "axios";
 import { getApi } from "../apiConfig";
@@ -100,6 +101,7 @@ export default function ReportPage() {
   const [copyEditing, setCopyEditing] = useState(false);
   const [versions, setVersions] = useState([]);
   const [viewingVersion, setViewingVersion] = useState(null);
+  const [budget, setBudget] = useState(null);
 
   useEffect(() => {
     loadReport();
@@ -108,14 +110,16 @@ export default function ReportPage() {
   const loadReport = async () => {
     setLoading(true);
     try {
-      const [repRes, mRes, versionRes] = await Promise.all([
+      const [repRes, mRes, versionRes, budgetRes] = await Promise.all([
         axios.get(`${API}/manuscripts/${manuscriptId}/editor-report`, manuscriptRequestConfig(manuscriptId)).catch(() => null),
         axios.get(`${API}/manuscripts/${manuscriptId}`, manuscriptRequestConfig(manuscriptId)),
         axios.get(`${API}/manuscripts/${manuscriptId}/editor-report/versions`, manuscriptRequestConfig(manuscriptId)).catch(() => ({ data: [] })),
+        axios.get(`${API}/manuscripts/${manuscriptId}/budget`, manuscriptRequestConfig(manuscriptId)).catch(() => ({ data: null })),
       ]);
       setManuscript(mRes.data);
       setVersions(versionRes.data || []);
       setViewingVersion(null);
+      setBudget(budgetRes.data);
       if (repRes?.data?.report_json) {
         setReport(normalizeReport(repRes.data.report_json));
       } else if (repRes?.data?.report) {
@@ -140,12 +144,17 @@ export default function ReportPage() {
       toast.error("Missing manuscript. Open the report from the reading page.");
       return;
     }
+    if (force || !report) {
+      const approved = await confirmPaidOperation(force ? "editor_regeneration" : "editor", force ? "Regenerate the editor report" : "Generate the editor report");
+      if (!approved) return;
+    }
     setGenerating(true);
     try {
       const res = await axios.post(`${API}/manuscripts/${manuscriptId}/editor-report${force ? "?force=true" : ""}`, {}, manuscriptRequestConfig(manuscriptId));
       setReport(normalizeReport(res.data.report));
       setViewingVersion(null);
       await refreshVersions();
+      await refreshBudget();
       toast.success("Editor report generated");
     } catch (err) {
       const detail = err.response?.data?.detail ?? err.response?.data?.message;
@@ -159,6 +168,27 @@ export default function ReportPage() {
   const refreshVersions = async () => {
     const res = await axios.get(`${API}/manuscripts/${manuscriptId}/editor-report/versions`, manuscriptRequestConfig(manuscriptId));
     setVersions(res.data || []);
+  };
+
+  const refreshBudget = async () => {
+    const res = await axios.get(`${API}/manuscripts/${manuscriptId}/budget`, manuscriptRequestConfig(manuscriptId));
+    setBudget(res.data);
+  };
+
+  const confirmPaidOperation = async (operation, label) => {
+    try {
+      const res = await axios.get(`${API}/manuscripts/${manuscriptId}/cost-estimate?operation=${operation}`, manuscriptRequestConfig(manuscriptId));
+      const estimate = Number(res.data.estimated_cost_usd || 0);
+      const remaining = res.data.budget?.remaining_usd;
+      if (!res.data.can_start) {
+        toast.error(`${label} is estimated at $${estimate.toFixed(3)}, above the $${Number(remaining || 0).toFixed(3)} remaining budget.`);
+        return false;
+      }
+      return window.confirm(`${label}? This is estimated to use about $${estimate.toFixed(3)} of AI credit. Provider billing can vary.`);
+    } catch (err) {
+      toast.error("Could not verify the cost estimate. Nothing was generated.");
+      return false;
+    }
   };
 
   const showReportVersion = async (version) => {
@@ -176,6 +206,8 @@ export default function ReportPage() {
   };
 
   const generateCopyEdit = async () => {
+    const approved = await confirmPaidOperation("copyedit", "Generate the optional copy-edit appendix");
+    if (!approved) return;
     setCopyEditing(true);
     try {
       const res = await axios.post(
@@ -186,6 +218,7 @@ export default function ReportPage() {
       setReport((current) => ({ ...current, copy_edit_appendix: res.data.copy_edit_appendix }));
       setViewingVersion(null);
       await refreshVersions();
+      await refreshBudget();
       toast.success("Copy-edit appendix generated");
     } catch (err) {
       toast.error(err.response?.data?.detail || "Copy edit failed");
@@ -222,6 +255,8 @@ export default function ReportPage() {
     }
   };
 
+  const printReport = () => window.print();
+
   if (loading) {
     return (
       <div className="min-h-screen bg-paper flex items-center justify-center">
@@ -231,9 +266,9 @@ export default function ReportPage() {
   }
 
   return (
-    <div className="min-h-screen bg-paper" style={{ fontFamily: "'Manrope', sans-serif" }}>
+    <div className="min-h-screen bg-paper report-document" style={{ fontFamily: "'Manrope', sans-serif" }}>
       {/* Header */}
-      <header className="border-b border-ink-900/8 bg-paper sticky top-0 z-10">
+      <header className="border-b border-ink-900/8 bg-paper sticky top-0 z-10 no-print">
         <div className="max-w-4xl mx-auto px-8 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button
@@ -273,7 +308,16 @@ export default function ReportPage() {
             {manuscript?.genre && <span className="chip">{manuscript.genre}</span>}
             {manuscript?.target_audience && <span className="chip">{manuscript.target_audience}</span>}
           </div>
-          <div className="flex flex-wrap items-center gap-2 mt-5">
+          {budget && (
+            <div className="mt-5 max-w-md border border-ink-900/10 bg-white px-4 py-3 text-xs text-ink-500 no-print" data-testid="report-cost-summary">
+              AI spend ${Number(budget.spent_usd || 0).toFixed(4)} of ${Number(budget.limit_usd || 0).toFixed(2)}
+              {budget.reserved_usd > 0 && ` · $${Number(budget.reserved_usd).toFixed(4)} currently reserved`}
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-2 mt-5 no-print">
+            <button onClick={printReport} className="flex items-center gap-1.5 text-xs text-ink-600 border border-ink-900/12 px-3 py-2 hover:border-clay hover:text-clay transition-colors" style={{ borderRadius: "2px" }}>
+              <Printer className="w-3.5 h-3.5" /> Print / Save PDF
+            </button>
             <button onClick={exportWorkspace} className="flex items-center gap-1.5 text-xs text-ink-600 border border-ink-900/12 px-3 py-2 hover:border-clay hover:text-clay transition-colors" style={{ borderRadius: "2px" }}>
               <Download className="w-3.5 h-3.5" /> Export workspace
             </button>
@@ -284,7 +328,7 @@ export default function ReportPage() {
         </motion.div>
 
         {report && versions.length > 0 && (
-          <div className="mb-8 flex flex-wrap items-center gap-2 text-xs" data-testid="report-history">
+          <div className="mb-8 flex flex-wrap items-center gap-2 text-xs no-print" data-testid="report-history">
             <History className="w-4 h-4 text-ink-400 mr-1" />
             <span className="text-ink-500 mr-1">Report history</span>
             <button onClick={() => showReportVersion(null)} className={`px-2.5 py-1.5 border transition-colors ${viewingVersion === null ? "border-clay text-clay bg-clay/5" : "border-ink-900/10 text-ink-500 hover:border-clay"}`}>Current</button>
@@ -424,7 +468,7 @@ export default function ReportPage() {
             )}
 
             {/* Regenerate */}
-            <div className="text-center pt-4 pb-8">
+            <div className="text-center pt-4 pb-8 no-print">
               <button
                 data-testid="regenerate-report-btn"
                 onClick={() => generateReport(true)}
@@ -480,6 +524,13 @@ function EditorV3Report({ report, manuscriptId, copyEditing, onCopyEdit }) {
     ambiguity_or_insufficient_evidence: "Ambiguity / insufficient evidence",
   };
   const priorityStyles = { critical: "bg-red-50 text-red-700", important: "bg-amber-50 text-amber-700", optional: "bg-ink-900/5 text-ink-500" };
+  const engagementStyles = {
+    high: { width: "100%", color: "#6F8C7E", label: "High" },
+    medium: { width: "70%", color: "#D4AF37", label: "Medium" },
+    mixed: { width: "50%", color: "#A28B72", label: "Mixed" },
+    low: { width: "28%", color: "#C86B56", label: "Low" },
+    unknown: { width: "12%", color: "#8C8885", label: "Unknown" },
+  };
 
   return <>
     <Section icon={FileText} title="Executive summary" delay={0.05} testId="executive-summary-section">
@@ -503,6 +554,19 @@ function EditorV3Report({ report, manuscriptId, copyEditing, onCopyEdit }) {
       ].map(([title, items, empty]) => <div key={title}><h3 className="font-medium text-sm text-ink-800 mb-3">{title}</h3><FindingList items={items} manuscriptId={manuscriptId} emptyText={empty} /></div>)}</div>
     </Section>
 
+    {(response.meaningful_disagreements || []).length > 0 && (
+      <Section icon={Users} title="Reader divergence" delay={0.12} testId="reader-divergence-visual">
+        <div className="space-y-5">{response.meaningful_disagreements.map((item, index) => (
+          <div key={index} className="border-l-2 border-gold pl-4">
+            <p className="font-medium text-sm text-ink-800">{item.title}</p>
+            <p className="text-sm text-ink-600 mt-1 leading-relaxed">{item.analysis}</p>
+            <div className="flex flex-wrap gap-1.5 mt-3">{[...new Set((item.evidence || []).map((ref) => ref.reader).filter(Boolean))].map((reader) => <span key={reader} className="chip">{reader}</span>)}</div>
+            <EvidenceLinks items={item.evidence} manuscriptId={manuscriptId} />
+          </div>
+        ))}</div>
+      </Section>
+    )}
+
     <Section icon={AlertTriangle} title="Story integrity" delay={0.15} testId="story-integrity-section">
       {(report.story_integrity || []).length ? <div className="space-y-5">{report.story_integrity.map((item, index) => (
         <div key={index} className="pb-5 border-b border-ink-900/5 last:border-0">
@@ -517,7 +581,7 @@ function EditorV3Report({ report, manuscriptId, copyEditing, onCopyEdit }) {
     ))}</div></Section>}
 
     <Section icon={TrendingDown} title="Pacing and structure" delay={0.25} testId="pacing-v3-section"><div className="space-y-4">{(report.pacing_and_structure || []).map((item, index) => (
-      <div key={index} className="pb-4 border-b border-ink-900/5 last:border-0"><div className="flex items-center gap-3"><span className="font-medium text-sm text-ink-700">Section {item.section}</span><span className="chip">{item.engagement}</span></div><p className="text-sm text-ink-600 mt-2">{item.diagnosis || "No specific pacing concern identified."}</p><EvidenceLinks items={item.evidence} manuscriptId={manuscriptId} /></div>
+      <div key={index} className="pb-4 border-b border-ink-900/5 last:border-0"><div className="grid grid-cols-[5rem_1fr_4rem] gap-3 items-center"><a href={`/read/${manuscriptId}#section-${item.section}`} className="font-medium text-sm text-ink-700 hover:text-clay">Section {item.section}</a><div className="h-2.5 bg-ink-900/5 overflow-hidden" title={`${engagementStyles[item.engagement]?.label || "Mixed"} engagement`}><div className="h-full" style={{ width: (engagementStyles[item.engagement] || engagementStyles.mixed).width, backgroundColor: (engagementStyles[item.engagement] || engagementStyles.mixed).color }} /></div><span className="text-xs capitalize text-ink-500">{item.engagement}</span></div><p className="text-sm text-ink-600 mt-2">{item.diagnosis || "No specific pacing concern identified."}</p><EvidenceLinks items={item.evidence} manuscriptId={manuscriptId} /></div>
     ))}</div></Section>
 
     <Section icon={ListChecks} title="Revision plan" delay={0.3} testId="revision-plan-section" accent="#C86B56"><div className="space-y-6">{(report.revision_plan || []).map((item, index) => (

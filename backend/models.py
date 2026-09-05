@@ -1,4 +1,4 @@
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import List, Optional, Dict, Any
 
 
@@ -6,6 +6,16 @@ class ManuscriptCreate(BaseModel):
     title: Optional[str] = "Untitled Manuscript"
     raw_text: str
     model: Optional[str] = "gemini-2.5-flash"
+    cost_limit_usd: Optional[float] = None
+
+    @field_validator("cost_limit_usd")
+    @classmethod
+    def validate_cost_limit(cls, value):
+        if value is None:
+            return value
+        if value < 0 or value > 1000:
+            raise ValueError("Budget must be between $0 and $1,000; $0 means unlimited")
+        return round(float(value), 6)
 
 
 class ManuscriptResponse(BaseModel):
@@ -20,6 +30,10 @@ class ManuscriptResponse(BaseModel):
     sections: Optional[List[Dict]] = None
     total_sections: Optional[int] = None
     total_lines: Optional[int] = None
+    cost_limit_usd: Optional[float] = None
+    cost_spent_usd: Optional[float] = 0
+    cost_reserved_usd: Optional[float] = 0
+    reader_config_locked: Optional[bool] = False
     created_at: str
     # Returned only when an anonymous manuscript is first created. The database
     # stores only its hash; clients persist the token for later access.
@@ -44,6 +58,9 @@ class ReaderPersonaResponse(BaseModel):
     favorite_genres: Optional[Any] = ""
     genre_preferences: Optional[Any] = ""
     reading_priority: Optional[Any] = ""
+    primary_focus: Optional[str] = None
+    secondary_focuses: List[str] = Field(default_factory=list)
+    writer_focus_note: Optional[str] = ""
     created_at: str
 
     @field_validator(
@@ -72,6 +89,51 @@ class RegenerateRequest(BaseModel):
     reader_id: Optional[str] = None
 
 
+class ReaderFocusUpdate(BaseModel):
+    primary_focus: Optional[str] = None
+    secondary_focuses: List[str] = Field(default_factory=list)
+    writer_focus_note: str = ""
+    liked_tropes: List[str]
+    disliked_tropes: List[str]
+
+    @field_validator("primary_focus")
+    @classmethod
+    def validate_primary(cls, value):
+        from services.reader_focus import FOCUS_LABELS
+        if value is not None and value not in FOCUS_LABELS:
+            raise ValueError("Unknown primary focus")
+        return value
+
+    @field_validator("secondary_focuses")
+    @classmethod
+    def validate_secondary(cls, value):
+        from services.reader_focus import FOCUS_LABELS
+        if len(value) > 2 or len(set(value)) != len(value) or any(item not in FOCUS_LABELS for item in value):
+            raise ValueError("Choose at most two distinct secondary focuses")
+        return value
+
+    @field_validator("writer_focus_note")
+    @classmethod
+    def validate_note(cls, value):
+        normalized = " ".join((value or "").split())
+        if len(normalized) > 160:
+            raise ValueError("Writer focus note must be 160 characters or fewer")
+        return normalized
+
+    @field_validator("liked_tropes", "disliked_tropes")
+    @classmethod
+    def validate_tastes(cls, value):
+        if len(value) > 8 or any(not isinstance(item, str) or not item.strip() or len(item.strip()) > 160 for item in value):
+            raise ValueError("Invalid personal taste list")
+        return [item.strip() for item in value]
+
+    @model_validator(mode="after")
+    def focuses_must_be_distinct(self):
+        if self.primary_focus and self.primary_focus in self.secondary_focuses:
+            raise ValueError("Primary focus cannot also be a secondary focus")
+        return self
+
+
 class ModelConfigRequest(BaseModel):
     provider: str
     model: str
@@ -88,3 +150,13 @@ class WaitlistRequest(BaseModel):
 class FeedbackRequest(BaseModel):
     message: str
 
+
+class BudgetUpdateRequest(BaseModel):
+    cost_limit_usd: float
+
+    @field_validator("cost_limit_usd")
+    @classmethod
+    def validate_limit(cls, value):
+        if value < 0 or value > 1000:
+            raise ValueError("Budget must be between $0 and $1,000; $0 means unlimited")
+        return round(float(value), 6)

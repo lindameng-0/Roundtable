@@ -19,6 +19,7 @@ export function ProgressBar({
   workflowProgress,
   workflowUsage,
   workflowModels,
+  workflowBudget,
 }) {
   const cost = workflowUsage?.estimated_cost_usd;
   return (
@@ -61,6 +62,7 @@ export function ProgressBar({
               {cost !== undefined && cost !== null && (
                 <p>{workflowUsage?.has_unknown_cost ? "Known cost " : "Estimated "}${Number(cost).toFixed(4)}</p>
               )}
+              {workflowBudget && <p>Budget ${Number(workflowBudget.spent_usd || 0).toFixed(4)} / ${Number(workflowBudget.limit_usd || 0).toFixed(2)}</p>}
             </div>
           )}
 

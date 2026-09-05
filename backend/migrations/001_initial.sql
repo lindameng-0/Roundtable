@@ -12,6 +12,9 @@ CREATE TABLE IF NOT EXISTS manuscripts (
   access_token_hash TEXT, raw_text TEXT NOT NULL, genre TEXT, target_audience TEXT, age_range TEXT,
   comparable_books JSONB NOT NULL DEFAULT '[]', model TEXT NOT NULL DEFAULT 'gemini-2.5-flash',
   sections JSONB NOT NULL DEFAULT '[]', total_sections INT NOT NULL DEFAULT 0, total_lines INT NOT NULL DEFAULT 0,
+  cost_limit_usd NUMERIC(12,6) NOT NULL DEFAULT 25, cost_spent_usd NUMERIC(12,6) NOT NULL DEFAULT 0,
+  cost_reserved_usd NUMERIC(12,6) NOT NULL DEFAULT 0,
+  reader_config_locked BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE TABLE IF NOT EXISTS reader_personas (
@@ -20,6 +23,7 @@ CREATE TABLE IF NOT EXISTS reader_personas (
   favorite_genres TEXT, genre_preferences TEXT, reading_priority TEXT, liked_tropes JSONB DEFAULT '[]',
   disliked_tropes JSONB DEFAULT '[]', voice_style TEXT, temperature FLOAT DEFAULT 0.7, quote TEXT,
   avatar_index INT DEFAULT 0, personality_specific_instructions TEXT, persona_block TEXT, attention_mode TEXT,
+  primary_focus TEXT, secondary_focuses JSONB NOT NULL DEFAULT '[]', writer_focus_note TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE TABLE IF NOT EXISTS reader_memories (

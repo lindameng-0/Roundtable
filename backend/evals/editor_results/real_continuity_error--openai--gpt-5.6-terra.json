@@ -1,0 +1,341 @@
+{
+  "case_id": "real_continuity_error",
+  "purpose": "Tests detection of an explicit manuscript contradiction without relying on reader confusion alone.",
+  "expectations": {
+    "required_integrity_classes": [
+      "confirmed_contradiction",
+      "likely_inconsistency"
+    ],
+    "required_topics": [
+      "key",
+      "safe"
+    ]
+  },
+  "variant": "openai:gpt-5.6-terra",
+  "report": {
+    "schema_version": 3,
+    "executive_summary": {
+      "synopsis": "Mara locks the only brass key in an evidence safe, which the chief removes to the basement vault. In the next section, without returning to the station, Mara uses that same brass key to enter Tomas's apartment. The manuscript ends at this apparent impossibility, with no explanation of a duplicate key, substitution, or intervening retrieval.",
+      "overall_reader_experience": "The brief setup creates a clear physical constraint, but the immediate reversal of that constraint interrupts trust in the scene rather than generating productive mystery. Both readers focused on the key's unexplained availability.",
+      "strongest_asset": "The opening establishes a concrete, memorable constraint—the only brass key is sealed and removed—that gives the later action immediate stakes.",
+      "main_friction": "Mara's use of the same key after it was explicitly established as the only key locked in a safe and taken away.",
+      "top_priorities": [
+        "Resolve the brass-key continuity contradiction before Mara opens Tomas's apartment.",
+        "Make the intended mechanism explicit: retrieve the key, establish a duplicate before calling the first key the only one, or change the apartment-entry method.",
+        "Preserve the opening's evidence-safe constraint only if it matters to the mystery; otherwise simplify the setup so it does not create a false impossibility."
+      ]
+    },
+    "reader_response": {
+      "what_worked": [
+        {
+          "title": "A clear initial constraint creates immediate narrative leverage",
+          "analysis": "The first section makes the key's status unusually specific: it is the only brass key, it is locked in the evidence safe, and the safe is moved to a vault. That clarity is why readers readily noticed the later conflict; the setup itself is legible and memorable.",
+          "evidence": [
+            {
+              "section": 1,
+              "paragraph_id": "p-000001",
+              "reader": "manuscript",
+              "evidence_id": null,
+              "note": "Mara locks 'the only brass key' inside the evidence safe."
+            },
+            {
+              "section": 1,
+              "paragraph_id": "p-000002",
+              "reader": "manuscript",
+              "evidence_id": null,
+              "note": "The chief takes the safe to the basement vault."
+            },
+            {
+              "section": 2,
+              "paragraph_id": "p-000003",
+              "reader": "Aisha",
+              "evidence_id": "r-reader-1-s2-m1",
+              "note": "The reader immediately recalls that the key was sealed at the station."
+            }
+          ]
+        }
+      ],
+      "friction_points": [
+        {
+          "title": "The key reappears without an intervening explanation",
+          "analysis": "The transition presents Mara as using the same brass key after the narrative has stated that the only such key was sealed and removed. Readers did not frame this as a suspense question; they treated it as a continuity break and one reader stopped reading.",
+          "evidence": [
+            {
+              "section": 1,
+              "paragraph_id": "p-000001",
+              "reader": "manuscript",
+              "evidence_id": null,
+              "note": "The narrative identifies the sealed item as the only brass key."
+            },
+            {
+              "section": 1,
+              "paragraph_id": "p-000002",
+              "reader": "manuscript",
+              "evidence_id": null,
+              "note": "The safe containing the key is taken to the vault."
+            },
+            {
+              "section": 2,
+              "paragraph_id": "p-000003",
+              "reader": "manuscript",
+              "evidence_id": null,
+              "note": "Mara uses the same brass key without returning to the station."
+            },
+            {
+              "section": 2,
+              "paragraph_id": "p-000003",
+              "reader": "Aisha",
+              "evidence_id": "r-reader-1-s2-m1",
+              "note": "The reader says Mara suddenly has the brass key again and reports stopping over the issue."
+            },
+            {
+              "section": 2,
+              "paragraph_id": "p-000003",
+              "reader": "Jon",
+              "evidence_id": "r-reader-2-s2-m1",
+              "note": "The reader identifies a conflict with the safe scene and notes that a duplicate would need explanation."
+            }
+          ]
+        }
+      ],
+      "emotional_peaks": [],
+      "meaningful_disagreements": []
+    },
+    "story_integrity": [
+      {
+        "classification": "confirmed_contradiction",
+        "title": "The only brass key is both secured in the vault-bound safe and available to Mara elsewhere",
+        "explanation": "Section 1 establishes that the brass key Mara locks in the safe is the only one, and that the safe is then taken to the basement vault. Section 2 states that, without returning to the station, Mara uses that same key at Tomas's apartment. These statements cannot simultaneously be true as written; no intervening recovery, duplicate, substitution, or alternate entry mechanism is supplied.",
+        "confidence": 0.99,
+        "severity": "high",
+        "evidence": [
+          {
+            "section": 1,
+            "paragraph_id": "p-000001",
+            "reader": "manuscript",
+            "evidence_id": null,
+            "note": "Mara locks the only brass key inside the evidence safe."
+          },
+          {
+            "section": 1,
+            "paragraph_id": "p-000002",
+            "reader": "manuscript",
+            "evidence_id": null,
+            "note": "The chief takes that safe to the basement vault."
+          },
+          {
+            "section": 2,
+            "paragraph_id": "p-000003",
+            "reader": "manuscript",
+            "evidence_id": null,
+            "note": "Mara does not return to the station yet uses the same brass key."
+          },
+          {
+            "section": 2,
+            "paragraph_id": "p-000003",
+            "reader": "Jon",
+            "evidence_id": "r-reader-2-s2-m1",
+            "note": "The reader independently recognizes the apartment action as conflicting with the safe scene."
+          }
+        ]
+      }
+    ],
+    "characters": [
+      {
+        "name": "Mara",
+        "reader_perception": "Mara is presented as an active investigator who secures evidence and then seeks access to Tomas's apartment, but the key contradiction blocks a reliable reading of her competence and actions.",
+        "motivation_and_consistency": "Her immediate goal appears to be entering Tomas's apartment. Her logistical actions are inconsistent as written because she personally seals the only key and later uses it without returning to the location where it was secured.",
+        "relationship_notes": "Mara's procedural relationship to the chief is established through the chief taking custody of the safe. Her connection to Tomas is limited to her entering his apartment; the manuscript provides no further relationship context.",
+        "evidence": [
+          {
+            "section": 1,
+            "paragraph_id": "p-000001",
+            "reader": "manuscript",
+            "evidence_id": null,
+            "note": "Mara personally locks the key in the evidence safe."
+          },
+          {
+            "section": 1,
+            "paragraph_id": "p-000002",
+            "reader": "manuscript",
+            "evidence_id": null,
+            "note": "The chief takes custody of the safe."
+          },
+          {
+            "section": 2,
+            "paragraph_id": "p-000003",
+            "reader": "manuscript",
+            "evidence_id": null,
+            "note": "Mara's next stated action is opening Tomas's apartment with the same key."
+          }
+        ]
+      },
+      {
+        "name": "The chief",
+        "reader_perception": "The chief functions as the person who removes the secured evidence from Mara's immediate access.",
+        "motivation_and_consistency": "No motivation beyond transferring the safe to the basement vault is provided, and there is not enough material to assess a broader character arc or consistency.",
+        "relationship_notes": "The chief's action places the safe beyond Mara's stated route in the next section, intensifying the logistical contradiction.",
+        "evidence": [
+          {
+            "section": 1,
+            "paragraph_id": "p-000002",
+            "reader": "manuscript",
+            "evidence_id": null,
+            "note": "The chief takes the evidence safe to the basement vault."
+          },
+          {
+            "section": 2,
+            "paragraph_id": "p-000003",
+            "reader": "manuscript",
+            "evidence_id": null,
+            "note": "Mara is said not to return to the station before using the key."
+          }
+        ]
+      }
+    ],
+    "pacing_and_structure": [
+      {
+        "section": 1,
+        "engagement": "medium",
+        "diagnosis": "The section efficiently establishes an evidence-handling action and a physical constraint. Its specificity creates anticipation for why the key matters, but the manuscript does not yet provide enough context to establish broader stakes.",
+        "evidence": [
+          {
+            "section": 1,
+            "paragraph_id": "p-000001",
+            "reader": "manuscript",
+            "evidence_id": null,
+            "note": "The scene creates the key-and-safe constraint."
+          },
+          {
+            "section": 1,
+            "paragraph_id": "p-000002",
+            "reader": "manuscript",
+            "evidence_id": null,
+            "note": "The safe is removed to the vault, reinforcing the constraint."
+          }
+        ]
+      },
+      {
+        "section": 2,
+        "engagement": "low",
+        "diagnosis": "The section moves quickly toward an apartment-entry action, but the transition skips the necessary causal bridge explaining how Mara has the key. Reader evidence indicates the resulting interruption is immediate rather than a delayed, potentially rewarding mystery question.",
+        "evidence": [
+          {
+            "section": 2,
+            "paragraph_id": "p-000003",
+            "reader": "Aisha",
+            "evidence_id": "r-reader-1-s2-m1",
+            "note": "The reader reports stopping because the key had been sealed at the station."
+          },
+          {
+            "section": 2,
+            "paragraph_id": "p-000003",
+            "reader": "Jon",
+            "evidence_id": "r-reader-2-s2-m1",
+            "note": "The reader calls out the apparent continuity error."
+          }
+        ]
+      }
+    ],
+    "revision_plan": [
+      {
+        "priority": "critical",
+        "action": "Revise the apartment-entry sequence so it no longer says Mara uses the same brass key without returning to the station. Choose one explicit mechanism: show her recover the key from the safe, establish before the sealing scene that another key exists, reveal that the sealed item is not the apartment key, or have her enter Tomas's apartment by another method.",
+        "reason": "The current wording creates a confirmed contradiction between the key's secured location and Mara's later possession of it, and both readers identified it at the same paragraph.",
+        "expected_impact": "Readers can follow the investigation without pausing to reconcile an impossible object location, preserving attention for intended suspense and clues.",
+        "evidence": [
+          {
+            "section": 1,
+            "paragraph_id": "p-000001",
+            "reader": "manuscript",
+            "evidence_id": null,
+            "note": "The key is described as the only brass key and is sealed."
+          },
+          {
+            "section": 1,
+            "paragraph_id": "p-000002",
+            "reader": "manuscript",
+            "evidence_id": null,
+            "note": "The safe is moved to the basement vault."
+          },
+          {
+            "section": 2,
+            "paragraph_id": "p-000003",
+            "reader": "Aisha",
+            "evidence_id": "r-reader-1-s2-m1",
+            "note": "The reader stopped over Mara having the key again."
+          },
+          {
+            "section": 2,
+            "paragraph_id": "p-000003",
+            "reader": "Jon",
+            "evidence_id": "r-reader-2-s2-m1",
+            "note": "The reader says a duplicate would need to be accounted for."
+          }
+        ]
+      },
+      {
+        "priority": "important",
+        "action": "If the key's impossible reappearance is intended as a mystery, add a same-scene signal that it is deliberate and supply a prompt, concrete payoff—for example, Mara notices the key in her pocket should be impossible and investigates who substituted or copied it.",
+        "reason": "The available question-lifecycle data contains no resolved question, while reader comments frame the moment as an error rather than an intriguing anomaly. A deliberate mystery needs authorial framing and a payoff to convert disruption into suspense.",
+        "expected_impact": "The contradiction becomes a story engine that raises suspicion around evidence custody instead of undermining confidence in the narrative's continuity.",
+        "evidence": [
+          {
+            "section": 2,
+            "paragraph_id": "p-000003",
+            "reader": "Aisha",
+            "evidence_id": "r-reader-1-s2-m1",
+            "note": "The reader treats the reappearance as a reason to stop, not as a posed mystery."
+          },
+          {
+            "section": 2,
+            "paragraph_id": "p-000003",
+            "reader": "Jon",
+            "evidence_id": "r-reader-2-s2-m1",
+            "note": "The reader treats the issue as a continuity conflict unless a duplicate is explained."
+          }
+        ]
+      },
+      {
+        "priority": "optional",
+        "action": "Retain the phrase 'the only brass key' only if exclusivity is essential to the plot; otherwise replace it with less absolute wording that accurately reflects the intended key inventory.",
+        "reason": "The absolute claim is the specific language that makes a duplicate-key interpretation incompatible with the later action.",
+        "expected_impact": "If exclusivity is not a clue, this reduces accidental continuity pressure while retaining the basic evidence-safe beat.",
+        "evidence": [
+          {
+            "section": 1,
+            "paragraph_id": "p-000001",
+            "reader": "manuscript",
+            "evidence_id": null,
+            "note": "The phrase 'the only brass key' establishes exclusivity."
+          },
+          {
+            "section": 2,
+            "paragraph_id": "p-000003",
+            "reader": "Jon",
+            "evidence_id": "r-reader-2-s2-m1",
+            "note": "The reader specifically identifies an unexplained duplicate as the only apparent alternative."
+          }
+        ]
+      }
+    ],
+    "copy_edit_appendix": null,
+    "coverage": {
+      "sections": [
+        1,
+        2
+      ],
+      "partial": true,
+      "notes": "The supplied manuscript contains only three paragraphs across two sections. The report can assess the key-continuity issue and immediate reader response, but it cannot evaluate later payoff, broader mystery architecture, character arcs, or whether an intended explanation appears beyond the provided excerpt."
+    }
+  },
+  "validation_errors": [],
+  "usage": {
+    "provider": "openai",
+    "model": "gpt-5.6-terra",
+    "role": "editor",
+    "input_tokens": 1070,
+    "output_tokens": 3673,
+    "estimated_cost_usd": 0.046216
+  }
+}

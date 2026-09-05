@@ -1,10 +1,17 @@
 """Editor V3: manuscript-aware synthesis with evidence-backed findings."""
+import asyncio
+import json
 import logging
 import re
 from typing import Any, Dict, List
 
 import config as _cfg
-from services.editor_evidence import aggregate_editor_evidence, evidence_json, manuscript_for_editor
+from services.editor_evidence import (
+    aggregate_editor_evidence,
+    evidence_json,
+    manuscript_editor_chunks,
+    manuscript_for_editor,
+)
 from services.llm_gateway import structured_completion
 from services.model_routing import route_for_role
 
@@ -295,6 +302,56 @@ Return JSON only with this exact top-level shape:
 }}"""
 
 
+def _editor_map_prompt(genre: str) -> str:
+    return f"""You are preparing a factual story map for a senior editor reviewing a {genre or 'fiction'} novel.
+Read only the supplied manuscript chunk. Preserve stable paragraph IDs. Do not critique style or invent missing context.
+Return JSON only: {{"chunk_synopsis":"spoiler-aware account of events","characters":[{{"name":"...","state_and_motivation":"...","paragraph_ids":["p-000001"]}}],"plot_and_causality":[{{"event":"...","cause":"...","effect":"...","paragraph_ids":[]}}],"open_threads":[{{"thread":"...","status":"opened|advanced|apparently_resolved","paragraph_ids":[]}}],"integrity_candidates":[{{"claim":"possible contradiction or ambiguity, not a verdict","paragraph_ids":[]}}],"pacing_turns":[{{"section":1,"turn":"...","paragraph_ids":[]}}]}}"""
+
+
+def _normalize_story_map(raw: Dict, chunk: Dict) -> Dict:
+    raw = raw if isinstance(raw, dict) else {}
+    return {
+        "chunk": chunk["chunk"],
+        "sections": chunk["sections"],
+        "chunk_synopsis": _string(raw.get("chunk_synopsis"), 8000),
+        "characters": _list(raw.get("characters"), 50),
+        "plot_and_causality": _list(raw.get("plot_and_causality"), 80),
+        "open_threads": _list(raw.get("open_threads"), 80),
+        "integrity_candidates": _list(raw.get("integrity_candidates"), 50),
+        "pacing_turns": _list(raw.get("pacing_turns"), 80),
+    }
+
+
+async def _map_long_manuscript(manuscript: Dict) -> tuple[List[Dict], List[Dict], bool]:
+    chunks, omitted = manuscript_editor_chunks(
+        manuscript,
+        max_chars=_cfg.EDITOR_CHUNK_MAX_CHARS,
+        max_chunks=_cfg.EDITOR_MAX_CHUNKS,
+    )
+    route = route_for_role("editor_map")
+    semaphore = asyncio.Semaphore(2)
+
+    async def map_chunk(chunk: Dict):
+        async with semaphore:
+            completion = await structured_completion(
+                route=route,
+                role="editor_map",
+                system_prompt=_editor_map_prompt(manuscript.get("genre", "fiction")),
+                user_prompt=(
+                    f"CHUNK {chunk['chunk']} OF {len(chunks)}; SECTIONS {chunk['sections']}\n\n"
+                    + chunk["text"]
+                ),
+                temperature=0.0,
+                max_tokens=5000,
+                manuscript_id=manuscript["id"],
+                operation_key=f"editor_map:chunk:{chunk['chunk']}",
+            )
+            return _normalize_story_map(completion.data, chunk), completion.usage.to_dict()
+
+    results = await asyncio.gather(*(map_chunk(chunk) for chunk in chunks))
+    return [item[0] for item in results], [item[1] for item in results], omitted
+
+
 async def generate_editor_report(manuscript: Dict, reactions: List[Dict]) -> Dict:
     evidence = aggregate_editor_evidence(reactions)
     section_numbers = [row["section"] for row in evidence["sections"]]
@@ -313,28 +370,48 @@ async def generate_editor_report(manuscript: Dict, reactions: List[Dict]) -> Dic
         }]
         return report
 
-    manuscript_text, manuscript_truncated = manuscript_for_editor(manuscript)
-    evidence_text, evidence_truncated = evidence_json(evidence)
-    user_message = (
-        "MANUSCRIPT WITH STABLE PARAGRAPH IDS:\n" + manuscript_text +
-        "\n\nDETERMINISTIC READER EVIDENCE:\n" + evidence_text +
-        "\n\nGenerate the complete Editor V3 report."
+    manuscript_text, manuscript_truncated = manuscript_for_editor(
+        manuscript, max_chars=_cfg.EDITOR_DIRECT_MAX_CHARS
     )
+    evidence_text, evidence_truncated = evidence_json(evidence)
+    map_usage: List[Dict] = []
+    hierarchy_omitted = False
+    if manuscript_truncated:
+        story_maps, map_usage, hierarchy_omitted = await _map_long_manuscript(manuscript)
+        user_message = (
+            "FULL-MANUSCRIPT STORY MAPS WITH STABLE PARAGRAPH IDS:\n" +
+            json.dumps(story_maps, ensure_ascii=False) +
+            "\n\nDETERMINISTIC READER EVIDENCE:\n" + evidence_text +
+            "\n\nSynthesize the complete Editor V3 report. Verify claims across chunks; "
+            "story-map integrity candidates are leads, not established errors."
+        )
+    else:
+        user_message = (
+            "MANUSCRIPT WITH STABLE PARAGRAPH IDS:\n" + manuscript_text +
+            "\n\nDETERMINISTIC READER EVIDENCE:\n" + evidence_text +
+            "\n\nGenerate the complete Editor V3 report."
+        )
     route = route_for_role("editor")
     completion = await structured_completion(
         route=route, role="editor", system_prompt=_editor_system_prompt(manuscript.get("genre", "fiction")),
         user_prompt=user_message, temperature=EDITOR_TEMPERATURE, max_tokens=12000,
+        manuscript_id=manuscript["id"], operation_key="editor_report",
     )
     report = _normalize_editor_report(completion.data, section_numbers)
     _ground_report_evidence(report, manuscript, evidence)
-    report["coverage"]["partial"] = bool(manuscript_truncated or evidence_truncated)
+    report["coverage"]["partial"] = bool(evidence_truncated or hierarchy_omitted)
     if report["coverage"]["partial"] and not report["coverage"]["notes"]:
-        report["coverage"]["notes"] = "The manuscript or reader-evidence input was truncated to the editor budget."
+        report["coverage"]["notes"] = "Reader evidence or manuscript chunks exceeded the configured editor budget."
     errors = validate_editor_report(report)
     if errors:
         raise RuntimeError("Editor V3 returned an incomplete report: " + "; ".join(errors))
     report["_generation"] = {
-        "provider": route.provider, "model": route.model, "usage": completion.usage.to_dict(),
+        "provider": route.provider,
+        "model": route.model,
+        "strategy": "hierarchical" if manuscript_truncated else "direct",
+        "map_calls": len(map_usage),
+        "usage": completion.usage.to_dict(),
+        "map_usage": map_usage,
     }
     return report
 
@@ -346,6 +423,7 @@ async def generate_copy_edit_appendix(manuscript: Dict) -> Dict:
     completion = await structured_completion(
         route=route, role="copyedit", system_prompt=system,
         user_prompt="MANUSCRIPT:\n" + manuscript_text, temperature=0.0, max_tokens=6000,
+        manuscript_id=manuscript["id"], operation_key="copyedit",
     )
     raw = completion.data if isinstance(completion.data, dict) else {}
     items = []

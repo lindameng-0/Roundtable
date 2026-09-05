@@ -30,6 +30,7 @@ export function useReadingStream(manuscriptId) {
   const [workflowProgress, setWorkflowProgress] = useState({ completed: 0, total: 0, failed: 0 });
   const [workflowUsage, setWorkflowUsage] = useState(null);
   const [workflowModels, setWorkflowModels] = useState([]);
+  const [workflowBudget, setWorkflowBudget] = useState(null);
 
   const esRef = useRef(null);
   const lastEventTimeRef = useRef(Date.now());
@@ -185,6 +186,7 @@ export function useReadingStream(manuscriptId) {
         setTotalSections(data.total_sections);
         setWorkflowProgress({ completed: data.completed_tasks || 0, total: data.total_tasks || (data.total_sections * data.total_readers), failed: 0 });
         setWorkflowUsage(data.usage || null);
+        setWorkflowBudget(data.budget || null);
         setWorkflowModels(data.reader_models || []);
         const statusMap = {};
         ps.forEach((p) => { statusMap[p.id] = { currentSection: null, done: false, totalComments: 0 }; });
@@ -307,6 +309,7 @@ export function useReadingStream(manuscriptId) {
         if (workflow) {
           setWorkflowProgress({ completed: workflow.completed_tasks, total: workflow.total_tasks, failed: workflow.failed_tasks });
           setWorkflowUsage(workflow.usage || null);
+          setWorkflowBudget(workflow.budget || null);
           setWorkflowModels([...new Set((workflow.tasks || []).map((task) => task.actual_model || task.planned_model).filter(Boolean))]);
         }
         setProcessingSection(null);
@@ -355,7 +358,18 @@ export function useReadingStream(manuscriptId) {
           credentials: "include",
           headers: getManuscriptHeaders(ms.id),
         });
-        if (!resp.ok || !resp.body) return;
+        if (!resp.ok || !resp.body) {
+          completedNormally = true;
+          readingStartedRef.current = false;
+          let message = `Could not start readers (${resp.status})`;
+          try {
+            const body = await resp.json();
+            const detail = body?.detail;
+            message = typeof detail === "string" ? detail : detail?.message || message;
+          } catch (_) {}
+          toast.error(message, { duration: 9000 });
+          return;
+        }
         const reader = resp.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
@@ -419,6 +433,7 @@ export function useReadingStream(manuscriptId) {
     workflowProgress,
     workflowUsage,
     workflowModels,
+    workflowBudget,
     esRef,
     startReadingAll,
     loadExistingReactions,

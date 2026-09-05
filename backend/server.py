@@ -18,6 +18,11 @@ async def lifespan(_app: FastAPI):
     initialize = getattr(db, "initialize", None)
     if initialize:
         await initialize()
+    cleanup_costs = getattr(db, "cleanup_stale_cost_reservations", None)
+    if cleanup_costs:
+        released = await cleanup_costs()
+        if released:
+            logging.getLogger(__name__).warning("Released %s stale AI cost reservation(s)", released)
     yield
     close = getattr(db, "close", None)
     if close:

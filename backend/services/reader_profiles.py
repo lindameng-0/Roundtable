@@ -1,5 +1,6 @@
 """Restrained reader tendencies: attention biases, not theatrical characters."""
 from typing import Dict
+from services.reader_focus import focus_prompt
 
 
 ATTENTION_PROFILES = {
@@ -30,8 +31,10 @@ def behavioral_profile(reader: Dict) -> Dict[str, str]:
 
 def profile_prompt(reader: Dict) -> str:
     profile = behavioral_profile(reader)
-    return (
+    identity = (
         f"You are {profile['name']}, an ordinary beta reader. {profile['reading_context']} "
         f"{profile['attention_instruction']} This is a mild attention bias, not a duty: it should affect "
         "what you notice, never force an opinion, complaint, gimmick, or disagreement."
     )
+    customization = focus_prompt(reader)
+    return identity + ("\n\n" + customization if customization else "")

@@ -115,6 +115,50 @@ def manuscript_for_editor(manuscript: Dict, max_chars: int = 220_000) -> Tuple[s
     return (rendered[:max_chars] + ("\n[MANUSCRIPT TRUNCATED]" if truncated else ""), truncated)
 
 
+def manuscript_editor_chunks(manuscript: Dict, max_chars: int = 70_000, max_chunks: int = 16) -> Tuple[List[Dict], bool]:
+    """Render the whole manuscript into section-aware chunks without silent mid-paragraph cuts."""
+    sections = sorted(manuscript.get("sections") or [], key=lambda item: item.get("section_number") or 0)
+    chunks: List[Dict] = []
+    current_lines: List[str] = []
+    current_sections: List[int] = []
+
+    def flush():
+        if current_lines:
+            chunks.append({
+                "chunk": len(chunks) + 1,
+                "sections": list(dict.fromkeys(current_sections)),
+                "text": "\n".join(current_lines).strip(),
+            })
+            current_lines.clear()
+            current_sections.clear()
+
+    for section in sections:
+        number = int(section.get("section_number") or 0)
+        section_lines = [f"=== SECTION {number} ==="]
+        for paragraph in section.get("paragraph_lines") or []:
+            pid = paragraph.get("paragraph_id") or f"p-{int(paragraph.get('line', 0)):06d}"
+            section_lines.append(f"[{pid}] {paragraph.get('text', '')}")
+        if len("\n".join(current_lines + section_lines)) <= max_chars:
+            current_lines.extend(section_lines)
+            current_sections.append(number)
+            continue
+        flush()
+        for line in section_lines:
+            if current_lines and len("\n".join(current_lines + [line])) > max_chars:
+                flush()
+            # A single unusually large paragraph is retained as one grounded
+            # unit; normal manuscript sectioning keeps this case rare.
+            current_lines.append(line)
+            current_sections.append(number)
+    flush()
+
+    if not chunks:
+        raw = str(manuscript.get("raw_text") or "")
+        chunks = [{"chunk": 1, "sections": [], "text": raw}] if raw else []
+    omitted = len(chunks) > max_chunks
+    return chunks[:max_chunks], omitted
+
+
 def evidence_json(evidence: Dict, max_chars: int = 120_000) -> Tuple[str, bool]:
     rendered = json.dumps(evidence, ensure_ascii=False)
     if len(rendered) <= max_chars:

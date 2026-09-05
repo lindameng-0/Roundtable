@@ -1,7 +1,7 @@
 import asyncio
 
 import config
-from services.workflow import ensure_task_ledger, summarize_usage, task_id, update_task, workflow_status
+from services.workflow import _usage_rows, ensure_task_ledger, summarize_usage, task_id, update_task, workflow_status
 
 
 def _manuscript():
@@ -60,6 +60,20 @@ def test_usage_summary_separates_roles_and_marks_unknown_cost():
     assert summary["estimated_cost_usd"] == 0.01
     assert summary["has_unknown_cost"]
     assert summary["by_role"]["editor"]["calls"] == 1
+
+
+def test_hierarchical_editor_map_calls_are_included_in_usage():
+    rows = _usage_rows([], {"report_json": {"_generation": {
+        "usage": {"role": "editor", "input_tokens": 100, "output_tokens": 10, "estimated_cost_usd": 0.01},
+        "map_usage": [
+            {"role": "editor_map", "input_tokens": 50, "output_tokens": 5, "estimated_cost_usd": 0.001},
+            {"role": "editor_map", "input_tokens": 60, "output_tokens": 6, "estimated_cost_usd": 0.002},
+        ],
+    }}})
+    summary = summarize_usage(rows)
+    assert summary["calls"] == 3
+    assert summary["by_role"]["editor_map"]["calls"] == 2
+    assert summary["estimated_cost_usd"] == 0.013
 
 
 def test_workflow_status_uses_task_completion_not_raw_counts(monkeypatch):

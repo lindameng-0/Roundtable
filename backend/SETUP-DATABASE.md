@@ -1,4 +1,19 @@
-# Database setup (Supabase)
+# Database setup
+
+## Local PostgreSQL (recommended)
+
+Use `DATABASE_BACKEND=postgres` and provide `DATABASE_URL` in `backend/.env`.
+The backend applies every unapplied file from `backend/migrations` in order at
+startup and records it in `schema_migrations`; there is no manual SQL step.
+See `../LOCAL-DEVELOPMENT.md` for the local configuration.
+
+Migration `003_cost_control.sql` installs the atomic reservation functions and
+per-manuscript spend counters used by Phase 6.
+
+Migration `005_reader_focus_customization.sql` adds writer-assigned reader
+focuses and the permanent reading-run configuration lock.
+
+## Supabase (optional hosted alternative)
 
 Supabase is not required for local UI testing. With no Supabase variables,
 Roundtable automatically uses an in-memory database that is cleared whenever
