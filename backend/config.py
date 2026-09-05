@@ -11,6 +11,10 @@ load_dotenv(ROOT_DIR / '.env')
 SUPABASE_URL = os.environ.get('SUPABASE_URL', '').strip()
 SUPABASE_SERVICE_ROLE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY', '').strip()
 ENVIRONMENT = os.environ.get('ENVIRONMENT', 'development').strip().lower()
+REQUIRE_AUTH = os.environ.get(
+    'REQUIRE_AUTH',
+    'true' if ENVIRONMENT == 'production' else 'false',
+).strip().lower() in {'1', 'true', 'yes', 'on'}
 DATABASE_BACKEND = os.environ.get(
     'DATABASE_BACKEND',
     'supabase' if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY else 'memory',
@@ -101,6 +105,15 @@ GOOGLE_REDIRECT_URI = os.environ.get(
 FRONTEND_URL = os.environ.get(
     'FRONTEND_URL',
     os.environ.get('APP_URL', 'http://localhost:3000'),
+)
+
+# Transactional email for email/password account verification. Resend is used
+# through its HTTPS API so no additional runtime dependency is required.
+RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '').strip()
+AUTH_EMAIL_FROM = os.environ.get('AUTH_EMAIL_FROM', 'Roundtable <accounts@roundtable.works>').strip()
+EMAIL_VERIFICATION_TTL_MINUTES = max(
+    15,
+    int(os.environ.get('EMAIL_VERIFICATION_TTL_MINUTES', '60')),
 )
 
 # Admin users bypass usage limits

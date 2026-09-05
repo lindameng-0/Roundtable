@@ -139,6 +139,19 @@ body {
 }
 
 [data-debug-wrapper="true"] { display: contents !important; }
+.auth-input {
+  width: 100%;
+  border: 1px solid rgba(45, 42, 38, 0.15);
+  background: #fffdfa;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.auth-input:focus {
+  border-color: #7f3f4a;
+  box-shadow: 0 0 0 1px rgba(127, 63, 74, 0.18);
+}
 @keyframes reader-nav-flash {
   0%, 100% { background-color: transparent; }
   20%, 70% { background-color: rgba(200, 107, 86, 0.14); }

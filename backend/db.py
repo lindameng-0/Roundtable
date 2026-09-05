@@ -180,6 +180,10 @@ class _SupabaseDb:
         return _SupabaseTable(self._client, "user_sessions")
 
     @property
+    def email_verification_tokens(self) -> _SupabaseTable:
+        return _SupabaseTable(self._client, "email_verification_tokens")
+
+    @property
     def waitlist(self) -> _SupabaseTable:
         return _SupabaseTable(self._client, "waitlist")
 
@@ -239,7 +243,7 @@ _JSON_COLUMNS = {
     "report_versions": {"report_json"},
 }
 
-_TIMESTAMP_COLUMNS = {"created_at", "updated_at", "expires_at"}
+_TIMESTAMP_COLUMNS = {"created_at", "updated_at", "expires_at", "used_at"}
 
 
 class _PostgresCursor:
@@ -302,7 +306,7 @@ class _PostgresDb:
     TABLES = {
         "manuscripts", "reader_personas", "reader_memories", "reader_reactions",
         "editor_reports", "report_versions", "workflow_tasks", "users", "user_sessions",
-        "waitlist", "feedback", "cost_reservations",
+        "email_verification_tokens", "waitlist", "feedback", "cost_reservations",
     }
 
     def __init__(self, url: str, migrations_dir: Path):
@@ -566,6 +570,7 @@ class _MemoryDb:
         "editor_reports",
         "users",
         "user_sessions",
+        "email_verification_tokens",
         "waitlist",
         "feedback",
         "workflow_tasks",

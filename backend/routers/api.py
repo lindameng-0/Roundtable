@@ -313,13 +313,10 @@ async def create_manuscript(manuscript: ManuscriptCreate, request: Request):
         raise HTTPException(400, "Manuscript text cannot be empty")
 
     # Attach user_id if the user is authenticated (optional auth — anonymous allowed)
-    user_id = None
-    user = None
-    try:
-        user = await _get_session_user(request)
-        user_id = user["user_id"]
-    except HTTPException:
-        pass  # anonymous submission still allowed
+    # Require an account in production so anonymous callers cannot consume LLM quota.
+    # Development retains the legacy guest flow for local demos and existing tests.
+    user = await _get_session_user(request) if _cfg.REQUIRE_AUTH else await _get_optional_user(request)
+    user_id = user["user_id"] if user else None
 
     # Usage limit: non-admin authenticated users get WORDS_LIMIT total words
     if user_id and user:

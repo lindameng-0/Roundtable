@@ -7,6 +7,9 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT NOT NULL UNIQUE,
   name TEXT,
   picture TEXT,
+  password_hash TEXT,
+  email_verified BOOLEAN NOT NULL DEFAULT false,
+  auth_provider TEXT NOT NULL DEFAULT 'email',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -19,6 +22,17 @@ CREATE TABLE IF NOT EXISTS user_sessions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_user_sessions_session_token ON user_sessions(session_token);
+
+CREATE TABLE IF NOT EXISTS email_verification_tokens (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_email_verification_tokens_user
+  ON email_verification_tokens(user_id, created_at DESC);
 
 -- Manuscripts
 CREATE TABLE IF NOT EXISTS manuscripts (

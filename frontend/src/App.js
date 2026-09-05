@@ -6,6 +6,7 @@ import "./App.css";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import LoginPage from "./pages/LoginPage";
 import AuthCallback from "./pages/AuthCallback";
+import VerifyEmailPage from "./pages/VerifyEmailPage";
 import DashboardPage from "./pages/DashboardPage";
 import SetupPage from "./pages/SetupPage";
 import ReadingPage from "./pages/ReadingPage";
@@ -61,15 +62,17 @@ function App() {
           <Routes>
             {/* Public routes */}
             <Route path="/login" element={<PublicOnlyRoute><LoginPage /></PublicOnlyRoute>} />
+            <Route path="/signup" element={<PublicOnlyRoute><LoginPage initialMode="signup" /></PublicOnlyRoute>} />
             <Route path="/auth/callback" element={<AuthCallback />} />
+            <Route path="/verify-email" element={<PublicOnlyRoute><VerifyEmailPage /></PublicOnlyRoute>} />
 
             {/* Protected routes (require auth) */}
             <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
 
-            {/* Optional-auth routes (sign-in not required) */}
-            <Route path="/setup" element={<SetupPage />} />
-            <Route path="/read/:manuscriptId" element={<ReadingPage />} />
-            <Route path="/report/:manuscriptId" element={<ReportPage />} />
+            {/* Application routes require an account. */}
+            <Route path="/setup" element={<ProtectedRoute><SetupPage /></ProtectedRoute>} />
+            <Route path="/read/:manuscriptId" element={<ProtectedRoute><ReadingPage /></ProtectedRoute>} />
+            <Route path="/report/:manuscriptId" element={<ProtectedRoute><ReportPage /></ProtectedRoute>} />
 
             {/* Root: redirect based on auth */}
             <Route path="/" element={<RootRedirect />} />
