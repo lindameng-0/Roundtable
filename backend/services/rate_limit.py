@@ -53,4 +53,18 @@ async def enforce_rate_limit(
     identity: str | None = None,
 ) -> None:
     subject = identity or f"ip:{client_ip(request)}"
-    await limiter.enforce(f"{scope}:{subject}", limit, window_seconds)
+    key = f"{scope}:{subject}"
+    # PostgreSQL provides an atomic shared bucket across workers and instances.
+    # Memory/Supabase development backends retain the process-local fallback.
+    from config import db
+    consume = getattr(db, "consume_rate_limit", None)
+    if consume:
+        result = await consume(key, limit, window_seconds)
+        if not result["allowed"]:
+            raise HTTPException(
+                status_code=429,
+                detail="Too many requests. Please try again later.",
+                headers={"Retry-After": str(result["retry_after"])},
+            )
+        return
+    await limiter.enforce(key, limit, window_seconds)

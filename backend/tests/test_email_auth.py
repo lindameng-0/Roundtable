@@ -53,14 +53,13 @@ def test_email_signup_requires_verification_before_login(monkeypatch):
         )
         assert login.status_code == 200
         payload = login.json()
-        assert payload["session_token"]
+        assert "session_token" not in payload
+        assert "session_token=" in login.headers["set-cookie"]
+        assert "httponly" in login.headers["set-cookie"].lower()
         assert payload["user"]["email_verified"] is True
         assert "password_hash" not in payload["user"]
 
-        me = client.get(
-            "/api/auth/me",
-            headers={"Authorization": f"Bearer {payload['session_token']}"},
-        )
+        me = client.get("/api/auth/me")
         assert me.status_code == 200
         assert me.json()["email"] == "ada@example.com"
         assert "password_hash" not in me.json()
@@ -129,7 +128,7 @@ def test_password_reset_is_single_use_and_invalidates_sessions(monkeypatch):
             "/api/auth/login",
             json={"email": user["email"], "password": "oldPassword1"},
         )
-        old_token = old_login.json()["session_token"]
+        assert old_login.status_code == 200
 
         requested = client.post("/api/auth/forgot-password", json={"email": user["email"]})
         assert requested.status_code == 202
@@ -144,9 +143,7 @@ def test_password_reset_is_single_use_and_invalidates_sessions(monkeypatch):
             "/api/auth/reset-password",
             json={"token": sent["token"], "password": "anotherPassword3"},
         ).status_code == 400
-        assert client.get(
-            "/api/auth/me", headers={"Authorization": f"Bearer {old_token}"}
-        ).status_code == 401
+        assert client.get("/api/auth/me").status_code == 401
         assert client.post(
             "/api/auth/login",
             json={"email": user["email"], "password": "oldPassword1"},
@@ -182,3 +179,35 @@ def test_login_rate_limit_returns_retry_after(monkeypatch):
 
     assert limited.status_code == 429
     assert int(limited.headers["retry-after"]) >= 1
+
+
+def test_logout_and_expired_cookie_are_rejected():
+    import asyncio
+    from datetime import datetime, timedelta, timezone
+    from services.auth_security import hash_opaque_token
+
+    config.db.clear()
+    user = {
+        "user_id": "session-user", "email": "session@example.com", "name": "Session Writer",
+        "password_hash": hash_password("validPassword1"), "email_verified": True,
+        "auth_provider": "email", "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    asyncio.run(config.db.users.insert_one(user))
+
+    with TestClient(app) as client:
+        login = client.post(
+            "/api/auth/login", json={"email": user["email"], "password": "validPassword1"}
+        )
+        assert login.status_code == 200
+        assert client.get("/api/auth/me").status_code == 200
+        assert client.post("/api/auth/logout").status_code == 200
+        assert client.get("/api/auth/me").status_code == 401
+
+        expired_raw = "expired-session"
+        asyncio.run(config.db.user_sessions.insert_one({
+            "user_id": user["user_id"], "token_hash": hash_opaque_token(expired_raw),
+            "expires_at": (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }))
+        client.cookies.set("session_token", expired_raw)
+        assert client.get("/api/auth/me").status_code == 401

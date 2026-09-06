@@ -1,18 +1,32 @@
 """Phase 4 persistence contracts, using the deterministic memory backend."""
 from fastapi.testclient import TestClient
+import asyncio
+from datetime import datetime, timedelta, timezone
 
 from config import db
 from server import app
+from services.auth_security import hash_opaque_token
 
 
 def _create_workspace(client):
+    raw_session = "durability-session"
+    asyncio.run(db.users.insert_one({
+        "user_id": "durability-user", "email": "durability@example.com", "name": "Writer",
+        "email_verified": True, "auth_provider": "email", "created_at": datetime.now(timezone.utc).isoformat(),
+    }))
+    asyncio.run(db.user_sessions.insert_one({
+        "user_id": "durability-user", "token_hash": hash_opaque_token(raw_session),
+        "expires_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }))
+    client.cookies.set("session_token", raw_session)
     created = client.post("/api/manuscripts", json={
         "title": "Durability contract",
         "raw_text": "Chapter One\n\n" + ("A durable story beat. " * 30),
     })
     assert created.status_code == 200, created.text
     body = created.json()
-    return body, {"X-Manuscript-Token": body["access_token"]}
+    return body, {}
 
 
 def test_report_history_export_and_confirmed_deletion():
@@ -47,7 +61,7 @@ def test_report_history_export_and_confirmed_deletion():
         assert exported.status_code == 200
         payload = exported.json()
         assert payload["format"] == "roundtable-workspace"
-        assert "access_token_hash" not in payload["manuscript"]
+        assert payload["manuscript"]["user_id"] == "durability-user"
         assert len(payload["report_versions"]) == 2
 
         refused = client.delete(f"/api/manuscripts/{mid}", headers=headers)

@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Upload, FileText, ChevronRight, RefreshCw, X, Plus, BookOpen, Trash2, CheckCircle, SlidersHorizontal, Save } from "lucide-react";
 import axios from "axios";
 import { getApi } from "../apiConfig";
-import { rememberManuscriptAccess, manuscriptRequestConfig } from "../manuscriptAccess";
+import { manuscriptRequestConfig } from "../manuscriptAccess";
 
 const API = getApi();
 
@@ -105,9 +105,7 @@ export default function SetupPage() {
 
   const fetchUsage = useCallback(async () => {
     try {
-      const token = localStorage.getItem("session_token");
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      const res = await axios.get(`${API}/user/usage`, { headers, withCredentials: true });
+      const res = await axios.get(`${API}/user/usage`, { withCredentials: true });
       setUsage(res.data);
       if (res.data.email) setWaitlistEmail(res.data.email);
     } catch {
@@ -133,9 +131,7 @@ export default function SetupPage() {
     if (!msg) return;
     setFeedbackSubmitting(true);
     try {
-      const token = localStorage.getItem("session_token");
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      await axios.post(`${API}/feedback`, { message: msg }, { headers, withCredentials: true });
+      await axios.post(`${API}/feedback`, { message: msg }, { withCredentials: true });
       setFeedbackSubmitted(true);
     } catch {
       toast.error("Failed to submit — please try again");
@@ -153,9 +149,7 @@ export default function SetupPage() {
     }
     setWaitlistSubmitting(true);
     try {
-      const token = localStorage.getItem("session_token");
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      await axios.post(`${API}/waitlist`, { email }, { headers, withCredentials: true });
+      await axios.post(`${API}/waitlist`, { email }, { withCredentials: true });
       setWaitlistSaved(true);
       toast.success("You're on the list!");
     } catch {
@@ -179,11 +173,7 @@ export default function SetupPage() {
         const formData = new FormData();
         formData.append("file", file);
         formData.append("title", title || name.replace(/\.(docx|pdf)$/, ""));
-        const headers = {};
-        const token = localStorage.getItem("session_token");
-        if (token) headers["Authorization"] = `Bearer ${token}`;
-        const res = await axios.post(`${API}/manuscripts/upload`, formData, { headers, withCredentials: true });
-        rememberManuscriptAccess(res.data);
+        const res = await axios.post(`${API}/manuscripts/upload`, formData, { withCredentials: true });
         // docx/pdf upload goes straight to the manuscript — skip text paste step
         setManuscript(res.data);
         setGenre({
@@ -235,8 +225,6 @@ export default function SetupPage() {
     }
     setLoading(true);
     try {
-      const token = localStorage.getItem("session_token");
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
       const payload = { title: title || "Untitled Manuscript", raw_text: text, model: model, cost_limit_usd: Number(costBudget) };
       const payloadStr = JSON.stringify(payload);
       // Use byte length (UTF-8), not string length — so we compare bytes to bytes
@@ -244,8 +232,7 @@ export default function SetupPage() {
 
       let res;
       if (bodySizeBytes <= SAFE_BODY_SIZE) {
-        res = await axios.post(`${API}/manuscripts`, payload, { headers, withCredentials: true });
-        rememberManuscriptAccess(res.data);
+        res = await axios.post(`${API}/manuscripts`, payload, { withCredentials: true });
       } else {
         // Chunked upload to avoid 413 (proxy body limit)
         const firstChunk = text.slice(0, CHUNK_CHARS);
@@ -254,8 +241,7 @@ export default function SetupPage() {
           raw_text: firstChunk,
           model: model,
           cost_limit_usd: Number(costBudget),
-        }, { headers, withCredentials: true });
-        rememberManuscriptAccess(res.data);
+        }, { withCredentials: true });
         const manuscriptId = res?.data?.id;
         if (!manuscriptId) {
           throw new Error("Server did not return a manuscript id. Cannot append remaining text.");

@@ -17,6 +17,7 @@ from services.reader_memory import latest_memory, normalize_memory_update
 class _HeadersRequest:
     def __init__(self, headers=None):
         self.headers = headers or {}
+        self.cookies = {}
 
 
 class _ManuscriptTable:
@@ -63,13 +64,13 @@ def test_selected_reader_resume_checks_ids_not_counts():
     assert api._selected_readers_complete(reactions + [{"reader_id": "selected"}], [{"id": "selected"}])
 
 
-def test_guest_manuscript_requires_matching_capability(monkeypatch):
-    token = "guest-secret"
-    monkeypatch.setattr(api, "db", _Db({
-        "id": "m1", "user_id": None, "access_token_hash": api._hash_manuscript_token(token)
-    }))
-    manuscript = asyncio.run(api._get_owned_manuscript("m1", _HeadersRequest({"x-manuscript-token": token})))
-    assert manuscript["id"] == "m1"
+def test_anonymous_manuscript_is_never_accessible(monkeypatch):
+    monkeypatch.setattr(api, "db", _Db({"id": "m1", "user_id": None}))
+
+    async def authenticated_user(_request):
+        return {"user_id": "someone"}
+
+    monkeypatch.setattr(api, "_get_session_user", authenticated_user)
     with pytest.raises(HTTPException) as exc:
         asyncio.run(api._get_owned_manuscript("m1", _HeadersRequest()))
     assert exc.value.status_code == 403
@@ -81,7 +82,7 @@ def test_authenticated_manuscript_requires_owner(monkeypatch):
     async def wrong_user(_request):
         return {"user_id": "someone-else"}
 
-    monkeypatch.setattr(api, "_get_optional_user", wrong_user)
+    monkeypatch.setattr(api, "_get_session_user", wrong_user)
     with pytest.raises(HTTPException) as exc:
         asyncio.run(api._get_owned_manuscript("m1", _HeadersRequest()))
     assert exc.value.status_code == 403

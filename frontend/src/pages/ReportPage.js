@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import axios from "axios";
 import { getApi } from "../apiConfig";
-import { forgetManuscriptAccess, manuscriptRequestConfig } from "../manuscriptAccess";
+import { manuscriptRequestConfig } from "../manuscriptAccess";
 
 const API = getApi();
 
@@ -247,7 +247,6 @@ export default function ReportPage() {
     if (!window.confirm(`Permanently delete “${manuscript?.title || "this manuscript"}” and all reader data? This cannot be undone.`)) return;
     try {
       await axios.delete(`${API}/manuscripts/${manuscriptId}?confirm=true`, manuscriptRequestConfig(manuscriptId));
-      forgetManuscriptAccess(manuscriptId);
       toast.success("Manuscript deleted");
       navigate("/setup");
     } catch (err) {

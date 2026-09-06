@@ -63,7 +63,7 @@ export default function LoginPage({ initialMode = "signin" }) {
         setVerificationSent(true);
       } else {
         const response = await axios.post(`${API}/auth/login`, { email, password }, { withCredentials: true });
-        login(response.data.user, response.data.session_token);
+        login(response.data.user);
         navigate("/setup", { replace: true });
       }
     } catch (requestError) {

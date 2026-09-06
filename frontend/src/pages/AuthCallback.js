@@ -12,11 +12,8 @@ const API = getApi();
 /**
  * Handles the redirect from the backend after Google OAuth.
  *
- * The backend sends the browser here as:
- *   /auth/callback?session_token=<token>
- *
- * We read the token from the query string, store it in localStorage,
- * call /api/auth/me to get the user object, then navigate to /setup.
+ * The backend sets an HTTP-only session cookie and redirects here. This page
+ * confirms the cookie with /api/auth/me; JavaScript never receives the token.
  */
 export default function AuthCallback() {
   const navigate = useNavigate();
@@ -24,7 +21,6 @@ export default function AuthCallback() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const sessionToken = params.get("session_token");
     const error = params.get("error");
 
     if (error) {
@@ -33,31 +29,19 @@ export default function AuthCallback() {
       return;
     }
 
-    if (!sessionToken) {
-      navigate("/login", { replace: true });
-      return;
-    }
-
     (async () => {
       try {
-        // Store the session token
-        localStorage.setItem("session_token", sessionToken);
-
-        // Fetch the current user using the new token
         const res = await axios.get(`${API}/auth/me`, {
-          headers: { Authorization: `Bearer ${sessionToken}` },
           withCredentials: true,
         });
 
-        const user = res.data;
-        login(user, sessionToken);
+        login(res.data);
 
         // Clean up the URL and redirect
         window.history.replaceState(null, "", window.location.pathname);
         setTimeout(() => navigate("/setup", { replace: true }), 0);
       } catch (err) {
         console.error("Auth callback failed:", err);
-        localStorage.removeItem("session_token");
         navigate("/login", { replace: true });
       }
     })();

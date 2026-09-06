@@ -188,6 +188,10 @@ class _SupabaseDb:
         return _SupabaseTable(self._client, "password_reset_tokens")
 
     @property
+    def oauth_states(self) -> _SupabaseTable:
+        return _SupabaseTable(self._client, "oauth_states")
+
+    @property
     def waitlist(self) -> _SupabaseTable:
         return _SupabaseTable(self._client, "waitlist")
 
@@ -310,7 +314,8 @@ class _PostgresDb:
     TABLES = {
         "manuscripts", "reader_personas", "reader_memories", "reader_reactions",
         "editor_reports", "report_versions", "workflow_tasks", "users", "user_sessions",
-        "email_verification_tokens", "password_reset_tokens", "waitlist", "feedback", "cost_reservations",
+        "email_verification_tokens", "password_reset_tokens", "oauth_states",
+        "rate_limit_buckets", "waitlist", "feedback", "cost_reservations",
     }
 
     def __init__(self, url: str, migrations_dir: Path):
@@ -344,6 +349,8 @@ class _PostgresDb:
                 async with conn.transaction():
                     await conn.execute(path.read_text(encoding="utf-8"))
                     await conn.execute("INSERT INTO schema_migrations(version) VALUES($1)", path.name)
+            await conn.execute("DELETE FROM oauth_states WHERE expires_at <= now()")
+            await conn.execute("DELETE FROM rate_limit_buckets WHERE expires_at <= now()")
 
     async def close(self) -> None:
         if self._pool:
@@ -424,6 +431,32 @@ class _PostgresDb:
         self._validate_table(table)
         where, values = self._where(filters)
         return int(await self._pool.fetchval(f'SELECT count(*) FROM "{table}"{where}', *values))
+
+    async def consume_oauth_state(self, token_hash: str) -> bool:
+        row = await self._pool.fetchrow(
+            "DELETE FROM oauth_states WHERE token_hash = $1 AND expires_at > now() RETURNING id",
+            token_hash,
+        )
+        return row is not None
+
+    async def consume_rate_limit(self, key: str, limit: int, window_seconds: int):
+        row = await self._pool.fetchrow(
+            """
+            INSERT INTO rate_limit_buckets(key, count, expires_at)
+            VALUES($1, 1, now() + make_interval(secs => $2))
+            ON CONFLICT(key) DO UPDATE SET
+              count = CASE WHEN rate_limit_buckets.expires_at <= now()
+                           THEN 1 ELSE rate_limit_buckets.count + 1 END,
+              expires_at = CASE WHEN rate_limit_buckets.expires_at <= now()
+                                THEN now() + make_interval(secs => $2)
+                                ELSE rate_limit_buckets.expires_at END
+            RETURNING count,
+              GREATEST(1, CEIL(EXTRACT(EPOCH FROM (expires_at - now()))))::int AS retry_after
+            """,
+            key,
+            window_seconds,
+        )
+        return {"allowed": int(row["count"]) <= limit, "retry_after": int(row["retry_after"])}
 
     async def reserve_cost(self, reservation_id, manuscript_id, role, operation_key, estimated_cost_usd):
         value = await self._pool.fetchval(
@@ -507,7 +540,8 @@ class _MemoryTable:
             return True
         unique_fields = {
             "users": "email",
-            "user_sessions": "session_token",
+            "user_sessions": "token_hash",
+            "oauth_states": "token_hash",
             "waitlist": "email",
             "editor_reports": "manuscript_id",
         }
@@ -576,6 +610,7 @@ class _MemoryDb:
         "user_sessions",
         "email_verification_tokens",
         "password_reset_tokens",
+        "oauth_states",
         "waitlist",
         "feedback",
         "workflow_tasks",

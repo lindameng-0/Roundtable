@@ -35,9 +35,6 @@ class ManuscriptResponse(BaseModel):
     cost_reserved_usd: Optional[float] = 0
     reader_config_locked: Optional[bool] = False
     created_at: str
-    # Returned only when an anonymous manuscript is first created. The database
-    # stores only its hash; clients persist the token for later access.
-    access_token: Optional[str] = None
 
 
 class ReaderPersonaResponse(BaseModel):

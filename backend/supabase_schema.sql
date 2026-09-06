@@ -17,11 +17,11 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS user_sessions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
-  session_token TEXT NOT NULL UNIQUE,
+  token_hash TEXT NOT NULL UNIQUE,
   expires_at TIMESTAMPTZ NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_user_sessions_session_token ON user_sessions(session_token);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_token_hash ON user_sessions(token_hash);
 
 CREATE TABLE IF NOT EXISTS email_verification_tokens (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -45,12 +45,24 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
 CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user
   ON password_reset_tokens(user_id, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS oauth_states (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS rate_limit_buckets (
+  key TEXT PRIMARY KEY,
+  count INTEGER NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL
+);
+
 -- Manuscripts
 CREATE TABLE IF NOT EXISTS manuscripts (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
   user_id TEXT REFERENCES users(user_id) ON DELETE SET NULL,
-  access_token_hash TEXT,
   raw_text TEXT NOT NULL,
   genre TEXT,
   target_audience TEXT,
@@ -67,7 +79,6 @@ CREATE TABLE IF NOT EXISTS manuscripts (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_manuscripts_user_id ON manuscripts(user_id);
-CREATE INDEX IF NOT EXISTS idx_manuscripts_access_token_hash ON manuscripts(access_token_hash);
 
 -- Reader personas (5 per manuscript)
 CREATE TABLE IF NOT EXISTS reader_personas (

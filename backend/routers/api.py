@@ -1,10 +1,10 @@
 import json
 import uuid
 import asyncio
+import io
 import logging
-import hashlib
-import hmac
-import secrets
+import zipfile
+from pathlib import Path
 from typing import Dict, Any, List
 
 from fastapi import APIRouter, HTTPException, Request, Query
@@ -76,29 +76,14 @@ def _is_admin(email: str) -> bool:
     return email and (email.strip().lower() in [e.strip().lower() for e in getattr(_cfg, "ADMIN_EMAILS", [])])
 
 
-def _hash_manuscript_token(token: str) -> str:
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
-
-
 async def _get_owned_manuscript(manuscript_id: str, request: Request) -> Dict[str, Any]:
-    """Load a manuscript and enforce account or guest-capability ownership."""
+    """Load a manuscript and enforce strict authenticated account ownership."""
+    user = await _get_session_user(request)
     manuscript = await db.manuscripts.find_one({"id": manuscript_id}, {"_id": 0})
     if not manuscript:
         raise HTTPException(404, "Manuscript not found")
-
-    owner_id = manuscript.get("user_id")
-    if owner_id:
-        user = await _get_optional_user(request)
-        if not user or user.get("user_id") != owner_id:
-            raise HTTPException(403, "You do not have access to this manuscript")
-        return manuscript
-
-    token_hash = manuscript.get("access_token_hash")
-    if token_hash:
-        supplied = (request.headers.get("x-manuscript-token") or "").strip()
-        if not supplied or not hmac.compare_digest(_hash_manuscript_token(supplied), token_hash):
-            raise HTTPException(403, "A valid manuscript access token is required")
-    # Legacy anonymous rows predate capability tokens and remain accessible.
+    if not manuscript.get("user_id") or user.get("user_id") != manuscript.get("user_id"):
+        raise HTTPException(403, "You do not have access to this manuscript")
     return manuscript
 
 
@@ -114,6 +99,16 @@ async def _ensure_reader_config_unlocked(manuscript: Dict[str, Any]) -> None:
     ):
         await db.manuscripts.update_one({"id": manuscript_id}, {"$set": {"reader_config_locked": True}})
         raise HTTPException(409, "Reader focus is locked because this manuscript's reading run has started.")
+
+
+async def _limit_ai_operation(request: Request, manuscript: Dict[str, Any]) -> None:
+    """Apply shared per-account and per-IP limits before any costly AI work."""
+    owner_id = manuscript.get("user_id")
+    await enforce_rate_limit(
+        request, "ai_account", _cfg.AI_ACCOUNT_RATE_PER_HOUR, 3600,
+        identity=f"user:{owner_id}",
+    )
+    await enforce_rate_limit(request, "ai_ip", _cfg.AI_IP_RATE_PER_HOUR, 3600)
 
 
 def _selected_readers_complete(existing_reactions: List[Dict], readers: List[Dict]) -> bool:
@@ -184,7 +179,8 @@ async def get_available_models():
 
 
 @api_router.post("/config/model")
-async def update_model(req: ModelConfigRequest):
+async def update_model(req: ModelConfigRequest, request: Request):
+    await _get_session_user(request)
     if req.provider != "gemini" or req.model not in AVAILABLE_READER_MODELS:
         raise HTTPException(400, "This reading pipeline currently supports Gemini 2.5 Flash or Pro")
     _cfg.LLM_MODEL = req.model
@@ -303,7 +299,6 @@ async def list_manuscripts(request: Request):
     for d in docs:
         d.pop("raw_text", None)
         d.pop("sections", None)
-        d.pop("access_token_hash", None)
     return docs
 
 
@@ -312,20 +307,25 @@ async def create_manuscript(manuscript: ManuscriptCreate, request: Request):
     raw_text = manuscript.raw_text.strip()
     if not raw_text:
         raise HTTPException(400, "Manuscript text cannot be empty")
+    if len(raw_text.encode("utf-8")) > MAX_BODY_SIZE_BYTES:
+        raise HTTPException(413, f"Manuscript exceeds the {_cfg.MAX_UPLOAD_MB} MB limit")
 
-    # Attach user_id if the user is authenticated (optional auth — anonymous allowed)
-    # Require an account in production so anonymous callers cannot consume LLM quota.
-    # Development retains the legacy guest flow for local demos and existing tests.
-    user = await _get_session_user(request) if _cfg.REQUIRE_AUTH else await _get_optional_user(request)
-    user_id = user["user_id"] if user else None
-    if user_id:
-        await enforce_rate_limit(
-            request,
-            "manuscript_create",
-            _cfg.MANUSCRIPT_CREATE_RATE_PER_HOUR,
-            3600,
-            identity=f"user:{user_id}",
-        )
+    # Every manuscript belongs to the authenticated account that creates it.
+    user = await _get_session_user(request)
+    user_id = user["user_id"]
+    await enforce_rate_limit(
+        request,
+        "manuscript_create",
+        _cfg.MANUSCRIPT_CREATE_RATE_PER_HOUR,
+        3600,
+        identity=f"user:{user_id}",
+    )
+    await enforce_rate_limit(
+        request,
+        "manuscript_create_ip",
+        _cfg.MANUSCRIPT_CREATE_IP_RATE_PER_HOUR,
+        3600,
+    )
 
     # Usage limit: non-admin authenticated users get WORDS_LIMIT total words
     if user_id and user:
@@ -378,12 +378,10 @@ async def create_manuscript(manuscript: ManuscriptCreate, request: Request):
     except Exception as e:
         logger.warning("Genre detection failed, using defaults: %s", e)
 
-    guest_access_token = secrets.token_urlsafe(32) if not user_id else None
     doc = {
         "id": doc_id,
         "title": manuscript.title or "Untitled Manuscript",
         "user_id": user_id,
-        "access_token_hash": _hash_manuscript_token(guest_access_token) if guest_access_token else None,
         "raw_text": raw_text,
         "genre": genre_data.get("genre", "Fiction"),
         "target_audience": genre_data.get("target_audience", "General readers"),
@@ -406,10 +404,7 @@ async def create_manuscript(manuscript: ManuscriptCreate, request: Request):
     except Exception as e:
         logger.exception("Failed to save manuscript to database")
         raise HTTPException(503, f"Database error: {str(e)}")
-    response_doc = {**doc}
-    response_doc.pop("access_token_hash", None)
-    response_doc["access_token"] = guest_access_token
-    return ManuscriptResponse(**response_doc)
+    return ManuscriptResponse(**doc)
 
 
 @api_router.patch("/manuscripts/{manuscript_id}/append-text", response_model=ManuscriptResponse)
@@ -420,6 +415,8 @@ async def append_manuscript_text(manuscript_id: str, body: AppendTextRequest, re
         raise HTTPException(400, "raw_text_chunk cannot be empty")
     doc = await _get_owned_manuscript(manuscript_id, request)
     new_raw = (doc.get("raw_text") or "") + chunk
+    if len(new_raw.encode("utf-8")) > MAX_BODY_SIZE_BYTES:
+        raise HTTPException(413, f"Manuscript exceeds the {_cfg.MAX_UPLOAD_MB} MB limit")
     sections, total_lines = split_manuscript(new_raw)
     update = {
         "raw_text": new_raw,
@@ -432,13 +429,32 @@ async def append_manuscript_text(manuscript_id: str, body: AppendTextRequest, re
     return ManuscriptResponse(**updated)
 
 
-# Max request body / form part size (100MB) for full-length manuscripts (500+ pages)
-MAX_BODY_SIZE_BYTES = 100 * 1024 * 1024
+MAX_BODY_SIZE_BYTES = _cfg.MAX_UPLOAD_MB * 1024 * 1024
+MAX_DOCX_UNCOMPRESSED_BYTES = 100 * 1024 * 1024
+
+
+async def _read_bounded_upload(file) -> bytes:
+    declared_size = getattr(file, "size", None)
+    if declared_size is not None and declared_size > MAX_BODY_SIZE_BYTES:
+        raise HTTPException(413, f"File exceeds the {_cfg.MAX_UPLOAD_MB} MB upload limit")
+    content = await file.read(MAX_BODY_SIZE_BYTES + 1)
+    if len(content) > MAX_BODY_SIZE_BYTES:
+        raise HTTPException(413, f"File exceeds the {_cfg.MAX_UPLOAD_MB} MB upload limit")
+    return content
 
 
 @api_router.post("/manuscripts/upload")
 async def upload_manuscript(request: Request):
-    """Accept .txt, .docx, or .pdf file. Form parsed with max_part_size=100MB for full-length books."""
+    """Accept a bounded, signature-validated .txt, .docx, or .pdf manuscript."""
+    # Authenticate before parsing or buffering a potentially large request body.
+    await _get_session_user(request)
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > MAX_BODY_SIZE_BYTES + 1024 * 1024:
+                raise HTTPException(413, f"Request exceeds the {_cfg.MAX_UPLOAD_MB} MB upload limit")
+        except ValueError:
+            raise HTTPException(400, "Invalid Content-Length header")
     async with request.form(max_part_size=MAX_BODY_SIZE_BYTES) as form:
         file = form.get("file")
         if not file or not getattr(file, "filename", None):
@@ -446,22 +462,31 @@ async def upload_manuscript(request: Request):
         title = form.get("title") or "Untitled Manuscript"
         if isinstance(title, list):
             title = title[0] if title else "Untitled Manuscript"
+        title = str(title).strip()[:200] or "Untitled Manuscript"
         filename = file.filename or ""
-        if filename.endswith(".docx"):
+        extension = Path(filename).suffix.lower()
+        content = await _read_bounded_upload(file)
+        if extension == ".docx":
             try:
                 from docx import Document
-                import io
-                content = await file.read()
+                if not content.startswith(b"PK\x03\x04"):
+                    raise ValueError("file signature is not DOCX")
+                with zipfile.ZipFile(io.BytesIO(content)) as archive:
+                    names = set(archive.namelist())
+                    if "[Content_Types].xml" not in names or "word/document.xml" not in names:
+                        raise ValueError("DOCX structure is invalid")
+                    if len(names) > 10_000 or sum(item.file_size for item in archive.infolist()) > MAX_DOCX_UNCOMPRESSED_BYTES:
+                        raise ValueError("DOCX expands beyond the safe processing limit")
                 doc = Document(io.BytesIO(content))
                 paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
                 raw_text = "\n\n".join(paragraphs)
             except Exception as e:
                 raise HTTPException(400, f"Failed to read .docx file: {e}")
-        elif filename.endswith(".pdf"):
+        elif extension == ".pdf":
             try:
                 import fitz  # PyMuPDF
-                import io
-                content = await file.read()
+                if not content.startswith(b"%PDF-"):
+                    raise ValueError("file signature is not PDF")
                 doc = fitz.open(stream=content, filetype="pdf")
                 parts = []
                 for page in doc:
@@ -470,9 +495,10 @@ async def upload_manuscript(request: Request):
                 raw_text = "\n\n".join(p.strip() for p in parts if p.strip())
             except Exception as e:
                 raise HTTPException(400, f"Failed to read .pdf file: {e}")
-        elif filename.endswith(".txt"):
-            content = await file.read()
-            raw_text = content.decode("utf-8", errors="replace").strip()
+        elif extension == ".txt":
+            if b"\x00" in content:
+                raise HTTPException(400, "Text files cannot contain null bytes")
+            raw_text = content.decode("utf-8-sig", errors="replace").strip()
         else:
             raise HTTPException(400, "Please upload a .txt, .docx, or .pdf file")
 
@@ -506,12 +532,10 @@ async def update_genre(manuscript_id: str, update: Dict[str, Any], request: Requ
 
 @api_router.get("/manuscripts/{manuscript_id}/personas", response_model=List[ReaderPersonaResponse])
 async def get_personas(manuscript_id: str, request: Request):
-    await _get_owned_manuscript(manuscript_id, request)
+    manuscript = await _get_owned_manuscript(manuscript_id, request)
     personas = await db.reader_personas.find({"manuscript_id": manuscript_id}, {"_id": 0}).to_list(10)
     if not personas:
-        manuscript = await db.manuscripts.find_one({"id": manuscript_id}, {"_id": 0})
-        if not manuscript:
-            raise HTTPException(404, "Manuscript not found")
+        await _limit_ai_operation(request, manuscript)
         try:
             return await generate_all_personas(
                 manuscript_id,
@@ -540,6 +564,7 @@ async def get_personas(manuscript_id: str, request: Request):
 @api_router.post("/manuscripts/{manuscript_id}/personas/regenerate")
 async def regenerate_personas(manuscript_id: str, req: RegenerateRequest, request: Request):
     manuscript = await _get_owned_manuscript(manuscript_id, request)
+    await _limit_ai_operation(request, manuscript)
     await _ensure_reader_config_unlocked(manuscript)
     if not manuscript:
         raise HTTPException(404, "Manuscript not found")
@@ -578,6 +603,7 @@ async def add_persona(manuscript_id: str, request: Request):
     """Add the next reader from the preset list (max 5)."""
     try:
         manuscript = await _get_owned_manuscript(manuscript_id, request)
+        await _limit_ai_operation(request, manuscript)
         await _ensure_reader_config_unlocked(manuscript)
         return await add_one_persona(manuscript_id)
     except ValueError as e:
@@ -619,6 +645,7 @@ async def read_all_sections_stream(
 ):
     """SSE: auto-reads all sections sequentially, N readers in parallel per section. Pauses when client disconnects."""
     manuscript = await _get_owned_manuscript(manuscript_id, request)
+    await _limit_ai_operation(request, manuscript)
 
     sections = manuscript.get("sections", [])
     raw_text = (manuscript.get("raw_text") or "").strip()
@@ -876,6 +903,7 @@ async def create_editor_report(
             "created_at": existing_report.get("created_at"),
             "cached": True,
         }
+    await _limit_ai_operation(request, manuscript)
 
     total_sections = manuscript.get("total_sections", 0)
     readers = await db.reader_personas.find({"manuscript_id": manuscript_id}, {"_id": 0}).to_list(10)
@@ -949,6 +977,7 @@ async def create_editor_report(
 @api_router.post("/manuscripts/{manuscript_id}/editor-report/copy-edit")
 async def create_copy_edit_appendix(manuscript_id: str, request: Request):
     manuscript = await _get_owned_manuscript(manuscript_id, request)
+    await _limit_ai_operation(request, manuscript)
     readers = await db.reader_personas.find({"manuscript_id": manuscript_id}, {"_id": 0}).to_list(10)
     copy_estimate = await preflight_estimate(manuscript, readers, "copyedit")
     _require_affordable(copy_estimate)
@@ -999,7 +1028,7 @@ async def get_editor_report_version(manuscript_id: str, version: int, request: R
 @api_router.get("/manuscripts/{manuscript_id}/export")
 async def export_manuscript_workspace(manuscript_id: str, request: Request):
     manuscript = await _get_owned_manuscript(manuscript_id, request)
-    safe_manuscript = {key: value for key, value in manuscript.items() if key != "access_token_hash"}
+    safe_manuscript = dict(manuscript)
     async def rows(table, limit=5000):
         return await table.find({"manuscript_id": manuscript_id}, {"_id": 0}).to_list(limit)
     current_report = await db.editor_reports.find_one({"manuscript_id": manuscript_id}, {"_id": 0})

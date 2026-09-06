@@ -106,6 +106,14 @@ FRONTEND_URL = os.environ.get(
     'FRONTEND_URL',
     os.environ.get('APP_URL', 'http://localhost:3000'),
 )
+SESSION_COOKIE_SECURE = os.environ.get(
+    'SESSION_COOKIE_SECURE', 'true' if ENVIRONMENT == 'production' else 'false'
+).strip().lower() in {'1', 'true', 'yes', 'on'}
+SESSION_COOKIE_SAMESITE = os.environ.get(
+    'SESSION_COOKIE_SAMESITE', 'none' if ENVIRONMENT == 'production' else 'lax'
+).strip().lower()
+if SESSION_COOKIE_SAMESITE not in {'lax', 'strict', 'none'}:
+    raise RuntimeError("SESSION_COOKIE_SAMESITE must be 'lax', 'strict', or 'none'")
 
 # Transactional email for email/password account verification. Resend is used
 # through its HTTPS API so no additional runtime dependency is required.
@@ -121,6 +129,10 @@ AUTH_LOGIN_RATE_PER_15_MINUTES = max(1, int(os.environ.get('AUTH_LOGIN_RATE_PER_
 AUTH_EMAIL_RATE_PER_HOUR = max(1, int(os.environ.get('AUTH_EMAIL_RATE_PER_HOUR', '5')))
 AUTH_TOKEN_RATE_PER_HOUR = max(1, int(os.environ.get('AUTH_TOKEN_RATE_PER_HOUR', '20')))
 MANUSCRIPT_CREATE_RATE_PER_HOUR = max(1, int(os.environ.get('MANUSCRIPT_CREATE_RATE_PER_HOUR', '10')))
+MANUSCRIPT_CREATE_IP_RATE_PER_HOUR = max(1, int(os.environ.get('MANUSCRIPT_CREATE_IP_RATE_PER_HOUR', '30')))
+AI_ACCOUNT_RATE_PER_HOUR = max(1, int(os.environ.get('AI_ACCOUNT_RATE_PER_HOUR', '30')))
+AI_IP_RATE_PER_HOUR = max(1, int(os.environ.get('AI_IP_RATE_PER_HOUR', '60')))
+MAX_UPLOAD_MB = max(1, min(100, int(os.environ.get('MAX_UPLOAD_MB', '25'))))
 
 # Admin users bypass usage limits
 ADMIN_EMAILS = [
