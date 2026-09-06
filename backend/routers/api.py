@@ -45,6 +45,7 @@ from services.cost_control import CostLimitExceeded, budget_status, preflight_es
 from services.llm_gateway import structured_completion
 from services.model_routing import route_for_role
 from services.reader_focus import FOCUS_GROUPS
+from services.rate_limit import enforce_rate_limit
 from routers.auth import _get_session_user
 
 api_router = APIRouter(prefix="/api")
@@ -317,6 +318,14 @@ async def create_manuscript(manuscript: ManuscriptCreate, request: Request):
     # Development retains the legacy guest flow for local demos and existing tests.
     user = await _get_session_user(request) if _cfg.REQUIRE_AUTH else await _get_optional_user(request)
     user_id = user["user_id"] if user else None
+    if user_id:
+        await enforce_rate_limit(
+            request,
+            "manuscript_create",
+            _cfg.MANUSCRIPT_CREATE_RATE_PER_HOUR,
+            3600,
+            identity=f"user:{user_id}",
+        )
 
     # Usage limit: non-admin authenticated users get WORDS_LIMIT total words
     if user_id and user:

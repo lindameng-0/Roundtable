@@ -184,6 +184,10 @@ class _SupabaseDb:
         return _SupabaseTable(self._client, "email_verification_tokens")
 
     @property
+    def password_reset_tokens(self) -> _SupabaseTable:
+        return _SupabaseTable(self._client, "password_reset_tokens")
+
+    @property
     def waitlist(self) -> _SupabaseTable:
         return _SupabaseTable(self._client, "waitlist")
 
@@ -306,7 +310,7 @@ class _PostgresDb:
     TABLES = {
         "manuscripts", "reader_personas", "reader_memories", "reader_reactions",
         "editor_reports", "report_versions", "workflow_tasks", "users", "user_sessions",
-        "email_verification_tokens", "waitlist", "feedback", "cost_reservations",
+        "email_verification_tokens", "password_reset_tokens", "waitlist", "feedback", "cost_reservations",
     }
 
     def __init__(self, url: str, migrations_dir: Path):
@@ -571,6 +575,7 @@ class _MemoryDb:
         "users",
         "user_sessions",
         "email_verification_tokens",
+        "password_reset_tokens",
         "waitlist",
         "feedback",
         "workflow_tasks",

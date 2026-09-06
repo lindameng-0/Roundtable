@@ -140,7 +140,10 @@ export default function LoginPage({ initialMode = "signin" }) {
               <form onSubmit={submit} className="space-y-4">
                 {mode === "signup" && <Field label="Name"><input value={name} onChange={(event) => setName(event.target.value)} required minLength={2} maxLength={80} autoComplete="name" className="auth-input" placeholder="Your name" /></Field>}
                 <Field label="Email"><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required autoComplete="email" className="auth-input" placeholder="you@example.com" /></Field>
-                <Field label="Password">
+                <Field
+                  label="Password"
+                  action={mode === "signin" ? <Link to="/forgot-password" className="normal-case tracking-normal text-[#7f3f4a] hover:underline">Forgot password?</Link> : null}
+                >
                   <span className="relative block">
                     <input type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} required minLength={mode === "signup" ? 10 : undefined} maxLength={128} autoComplete={mode === "signup" ? "new-password" : "current-password"} className="auth-input pr-12" placeholder={mode === "signup" ? "At least 10 characters" : "Your password"} />
                     <button type="button" onClick={() => setShowPassword((value) => !value)} className="absolute inset-y-0 right-0 grid w-12 place-items-center text-ink-400 hover:text-ink-700" aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>
@@ -164,6 +167,6 @@ export default function LoginPage({ initialMode = "signin" }) {
   );
 }
 
-function Field({ label, children }) {
-  return <label className="block"><span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-ink-500">{label}</span>{children}</label>;
+function Field({ label, action, children }) {
+  return <label className="block"><span className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-ink-500"><span>{label}</span>{action}</span>{children}</label>;
 }

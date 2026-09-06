@@ -115,6 +115,12 @@ EMAIL_VERIFICATION_TTL_MINUTES = max(
     15,
     int(os.environ.get('EMAIL_VERIFICATION_TTL_MINUTES', '60')),
 )
+PASSWORD_RESET_TTL_MINUTES = max(10, int(os.environ.get('PASSWORD_RESET_TTL_MINUTES', '30')))
+AUTH_SIGNUP_RATE_PER_HOUR = max(1, int(os.environ.get('AUTH_SIGNUP_RATE_PER_HOUR', '5')))
+AUTH_LOGIN_RATE_PER_15_MINUTES = max(1, int(os.environ.get('AUTH_LOGIN_RATE_PER_15_MINUTES', '10')))
+AUTH_EMAIL_RATE_PER_HOUR = max(1, int(os.environ.get('AUTH_EMAIL_RATE_PER_HOUR', '5')))
+AUTH_TOKEN_RATE_PER_HOUR = max(1, int(os.environ.get('AUTH_TOKEN_RATE_PER_HOUR', '20')))
+MANUSCRIPT_CREATE_RATE_PER_HOUR = max(1, int(os.environ.get('MANUSCRIPT_CREATE_RATE_PER_HOUR', '10')))
 
 # Admin users bypass usage limits
 ADMIN_EMAILS = [
