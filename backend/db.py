@@ -211,6 +211,10 @@ class _SupabaseDb:
     def cost_reservations(self) -> _SupabaseTable:
         return _SupabaseTable(self._client, "cost_reservations")
 
+    @property
+    def ai_jobs(self) -> _SupabaseTable:
+        return _SupabaseTable(self._client, "ai_jobs")
+
     async def reserve_cost(self, reservation_id, manuscript_id, role, operation_key, estimated_cost_usd):
         def _run():
             response = self._client.rpc("reserve_ai_cost", {
@@ -249,9 +253,13 @@ _JSON_COLUMNS = {
     "reader_reactions": {"inline_comments", "response_json"},
     "editor_reports": {"report_json"},
     "report_versions": {"report_json"},
+    "ai_jobs": {"payload", "progress", "result"},
 }
 
-_TIMESTAMP_COLUMNS = {"created_at", "updated_at", "expires_at", "used_at"}
+_TIMESTAMP_COLUMNS = {
+    "created_at", "updated_at", "expires_at", "used_at", "available_at",
+    "lease_expires_at", "started_at", "finished_at", "last_seen",
+}
 
 
 class _PostgresCursor:
@@ -316,6 +324,8 @@ class _PostgresDb:
         "editor_reports", "report_versions", "workflow_tasks", "users", "user_sessions",
         "email_verification_tokens", "password_reset_tokens", "oauth_states",
         "rate_limit_buckets", "waitlist", "feedback", "cost_reservations",
+        "ai_jobs",
+        "ai_worker_heartbeats",
     }
 
     def __init__(self, url: str, migrations_dir: Path):
@@ -341,16 +351,21 @@ class _PostgresDb:
         import asyncpg
         self._pool = await asyncpg.create_pool(self._url, min_size=1, max_size=10, command_timeout=60)
         async with self._pool.acquire() as conn:
-            await conn.execute("CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())")
-            applied = {row["version"] for row in await conn.fetch("SELECT version FROM schema_migrations")}
-            for path in sorted(self._migrations_dir.glob("*.sql")):
-                if path.name in applied:
-                    continue
-                async with conn.transaction():
-                    await conn.execute(path.read_text(encoding="utf-8"))
-                    await conn.execute("INSERT INTO schema_migrations(version) VALUES($1)", path.name)
-            await conn.execute("DELETE FROM oauth_states WHERE expires_at <= now()")
-            await conn.execute("DELETE FROM rate_limit_buckets WHERE expires_at <= now()")
+            # Web and worker boot independently; serialize schema migrations.
+            await conn.execute("SELECT pg_advisory_lock(824613579)")
+            try:
+                await conn.execute("CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())")
+                applied = {row["version"] for row in await conn.fetch("SELECT version FROM schema_migrations")}
+                for path in sorted(self._migrations_dir.glob("*.sql")):
+                    if path.name in applied:
+                        continue
+                    async with conn.transaction():
+                        await conn.execute(path.read_text(encoding="utf-8"))
+                        await conn.execute("INSERT INTO schema_migrations(version) VALUES($1)", path.name)
+                await conn.execute("DELETE FROM oauth_states WHERE expires_at <= now()")
+                await conn.execute("DELETE FROM rate_limit_buckets WHERE expires_at <= now()")
+            finally:
+                await conn.execute("SELECT pg_advisory_unlock(824613579)")
 
     async def close(self) -> None:
         if self._pool:
@@ -458,6 +473,100 @@ class _PostgresDb:
         )
         return {"allowed": int(row["count"]) <= limit, "retry_after": int(row["retry_after"])}
 
+    async def claim_ai_job(self, worker_id: str, global_limit: int, user_limit: int, lease_seconds: int):
+        row = await self._pool.fetchrow(
+            """
+            WITH guard AS (
+              SELECT pg_advisory_xact_lock(824613580)
+            ), candidate AS (
+              SELECT job.id
+              FROM ai_jobs job CROSS JOIN guard
+              WHERE job.status = 'queued'
+                AND job.available_at <= now()
+                AND (SELECT count(*) FROM ai_jobs active
+                     WHERE active.status = 'running' AND active.lease_expires_at > now()) < $2
+                AND (SELECT count(*) FROM ai_jobs active_user
+                     WHERE active_user.status = 'running'
+                       AND active_user.lease_expires_at > now()
+                       AND active_user.user_id = job.user_id) < $3
+              ORDER BY job.created_at
+              FOR UPDATE SKIP LOCKED
+              LIMIT 1
+            )
+            UPDATE ai_jobs job SET
+              status = 'running', worker_id = $1,
+              attempts = job.attempts + 1,
+              started_at = COALESCE(job.started_at, now()),
+              lease_expires_at = now() + make_interval(secs => $4),
+              updated_at = now(), error = NULL
+            FROM candidate
+            WHERE job.id = candidate.id
+            RETURNING job.*
+            """,
+            worker_id, global_limit, user_limit, lease_seconds,
+        )
+        return self._decode("ai_jobs", row) if row else None
+
+    async def heartbeat_ai_job(self, job_id: str, worker_id: str, lease_seconds: int) -> bool:
+        result = await self._pool.execute(
+            """UPDATE ai_jobs SET lease_expires_at = now() + make_interval(secs => $3),
+                   updated_at = now()
+               WHERE id = $1 AND worker_id = $2 AND status = 'running'""",
+            job_id, worker_id, lease_seconds,
+        )
+        return result == "UPDATE 1"
+
+    async def requeue_stale_ai_jobs(self) -> int:
+        rows = await self._pool.fetch(
+            """
+            UPDATE ai_jobs SET
+              status = CASE WHEN attempts >= max_attempts THEN 'failed' ELSE 'queued' END,
+              error = CASE WHEN attempts >= max_attempts
+                           THEN COALESCE(error, 'Worker lease expired') ELSE error END,
+              available_at = now(), worker_id = NULL, lease_expires_at = NULL,
+              finished_at = CASE WHEN attempts >= max_attempts THEN now() ELSE NULL END,
+              updated_at = now()
+            WHERE status = 'running' AND lease_expires_at <= now()
+            RETURNING id
+            """
+        )
+        return len(rows)
+
+    async def complete_ai_job(self, job_id: str, worker_id: str, result: Dict, progress: Dict) -> bool:
+        command = await self._pool.execute(
+            """UPDATE ai_jobs SET status = 'completed', result = $3::jsonb,
+                   progress = $4::jsonb, error = NULL, finished_at = now(),
+                   updated_at = now(), lease_expires_at = NULL, worker_id = NULL
+               WHERE id = $1 AND worker_id = $2 AND status = 'running'""",
+            job_id, worker_id, json.dumps(result), json.dumps(progress),
+        )
+        return command == "UPDATE 1"
+
+    async def fail_ai_job(self, job_id: str, worker_id: str, error: str, retry_delay: int) -> bool:
+        command = await self._pool.execute(
+            """UPDATE ai_jobs SET
+                   status = CASE WHEN attempts >= max_attempts THEN 'failed' ELSE 'queued' END,
+                   error = $3,
+                   available_at = now() + make_interval(secs => $4),
+                   finished_at = CASE WHEN attempts >= max_attempts THEN now() ELSE NULL END,
+                   updated_at = now(), lease_expires_at = NULL, worker_id = NULL
+               WHERE id = $1 AND worker_id = $2 AND status = 'running'""",
+            job_id, worker_id, error[:4000], retry_delay,
+        )
+        return command == "UPDATE 1"
+
+    async def touch_ai_worker(self, worker_id: str) -> None:
+        await self._pool.execute(
+            """INSERT INTO ai_worker_heartbeats(worker_id, last_seen) VALUES($1, now())
+               ON CONFLICT(worker_id) DO UPDATE SET last_seen = now()""",
+            worker_id,
+        )
+
+    async def active_ai_workers(self) -> int:
+        return int(await self._pool.fetchval(
+            "SELECT count(*) FROM ai_worker_heartbeats WHERE last_seen > now() - interval '30 seconds'"
+        ))
+
     async def reserve_cost(self, reservation_id, manuscript_id, role, operation_key, estimated_cost_usd):
         value = await self._pool.fetchval(
             "SELECT reserve_ai_cost($1, $2, $3, $4, $5)",
@@ -552,9 +661,17 @@ class _MemoryTable:
             composite = ("manuscript_id", "reader_id", "section_number")
             return any(all(row.get(key) == document.get(key) for key in composite) for row in self._rows)
         if self._name == "report_versions":
+            if document.get("job_id") and any(row.get("job_id") == document.get("job_id") for row in self._rows):
+                return True
             return any(
                 row.get("manuscript_id") == document.get("manuscript_id")
                 and row.get("version") == document.get("version")
+                for row in self._rows
+            )
+        if self._name == "ai_jobs":
+            return any(
+                row.get("user_id") == document.get("user_id")
+                and row.get("idempotency_key") == document.get("idempotency_key")
                 for row in self._rows
             )
         return False
@@ -616,12 +733,15 @@ class _MemoryDb:
         "workflow_tasks",
         "report_versions",
         "cost_reservations",
+        "ai_jobs",
+        "ai_worker_heartbeats",
     )
 
     def __init__(self):
         self._data: Dict[str, List[Dict]] = {name: [] for name in self.TABLES}
         self._tables = {name: _MemoryTable(name, self._data[name]) for name in self.TABLES}
         self._cost_lock = asyncio.Lock()
+        self._job_lock = asyncio.Lock()
 
     def __getattr__(self, name: str) -> _MemoryTable:
         if name in self._tables:
@@ -673,6 +793,113 @@ class _MemoryDb:
 
     async def cleanup_stale_cost_reservations(self):
         return 0
+
+    async def claim_ai_job(self, worker_id: str, global_limit: int, user_limit: int, lease_seconds: int):
+        async with self._job_lock:
+            now = datetime.now()
+            active = [row for row in self._data["ai_jobs"] if row.get("status") == "running"]
+            if len(active) >= global_limit:
+                return None
+            candidates = sorted(
+                [
+                    row for row in self._data["ai_jobs"]
+                    if row.get("status") == "queued"
+                    and (
+                        not row.get("available_at")
+                        or datetime.fromisoformat(str(row["available_at"]).replace("Z", "+00:00")).replace(tzinfo=None) <= now
+                    )
+                ],
+                key=lambda row: row.get("created_at") or "",
+            )
+            for row in candidates:
+                if sum(1 for item in active if item.get("user_id") == row.get("user_id")) >= user_limit:
+                    continue
+                row.update({
+                    "status": "running", "worker_id": worker_id,
+                    "attempts": int(row.get("attempts") or 0) + 1,
+                    "started_at": row.get("started_at") or now.isoformat(),
+                    "lease_expires_at": datetime.fromtimestamp(now.timestamp() + lease_seconds).isoformat(),
+                    "updated_at": now.isoformat(), "error": None,
+                })
+                return copy.deepcopy(row)
+            return None
+
+    async def heartbeat_ai_job(self, job_id: str, worker_id: str, lease_seconds: int) -> bool:
+        async with self._job_lock:
+            row = next((item for item in self._data["ai_jobs"] if item.get("id") == job_id), None)
+            if not row or row.get("worker_id") != worker_id or row.get("status") != "running":
+                return False
+            now = datetime.now()
+            row.update({
+                "lease_expires_at": datetime.fromtimestamp(now.timestamp() + lease_seconds).isoformat(),
+                "updated_at": now.isoformat(),
+            })
+            return True
+
+    async def requeue_stale_ai_jobs(self) -> int:
+        async with self._job_lock:
+            now = datetime.now()
+            changed = 0
+            for row in self._data["ai_jobs"]:
+                lease = row.get("lease_expires_at")
+                if row.get("status") != "running" or not lease:
+                    continue
+                expires = datetime.fromisoformat(str(lease).replace("Z", "+00:00")).replace(tzinfo=None)
+                if expires > now:
+                    continue
+                terminal = int(row.get("attempts") or 0) >= int(row.get("max_attempts") or 3)
+                row.update({
+                    "status": "failed" if terminal else "queued",
+                    "error": "Worker lease expired" if terminal else row.get("error"),
+                    "available_at": now.isoformat(), "worker_id": None,
+                    "lease_expires_at": None, "finished_at": now.isoformat() if terminal else None,
+                    "updated_at": now.isoformat(),
+                })
+                changed += 1
+            return changed
+
+    async def complete_ai_job(self, job_id: str, worker_id: str, result: Dict, progress: Dict) -> bool:
+        async with self._job_lock:
+            row = next((item for item in self._data["ai_jobs"] if item.get("id") == job_id), None)
+            if not row or row.get("worker_id") != worker_id or row.get("status") != "running":
+                return False
+            row.update({
+                "status": "completed", "result": copy.deepcopy(result),
+                "progress": copy.deepcopy(progress), "error": None,
+                "finished_at": datetime.now().isoformat(), "updated_at": datetime.now().isoformat(),
+                "worker_id": None, "lease_expires_at": None,
+            })
+            return True
+
+    async def fail_ai_job(self, job_id: str, worker_id: str, error: str, retry_delay: int) -> bool:
+        async with self._job_lock:
+            row = next((item for item in self._data["ai_jobs"] if item.get("id") == job_id), None)
+            if not row or row.get("worker_id") != worker_id or row.get("status") != "running":
+                return False
+            terminal = int(row.get("attempts") or 0) >= int(row.get("max_attempts") or 3)
+            row.update({
+                "status": "failed" if terminal else "queued", "error": error[:4000],
+                "worker_id": None, "lease_expires_at": None,
+                "available_at": datetime.fromtimestamp(datetime.now().timestamp() + retry_delay).isoformat(),
+                "finished_at": datetime.now().isoformat() if terminal else None,
+                "updated_at": datetime.now().isoformat(),
+            })
+            return True
+
+    async def touch_ai_worker(self, worker_id: str) -> None:
+        async with self._job_lock:
+            row = next((item for item in self._data["ai_worker_heartbeats"] if item.get("worker_id") == worker_id), None)
+            if row:
+                row["last_seen"] = datetime.now().isoformat()
+            else:
+                self._data["ai_worker_heartbeats"].append({"worker_id": worker_id, "last_seen": datetime.now().isoformat()})
+
+    async def active_ai_workers(self) -> int:
+        cutoff = datetime.now().timestamp() - 30
+        return sum(
+            1 for row in self._data["ai_worker_heartbeats"]
+            if datetime.fromisoformat(str(row["last_seen"]).replace("Z", "+00:00")).replace(tzinfo=None).timestamp() > cutoff
+        )
 
 
 def get_memory_db() -> _MemoryDb:

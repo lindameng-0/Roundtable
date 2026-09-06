@@ -6,7 +6,13 @@ from config import db
 from utils import now_iso
 
 
-async def append_report_version(manuscript_id: str, report_json: Dict, reason: str = "generated") -> Dict:
+async def append_report_version(
+    manuscript_id: str, report_json: Dict, reason: str = "generated", job_id: str = None,
+) -> Dict:
+    if job_id:
+        existing_job_version = await db.report_versions.find_one({"job_id": job_id}, {"_id": 0})
+        if existing_job_version:
+            return existing_job_version
     # Let the unique constraint arbitrate concurrent regenerations, then retry
     # using the new maximum version.
     for attempt in range(3):
@@ -14,13 +20,17 @@ async def append_report_version(manuscript_id: str, report_json: Dict, reason: s
         version = int(latest[0].get("version") or 0) + 1 if latest else 1
         row = {
             "id": str(uuid.uuid4()), "manuscript_id": manuscript_id, "version": version,
-            "report_json": report_json, "reason": reason, "created_at": now_iso(),
+            "report_json": report_json, "reason": reason, "job_id": job_id, "created_at": now_iso(),
         }
         try:
             await db.report_versions.insert_one(row)
             return row
         except Exception as exc:
             duplicate = "23505" in str(exc) or "duplicate" in str(exc).lower()
+            if duplicate and job_id:
+                existing_job_version = await db.report_versions.find_one({"job_id": job_id}, {"_id": 0})
+                if existing_job_version:
+                    return existing_job_version
             if not duplicate or attempt == 2:
                 raise
     raise RuntimeError("Could not allocate report version")

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Dict, Any, List
 
 from fastapi import APIRouter, HTTPException, Request, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 import config as _cfg
 from config import db
@@ -46,6 +46,7 @@ from services.llm_gateway import structured_completion
 from services.model_routing import route_for_role
 from services.reader_focus import FOCUS_GROUPS
 from services.rate_limit import enforce_rate_limit
+from services.ai_jobs import enqueue_ai_job, public_job
 from routers.auth import _get_session_user
 
 api_router = APIRouter(prefix="/api")
@@ -148,11 +149,16 @@ async def health():
     database_ready = await ping() if ping else True
     if not database_ready:
         raise HTTPException(503, "Database is not ready")
+    worker_count = getattr(db, "active_ai_workers", None)
+    active_workers = await worker_count() if worker_count else 0
     return {
         "status": "ready",
         "database_backend": _cfg.DATABASE_BACKEND,
         "database_ready": True,
         "database_private_network": ".railway.internal" in (_cfg.DATABASE_URL or ""),
+        "ai_jobs_enabled": _cfg.AI_JOBS_ENABLED,
+        "ai_worker_ready": active_workers > 0,
+        "ai_worker_count": active_workers,
     }
 
 
@@ -419,6 +425,7 @@ async def append_manuscript_text(manuscript_id: str, body: AppendTextRequest, re
     if not chunk:
         raise HTTPException(400, "raw_text_chunk cannot be empty")
     doc = await _get_owned_manuscript(manuscript_id, request)
+    await _ensure_reader_config_unlocked(doc)
     new_raw = (doc.get("raw_text") or "") + chunk
     if len(new_raw.encode("utf-8")) > MAX_BODY_SIZE_BYTES:
         raise HTTPException(413, f"Manuscript exceeds the {_cfg.MAX_UPLOAD_MB} MB limit")
@@ -524,7 +531,8 @@ async def get_manuscript(manuscript_id: str, request: Request):
 
 @api_router.patch("/manuscripts/{manuscript_id}/genre")
 async def update_genre(manuscript_id: str, update: Dict[str, Any], request: Request):
-    await _get_owned_manuscript(manuscript_id, request)
+    manuscript = await _get_owned_manuscript(manuscript_id, request)
+    await _ensure_reader_config_unlocked(manuscript)
     allowed = {"genre", "target_audience", "age_range", "comparable_books", "model"}
     filtered = {k: v for k, v in update.items() if k in allowed}
     if "model" in filtered and filtered["model"] not in AVAILABLE_READER_MODELS:
@@ -650,6 +658,8 @@ async def read_all_sections_stream(
 ):
     """SSE: auto-reads all sections sequentially, N readers in parallel per section. Pauses when client disconnects."""
     manuscript = await _get_owned_manuscript(manuscript_id, request)
+    if _cfg.AI_JOBS_ENABLED:
+        raise HTTPException(410, "This streaming endpoint was replaced by POST /api/manuscripts/{id}/jobs/reading")
     await _limit_ai_operation(request, manuscript)
 
     sections = manuscript.get("sections", [])
@@ -910,6 +920,16 @@ async def create_editor_report(
         }
     await _limit_ai_operation(request, manuscript)
 
+    if _cfg.AI_JOBS_ENABLED:
+        key = request.headers.get("idempotency-key")
+        if not key:
+            key = f"editor-report:{manuscript_id}:initial" if not force else f"editor-report:{manuscript_id}:{uuid.uuid4()}"
+        job = await enqueue_ai_job(
+            user_id=manuscript["user_id"], manuscript_id=manuscript_id,
+            job_type="editor_report", idempotency_key=key, payload={"force": force}, retry_failed=True,
+        )
+        return JSONResponse(public_job(job), status_code=202)
+
     total_sections = manuscript.get("total_sections", 0)
     readers = await db.reader_personas.find({"manuscript_id": manuscript_id}, {"_id": 0}).to_list(10)
     total_readers = len(readers)
@@ -983,6 +1003,14 @@ async def create_editor_report(
 async def create_copy_edit_appendix(manuscript_id: str, request: Request):
     manuscript = await _get_owned_manuscript(manuscript_id, request)
     await _limit_ai_operation(request, manuscript)
+    if _cfg.AI_JOBS_ENABLED:
+        key = request.headers.get("idempotency-key") or f"copy-edit:{manuscript_id}:{uuid.uuid4()}"
+        job = await enqueue_ai_job(
+            user_id=manuscript["user_id"], manuscript_id=manuscript_id,
+            job_type="copy_edit", idempotency_key=key, payload={},
+        )
+        return JSONResponse(public_job(job), status_code=202)
+
     readers = await db.reader_personas.find({"manuscript_id": manuscript_id}, {"_id": 0}).to_list(10)
     copy_estimate = await preflight_estimate(manuscript, readers, "copyedit")
     _require_affordable(copy_estimate)
@@ -1044,6 +1072,7 @@ async def export_manuscript_workspace(manuscript_id: str, request: Request):
         "reactions": await rows(db.reader_reactions),
         "memories": await rows(db.reader_memories),
         "workflow_tasks": await rows(db.workflow_tasks),
+        "ai_jobs": [public_job(job) for job in await rows(db.ai_jobs, 100)],
         "current_report": current_report,
         "report_versions": await rows(db.report_versions, 100),
     }
@@ -1054,10 +1083,15 @@ async def delete_manuscript(manuscript_id: str, request: Request, confirm: bool 
     await _get_owned_manuscript(manuscript_id, request)
     if not confirm:
         raise HTTPException(400, "Deletion requires confirm=true")
+    if (
+        await db.ai_jobs.count_documents({"manuscript_id": manuscript_id, "status": "queued"})
+        or await db.ai_jobs.count_documents({"manuscript_id": manuscript_id, "status": "running"})
+    ):
+        raise HTTPException(409, "Wait for the active AI job to finish before deleting this manuscript")
     # PostgreSQL/Supabase cascade from manuscripts. Explicit cleanup preserves
     # identical behavior in the local memory backend.
     for table in (
-        db.report_versions, db.editor_reports, db.workflow_tasks, db.reader_memories,
+        db.ai_jobs, db.report_versions, db.editor_reports, db.workflow_tasks, db.reader_memories,
         db.reader_reactions, db.reader_personas,
     ):
         await table.delete_many({"manuscript_id": manuscript_id})

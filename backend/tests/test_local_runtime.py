@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 from server import app
 from config import db
 from services.auth_security import hash_opaque_token
+from worker import run_worker
 
 
 def test_authenticated_local_workflow():
@@ -44,12 +45,13 @@ def test_authenticated_local_workflow():
         personas = personas_response.json()
         assert len(personas) == 3
 
-        stream = client.get(
-            f"/api/manuscripts/{manuscript_id}/read-all?reader_ids={personas[0]['id']}",
+        queued = client.post(
+            f"/api/manuscripts/{manuscript_id}/jobs/reading?reader_ids={personas[0]['id']}",
         )
-        assert stream.status_code == 200, stream.text
-        assert '"type": "reader_complete"' in stream.text
-        assert '"type": "all_complete"' in stream.text
+        assert queued.status_code == 202, queued.text
+        asyncio.run(run_worker(once=True))
+        job = client.get(f"/api/jobs/{queued.json()['id']}")
+        assert job.json()["status"] == "completed", job.text
 
         workflow = client.get(f"/api/manuscripts/{manuscript_id}/workflow-status")
         assert workflow.status_code == 200, workflow.text
@@ -57,8 +59,11 @@ def test_authenticated_local_workflow():
         assert workflow.json()["completed_tasks"] == manuscript["total_sections"]
 
         report = client.post(f"/api/manuscripts/{manuscript_id}/editor-report")
-        assert report.status_code == 200, report.text
-        report_json = report.json()["report"]
+        assert report.status_code == 202, report.text
+        asyncio.run(run_worker(once=True))
+        report_job = client.get(f"/api/jobs/{report.json()['id']}").json()
+        assert report_job["status"] == "completed"
+        report_json = report_job["result"]["report"]
         assert report_json["schema_version"] == 3
         assert report_json["executive_summary"]["synopsis"]
         assert report_json["revision_plan"]
@@ -66,4 +71,4 @@ def test_authenticated_local_workflow():
         cached = client.post(f"/api/manuscripts/{manuscript_id}/editor-report")
         assert cached.status_code == 200, cached.text
         assert cached.json()["cached"] is True
-        assert cached.json()["id"] == report.json()["id"]
+        assert cached.json()["report"]["schema_version"] == 3

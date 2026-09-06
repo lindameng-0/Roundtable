@@ -33,7 +33,7 @@ export default function ReadingPage() {
     handleRetry, handleViewPartial, workflowProgress, workflowUsage, workflowModels, workflowBudget,
   } = useReadingStream(manuscriptId);
 
-  // Close stream when user leaves the page so the backend pauses reader pipelines
+  // Stop browser polling on unmount. The durable worker continues independently.
   useEffect(() => {
     return () => { esRef.current?.close(); };
   }, [esRef]);
@@ -68,7 +68,7 @@ export default function ReadingPage() {
       const completedPairs = new Set(selectedExisting.map((reaction) => `${reaction.reader_id}|${reaction.section_number}`));
       const allDone = totalSecs > 0 && personaListToUse.length > 0 && completedPairs.size >= totalSecs * personaListToUse.length;
 
-      if (selectedExisting.length > 0) loadExistingReactions(selectedExisting, personaListToUse);
+      if (selectedExisting.length > 0) loadExistingReactions(selectedExisting, personaListToUse, totalSecs);
       if (allDone) {
         setTotalSections(mRes.data.total_sections || 0);
         setReadingDone(true);

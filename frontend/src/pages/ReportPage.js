@@ -103,6 +103,16 @@ export default function ReportPage() {
   const [viewingVersion, setViewingVersion] = useState(null);
   const [budget, setBudget] = useState(null);
 
+  const waitForJob = async (jobId) => {
+    while (true) {
+      const response = await axios.get(`${API}/jobs/${jobId}`, manuscriptRequestConfig(manuscriptId));
+      const job = response.data;
+      if (job.status === "completed") return job.result || {};
+      if (job.status === "failed") throw new Error(job.error || "AI job failed after automatic retries");
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+  };
+
   useEffect(() => {
     loadReport();
   }, [manuscriptId]);
@@ -124,6 +134,21 @@ export default function ReportPage() {
         setReport(normalizeReport(repRes.data.report_json));
       } else if (repRes?.data?.report) {
         setReport(normalizeReport(repRes.data.report));
+      } else {
+        const jobs = await axios.get(
+          `${API}/manuscripts/${manuscriptId}/jobs?job_type=editor_report`,
+          manuscriptRequestConfig(manuscriptId),
+        ).catch(() => ({ data: [] }));
+        const active = (jobs.data || []).find((job) => job.status === "queued" || job.status === "running");
+        if (active) {
+          setGenerating(true);
+          waitForJob(active.id).then(async (result) => {
+            setReport(normalizeReport(result.report));
+            await refreshVersions();
+            await refreshBudget();
+            toast.success("Editor report generated");
+          }).catch((error) => toast.error(error.message)).finally(() => setGenerating(false));
+        }
       }
     } catch (err) {
       const status = err.response?.status;
@@ -150,15 +175,20 @@ export default function ReportPage() {
     }
     setGenerating(true);
     try {
-      const res = await axios.post(`${API}/manuscripts/${manuscriptId}/editor-report${force ? "?force=true" : ""}`, {}, manuscriptRequestConfig(manuscriptId));
-      setReport(normalizeReport(res.data.report));
+      const key = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+      const res = await axios.post(
+        `${API}/manuscripts/${manuscriptId}/editor-report${force ? "?force=true" : ""}`,
+        {}, manuscriptRequestConfig(manuscriptId, { headers: { "Idempotency-Key": force ? key : `editor-report-${manuscriptId}-initial` } }),
+      );
+      const result = res.status === 202 ? await waitForJob(res.data.id) : res.data;
+      setReport(normalizeReport(result.report));
       setViewingVersion(null);
       await refreshVersions();
       await refreshBudget();
       toast.success("Editor report generated");
     } catch (err) {
       const detail = err.response?.data?.detail ?? err.response?.data?.message;
-      const msg = typeof detail === "string" ? detail : (Array.isArray(detail) ? detail.map((d) => d.msg ?? d).join(", ") : null);
+      const msg = typeof detail === "string" ? detail : (Array.isArray(detail) ? detail.map((d) => d.msg ?? d).join(", ") : err.message);
       toast.error(msg || "Failed to generate report. Make sure you've read at least one section.");
     } finally {
       setGenerating(false);
@@ -210,18 +240,20 @@ export default function ReportPage() {
     if (!approved) return;
     setCopyEditing(true);
     try {
+      const key = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
       const res = await axios.post(
         `${API}/manuscripts/${manuscriptId}/editor-report/copy-edit`,
         {},
-        manuscriptRequestConfig(manuscriptId)
+        manuscriptRequestConfig(manuscriptId, { headers: { "Idempotency-Key": `copy-edit-${manuscriptId}-${key}` } })
       );
-      setReport((current) => ({ ...current, copy_edit_appendix: res.data.copy_edit_appendix }));
+      const result = res.status === 202 ? await waitForJob(res.data.id) : res.data;
+      setReport((current) => ({ ...current, copy_edit_appendix: result.copy_edit_appendix }));
       setViewingVersion(null);
       await refreshVersions();
       await refreshBudget();
       toast.success("Copy-edit appendix generated");
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Copy edit failed");
+      toast.error(err.response?.data?.detail || err.message || "Copy edit failed");
     } finally {
       setCopyEditing(false);
     }

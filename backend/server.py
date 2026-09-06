@@ -8,6 +8,7 @@ from starlette.middleware.cors import CORSMiddleware
 from config import db
 from routers.api import api_router
 from routers.auth import auth_router
+from routers.jobs import jobs_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -33,6 +34,7 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 app.include_router(api_router)
 app.include_router(auth_router)
+app.include_router(jobs_router)
 default_origins = (
     "https://roundtable.works"
     if os.environ.get("ENVIRONMENT", "development").strip().lower() == "production"
@@ -45,7 +47,7 @@ allow_origins = [o.strip() for o in origins_raw.split(",") if o.strip()]
 @app.middleware("http")
 async def reject_cross_site_cookie_requests(request: Request, call_next):
     """Prevent cross-site use of the session cookie, including costly GET streams."""
-    protected_prefixes = ("/api/manuscripts", "/api/user", "/api/config/model", "/api/auth/logout")
+    protected_prefixes = ("/api/manuscripts", "/api/jobs", "/api/user", "/api/config/model", "/api/auth/logout")
     if (
         os.environ.get("ENVIRONMENT", "development").strip().lower() == "production"
         and request.cookies.get("session_token")

@@ -133,6 +133,15 @@ MANUSCRIPT_CREATE_IP_RATE_PER_HOUR = max(1, int(os.environ.get('MANUSCRIPT_CREAT
 AI_ACCOUNT_RATE_PER_HOUR = max(1, int(os.environ.get('AI_ACCOUNT_RATE_PER_HOUR', '30')))
 AI_IP_RATE_PER_HOUR = max(1, int(os.environ.get('AI_IP_RATE_PER_HOUR', '60')))
 MAX_UPLOAD_MB = max(1, min(100, int(os.environ.get('MAX_UPLOAD_MB', '25'))))
+AI_JOB_GLOBAL_CONCURRENCY = max(1, int(os.environ.get('AI_JOB_GLOBAL_CONCURRENCY', '4')))
+AI_JOB_USER_CONCURRENCY = max(1, int(os.environ.get('AI_JOB_USER_CONCURRENCY', '1')))
+AI_JOB_MAX_ATTEMPTS = max(1, min(10, int(os.environ.get('AI_JOB_MAX_ATTEMPTS', '3'))))
+AI_JOB_LEASE_SECONDS = max(60, int(os.environ.get('AI_JOB_LEASE_SECONDS', '600')))
+AI_JOB_POLL_SECONDS = max(0.25, float(os.environ.get('AI_JOB_POLL_SECONDS', '2')))
+AI_JOB_WORKER_SLOTS = max(1, int(os.environ.get('AI_JOB_WORKER_SLOTS', '4')))
+AI_JOBS_ENABLED = os.environ.get(
+    'AI_JOBS_ENABLED', 'false' if ENVIRONMENT == 'production' else 'true'
+).strip().lower() in {'1', 'true', 'yes', 'on'}
 
 # Admin users bypass usage limits
 ADMIN_EMAILS = [
