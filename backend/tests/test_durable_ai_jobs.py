@@ -112,3 +112,12 @@ def test_reading_finishes_after_originating_browser_closes():
         assert job.json()["status"] == "completed"
         reactions = reopened_browser.get(f"/api/manuscripts/{manuscript['id']}/all-reactions").json()
         assert len(reactions) == manuscript["total_sections"]
+
+        # Tabs loaded before the durable-jobs frontend release still use this
+        # SSE URL. It must translate stored job progress without rerunning AI.
+        legacy = reopened_browser.get(
+            f"/api/manuscripts/{manuscript['id']}/read-all?reader_ids={personas[0]['id']}"
+        )
+        assert legacy.status_code == 200
+        assert '\"type\": \"reader_complete\"' in legacy.text
+        assert '\"type\": \"all_complete\"' in legacy.text

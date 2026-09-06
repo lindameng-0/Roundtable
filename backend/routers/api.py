@@ -46,7 +46,7 @@ from services.llm_gateway import structured_completion
 from services.model_routing import route_for_role
 from services.reader_focus import FOCUS_GROUPS
 from services.rate_limit import enforce_rate_limit
-from services.ai_jobs import enqueue_ai_job, public_job
+from services.ai_jobs import enqueue_ai_job, public_job, reading_idempotency_key
 from routers.auth import _get_session_user
 
 api_router = APIRouter(prefix="/api")
@@ -157,6 +157,7 @@ async def health():
         "database_ready": True,
         "database_private_network": ".railway.internal" in (_cfg.DATABASE_URL or ""),
         "ai_jobs_enabled": _cfg.AI_JOBS_ENABLED,
+        "ai_job_api_version": 2,
         "ai_worker_ready": active_workers > 0,
         "ai_worker_count": active_workers,
     }
@@ -656,10 +657,80 @@ async def read_all_sections_stream(
     request: Request,
     reader_ids: str | None = Query(None, description="Comma-separated reader IDs to use; if omitted, all readers are used"),
 ):
-    """SSE: auto-reads all sections sequentially, N readers in parallel per section. Pauses when client disconnects."""
+    """Legacy SSE facade; durable deployments keep processing after disconnect."""
     manuscript = await _get_owned_manuscript(manuscript_id, request)
     if _cfg.AI_JOBS_ENABLED:
-        raise HTTPException(410, "This streaming endpoint was replaced by POST /api/manuscripts/{id}/jobs/reading")
+        await _limit_ai_operation(request, manuscript)
+        all_readers = await db.reader_personas.find({"manuscript_id": manuscript_id}, {"_id": 0}).to_list(10)
+        selected_ids = {item.strip() for item in (reader_ids or "").split(",") if item.strip()}
+        readers = [reader for reader in all_readers if not selected_ids or reader.get("id") in selected_ids]
+        if selected_ids and {reader.get("id") for reader in readers} != selected_ids:
+            raise HTTPException(400, "One or more selected readers are invalid")
+        if not readers:
+            raise HTTPException(400, "No readers found. Generate readers first.")
+        initial_estimate = await preflight_estimate(manuscript, readers, "readers")
+        _require_affordable(initial_estimate)
+        selected_ids = {reader["id"] for reader in readers}
+        readers_by_id = {reader["id"]: reader for reader in readers}
+        job = await enqueue_ai_job(
+            user_id=manuscript["user_id"], manuscript_id=manuscript_id,
+            job_type="reading",
+            idempotency_key=reading_idempotency_key(manuscript_id, list(selected_ids)),
+            payload={"reader_ids": sorted(selected_ids)}, retry_failed=True,
+        )
+        await db.manuscripts.update_one({"id": manuscript_id}, {"$set": {"reader_config_locked": True}})
+
+        async def durable_compatibility_stream():
+            """Translate stored worker progress into the legacy SSE event contract."""
+            initial = await workflow_status(manuscript, readers)
+            yield f"data: {json.dumps({'type': 'start', 'total_sections': manuscript.get('total_sections', 0), 'total_readers': len(readers), 'total_tasks': initial['total_tasks'], 'completed_tasks': initial['completed_tasks'], 'usage': initial.get('usage'), 'budget': initial.get('budget'), 'cost_estimate': initial_estimate})}\n\n"
+            emitted = set()
+            while True:
+                if await request.is_disconnected():
+                    return
+                reactions = await db.reader_reactions.find(
+                    {"manuscript_id": manuscript_id}, {"_id": 0}
+                ).sort("section_number", 1).to_list(5000)
+                for reaction in reactions:
+                    pair = (reaction.get("reader_id"), reaction.get("section_number"))
+                    if pair in emitted or reaction.get("reader_id") not in selected_ids:
+                        continue
+                    emitted.add(pair)
+                    response_json = reaction.get("response_json") or {}
+                    reader = readers_by_id.get(reaction.get("reader_id"), {})
+                    event = {
+                        **response_json,
+                        "type": "reader_complete", "reader_id": reaction.get("reader_id"),
+                        "reader_name": reaction.get("reader_name"),
+                        "avatar_index": reader.get("avatar_index", 0),
+                        "personality": reader.get("personality", ""),
+                        "section_number": reaction.get("section_number"),
+                        "inline_comments": reaction.get("inline_comments") or [],
+                        "section_reflection": reaction.get("section_reflection"),
+                        "reaction_id": reaction.get("id", ""),
+                    }
+                    yield f"data: {json.dumps(event)}\n\n"
+
+                latest = await db.ai_jobs.find_one({"id": job["id"]}, {"_id": 0})
+                if not latest:
+                    yield f"data: {json.dumps({'type': 'reader_error', 'message': 'Reading job no longer exists'})}\n\n"
+                    return
+                if latest.get("status") == "completed":
+                    final = await workflow_status(manuscript, readers)
+                    yield f"data: {json.dumps({'type': 'all_complete', 'workflow': final})}\n\n"
+                    return
+                if latest.get("status") == "failed":
+                    yield f"data: {json.dumps({'type': 'reader_error', 'message': latest.get('error') or 'Reading failed after automatic retries'})}\n\n"
+                    final = await workflow_status(manuscript, readers)
+                    yield f"data: {json.dumps({'type': 'all_complete', 'workflow': final})}\n\n"
+                    return
+                yield ": heartbeat\n\n"
+                await asyncio.sleep(_cfg.AI_JOB_POLL_SECONDS)
+
+        return StreamingResponse(
+            durable_compatibility_stream(), media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+        )
     await _limit_ai_operation(request, manuscript)
 
     sections = manuscript.get("sections", [])
