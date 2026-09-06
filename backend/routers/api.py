@@ -148,7 +148,12 @@ async def health():
     database_ready = await ping() if ping else True
     if not database_ready:
         raise HTTPException(503, "Database is not ready")
-    return {"status": "ready", "database_backend": _cfg.DATABASE_BACKEND, "database_ready": True}
+    return {
+        "status": "ready",
+        "database_backend": _cfg.DATABASE_BACKEND,
+        "database_ready": True,
+        "database_private_network": ".railway.internal" in (_cfg.DATABASE_URL or ""),
+    }
 
 
 @api_router.get("/config/models")
