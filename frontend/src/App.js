@@ -68,7 +68,8 @@ function App() {
             <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/verify-email" element={<PublicOnlyRoute><VerifyEmailPage /></PublicOnlyRoute>} />
             <Route path="/forgot-password" element={<PublicOnlyRoute><ForgotPasswordPage /></PublicOnlyRoute>} />
-            <Route path="/reset-password" element={<PublicOnlyRoute><ResetPasswordPage /></PublicOnlyRoute>} />
+            {/* Reset links must remain reachable even when an old session is active. */}
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
 
             {/* Protected routes (require auth) */}
             <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />

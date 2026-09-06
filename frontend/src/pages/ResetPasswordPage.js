@@ -3,6 +3,7 @@ import axios from "axios";
 import { BookOpen, CheckCircle2, Eye, EyeOff, Loader2, XCircle } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { getApi } from "../apiConfig";
+import { useAuth } from "../context/AuthContext";
 
 const API = getApi();
 
@@ -15,6 +16,7 @@ export default function ResetPasswordPage() {
   const [status, setStatus] = useState("form");
   const [error, setError] = useState("");
   const token = params.get("token") || "";
+  const { logout } = useAuth();
 
   const submit = async (event) => {
     event.preventDefault();
@@ -31,6 +33,9 @@ export default function ResetPasswordPage() {
     setSubmitting(true);
     try {
       await axios.post(`${API}/auth/reset-password`, { token, password });
+      // The backend revokes every session after a password change. Mirror that
+      // state locally so the sign-in link cannot bounce back to the manuscript page.
+      await logout();
       setStatus("success");
     } catch (requestError) {
       const detail = requestError?.response?.data?.detail;
