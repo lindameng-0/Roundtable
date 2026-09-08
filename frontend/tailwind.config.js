@@ -8,8 +8,8 @@ module.exports = {
   theme: {
         extend: {
                 fontFamily: {
-                        serif: ['Instrument Serif', 'Georgia', 'serif'],
-                        sans: ['DM Sans', 'system-ui', 'sans-serif'],
+                        serif: ['EB Garamond', 'Georgia', 'serif'],
+                        sans: ['IBM Plex Sans', 'system-ui', 'sans-serif'],
                 },
                 borderRadius: {
                         lg: 'var(--radius)',
@@ -17,23 +17,23 @@ module.exports = {
                         sm: 'calc(var(--radius) - 4px)'
                 },
                 colors: {
-                        paper: '#F7F5EE',
+                        paper: '#faf7ef',
                         'paper-dark': '#EEECE3',
                         ink: {
-                                900: '#302D32',
+                                900: '#45413a',
                                 800: '#39343C',
                                 700: '#514A55',
                                 500: '#706A70',
                                 300: '#817A80',
-                                600: '#66616A',
-                                400: '#746C75',
+                                600: '#6a645b',
+                                400: '#756e63',
                         },
                         clay: {
                                 DEFAULT: '#493449',
                                 hover: '#624861',
                         },
-                        sage: '#526653',
-                        gold: '#94712D',
+                        sage: '#493449',
+                        gold: '#6f6572',
                         background: 'hsl(var(--background))',
                         foreground: 'hsl(var(--foreground))',
                         card: {

@@ -134,7 +134,8 @@ def _as_utc(value) -> datetime:
 
 def _public_user(user: dict) -> dict:
     allowed = {"user_id", "email", "name", "picture", "email_verified", "auth_provider", "created_at"}
-    return {key: value for key, value in user.items() if key in allowed}
+    from services.owner import is_owner
+    return {**{key: value for key, value in user.items() if key in allowed}, "is_owner": is_owner(user)}
 
 
 async def _create_session(user_id: str, response: Response) -> str:

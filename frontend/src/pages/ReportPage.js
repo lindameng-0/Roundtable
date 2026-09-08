@@ -81,7 +81,7 @@ function Section({ icon: Icon, title, children, delay = 0, testId, accent }) {
         </div>
         <h2
           className="font-serif text-2xl text-ink-900"
-          style={{ fontFamily: "'Instrument Serif', serif" }}
+          style={{ fontFamily: "var(--display)" }}
         >
           {title}
         </h2>
@@ -300,7 +300,7 @@ export default function ReportPage() {
   }
 
   return (
-    <div className="min-h-screen bg-paper report-document" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+    <div className="min-h-screen bg-paper report-document" style={{ fontFamily: "var(--body)" }}>
       <SiteHeader />
       <main id="main-content" tabIndex={-1} className="report-content max-w-4xl mx-auto px-8 py-12">
         <button data-testid="back-to-reading-btn" onClick={() => navigate(`/read/${manuscriptId}`)} className="text-link inline-flex items-center gap-2 mb-7 no-print"><ArrowLeft size={14} />Back to reading</button>
@@ -314,7 +314,7 @@ export default function ReportPage() {
           <p className="text-xs text-ink-400 uppercase tracking-widest mb-3">Roundtable Editorial Review</p>
           <h1
             className="font-serif text-5xl text-ink-900 mb-4"
-            style={{ fontFamily: "'Instrument Serif', serif" }}
+            style={{ fontFamily: "var(--display)" }}
           >
             {manuscript?.title || "Untitled Manuscript"}
           </h1>
@@ -356,7 +356,7 @@ export default function ReportPage() {
         {!report ? (
           <div className="text-center py-20 border border-ink-900/8 bg-white" style={{ borderRadius: "2px" }}>
             <BookOpen className="w-8 h-8 text-ink-400 mx-auto mb-4" strokeWidth={1.5} />
-            <h3 className="font-serif text-xl text-ink-900 mb-2" style={{ fontFamily: "'Instrument Serif', serif" }}>
+            <h3 className="font-serif text-xl text-ink-900 mb-2" style={{ fontFamily: "var(--display)" }}>
               No report yet
             </h3>
             <p className="text-sm text-ink-400 mb-6 max-w-sm mx-auto">
@@ -423,7 +423,7 @@ export default function ReportPage() {
                 title="What readers disagree about"
                 delay={0.2}
                 testId="disagreements-section"
-                accent="#94712D"
+                accent="#6f6572"
               >
                 <DisagreementsContent items={report.disagreements} />
               </Section>
@@ -448,7 +448,7 @@ export default function ReportPage() {
                 title="Strongest moments"
                 delay={0.3}
                 testId="strongest-moments-section"
-                accent="#526653"
+                accent="#493449"
               >
                 <StrongestMomentsContent items={report.strongest_moments} />
               </Section>
@@ -647,7 +647,7 @@ function DidItLandContent({ didItLand }) {
         <p
           key={i}
           className="text-base text-ink-600 leading-relaxed"
-          style={{ fontFamily: "'Instrument Serif', serif", fontSize: "1.05rem", lineHeight: "1.8" }}
+          style={{ fontFamily: "var(--display)", fontSize: "1.05rem", lineHeight: "1.8" }}
         >
           {para}
         </p>
@@ -675,7 +675,7 @@ function EngagementMapContent({ items }) {
             className="text-xs font-semibold px-2 py-0.5 flex-shrink-0 mt-0.5"
             style={{
               background: "rgba(140,136,133,0.12)",
-              color: "#66616A",
+              color: "#6a645b",
               borderRadius: "2px",
             }}
           >
@@ -704,11 +704,11 @@ function DisagreementsContent({ items }) {
         >
           <div
             className="w-1 flex-shrink-0 mt-1.5"
-            style={{ background: "#94712D", borderRadius: "1px", minHeight: "32px" }}
+            style={{ background: "#6f6572", borderRadius: "1px", minHeight: "32px" }}
           />
           <p
             className="text-sm text-ink-600 leading-relaxed"
-            style={{ fontFamily: "'Instrument Serif', serif", fontSize: "1rem", lineHeight: "1.7" }}
+            style={{ fontFamily: "var(--display)", fontSize: "1rem", lineHeight: "1.7" }}
           >
             {typeof item === "string" ? item : (
               <>
@@ -756,7 +756,7 @@ function OpenQuestionsContent({ items }) {
             <div className="flex-1 min-w-0">
               <p
                 className="text-sm text-ink-700 leading-relaxed"
-                style={{ fontFamily: "'Instrument Serif', serif", fontSize: "1rem", fontStyle: "italic" }}
+                style={{ fontFamily: "var(--display)", fontSize: "1rem", fontStyle: "italic" }}
               >
                 {question}
               </p>
@@ -800,7 +800,7 @@ function StrongestMomentsContent({ items }) {
           </div>
           <p
             className="text-sm text-ink-700 leading-relaxed"
-            style={{ fontFamily: "'Instrument Serif', serif", fontSize: "1.05rem", lineHeight: "1.75" }}
+            style={{ fontFamily: "var(--display)", fontSize: "1.05rem", lineHeight: "1.75" }}
           >
             {item.comment || item.quote_or_summary}
           </p>

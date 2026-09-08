@@ -1,0 +1,49 @@
+{
+  "catalog_version": 2,
+  "starter_credits": 50,
+  "payments_enabled": false,
+  "items": [
+    {
+      "id": "pro",
+      "name": "Writer",
+      "credits": 200,
+      "cents": 1500,
+      "mode": "subscription",
+      "rollover": true,
+      "available": false
+    },
+    {
+      "id": "studio",
+      "name": "Studio",
+      "credits": 450,
+      "cents": 2900,
+      "mode": "subscription",
+      "rollover": true,
+      "available": false
+    },
+    {
+      "id": "topup_100",
+      "name": "Small reading pack",
+      "credits": 100,
+      "cents": 1000,
+      "mode": "payment",
+      "available": false
+    },
+    {
+      "id": "topup_220",
+      "name": "Medium reading pack",
+      "credits": 220,
+      "cents": 2000,
+      "mode": "payment",
+      "available": false
+    },
+    {
+      "id": "topup_400",
+      "name": "Large reading pack",
+      "credits": 400,
+      "cents": 3500,
+      "mode": "payment",
+      "available": false
+    }
+  ]
+}

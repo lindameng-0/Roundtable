@@ -60,9 +60,9 @@
   },
   "scripts": {
     "start": "craco start",
-    "build": "craco build",
+    "build": "craco build && node scripts/prerender.cjs",
     "test": "craco test",
-    "deploy": "npm run build && node -e \"require('fs').copyFileSync('build/index.html','build/404.html')\" && gh-pages -d build -r https://github.com/lindameng-0/Roundtable.git"
+    "deploy": "npm run build && gh-pages -d build -r https://github.com/lindameng-0/Roundtable.git"
   },
   "browserslist": {
     "production": [

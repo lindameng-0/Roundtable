@@ -8,6 +8,10 @@ import { useAuth } from "../context/AuthContext";
 import SiteHeader, { SiteFooter } from "../components/SiteHeader";
 import { initializePaddle, openPaddleCheckout } from "../paddleCheckout";
 import "../billing.css";
+import PolicyContact from "../components/PolicyContact";
+// Public reference prices remain readable if the billing API is unavailable.
+// Keep this snapshot aligned with backend/services/billing_catalog.py.
+import publishedPricing from "../publishedPricing.json";
 
 const API = getApi();
 const format = (n) => Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
@@ -17,7 +21,7 @@ export default function BillingPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [catalog, setCatalog] = useState(null);
+  const [catalog, setCatalog] = useState(publishedPricing);
   const [balance, setBalance] = useState(null);
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState("");
@@ -25,12 +29,23 @@ export default function BillingPage() {
   const refresh = useCallback(async () => {
     setError("");
     try {
-      const [products, account] = await Promise.all([
-        axios.get(`${API}/billing/catalog`),
-        user ? axios.get(`${API}/billing/balance`, { withCredentials: true }) : Promise.resolve(null),
+      const [products, account] = await Promise.allSettled([
+        axios.get(`${API}/billing/catalog`, { timeout: 10000 }),
+        user ? axios.get(`${API}/billing/balance`, { withCredentials: true, timeout: 10000 }) : Promise.resolve(null),
       ]);
-      setCatalog(products.data);
-      setBalance(account?.data || null);
+      if (products.status === "fulfilled") {
+        setCatalog(products.value.data);
+      } else {
+        setCatalog(publishedPricing);
+        setError("Live billing is unavailable. Published USD prices are shown below; refresh before purchasing.");
+      }
+      if (account.status === "fulfilled") setBalance(account.value?.data || null);
+      else {
+        setBalance(null);
+        // Do not offer a new subscription when the existing plan is unknown.
+        setCatalog(current => ({ ...current, payments_enabled: false, items: current.items.map(item => ({ ...item, available: false })) }));
+        setError("We couldn’t load your account balance. Refresh to restore purchasing and subscription management.");
+      }
     } catch {
       setError("We couldn’t load billing details. Please refresh to try again.");
     } finally { setLoading(false); }
@@ -111,6 +126,8 @@ export default function BillingPage() {
 
   return <div className="billing-page"><SiteHeader /><main id="main-content" className="page-width billing-content pb-20" tabIndex={-1}>
     <div className="billing-intro"><div><p className="small-note">A fresh perspective, at your pace</p><h1>Room for your<br />next revision.</h1></div><p>Buy a reading pack when your draft is ready, or choose a monthly allowance for a regular writing practice. Every option includes the same reader perspectives and editorial tools.</p></div>
+    <p className="purchase-policy-note">Roundtable is AI manuscript feedback software: reader reactions beside your writing, follow-up perspectives, and editorial reports. All prices below are in USD. Applicable taxes and the final total appear at checkout.</p>
+    <p className="purchase-policy-note">Monthly plans renew automatically until cancelled. One-time packs do not renew. Purchases are subject to our <Link to="/terms">Terms of service</Link> and <Link to="/refunds">Refund policy</Link>; see our <Link to="/privacy">Privacy policy</Link> for how we handle your information.</p>
     {error && <div role="alert" className="billing-notice">{error}<button onClick={refresh} className="ml-4 underline">Retry</button></div>}
     {location.search.includes("checkout=success") && <p role="status" className="billing-notice">Your allowance updates after Paddle confirms payment. This can take a moment; refresh below to check.</p>}
     {location.search.includes("checkout=cancelled") && <p role="status" className="billing-notice">Checkout was cancelled. Your existing allowance is unchanged.</p>}
@@ -128,7 +145,7 @@ export default function BillingPage() {
     </section>}
     {balance?.payment_review && <p role="alert" className="billing-notice">Your payment needs review before you can start new AI work. Please contact support. Your saved work remains available.</p>}
     {balance?.pending_checkout && <p className="billing-notice">You have an unfinished checkout. Choose the same offer to resume it, or <button disabled={!!busy} onClick={cancelPending} className="underline">cancel this checkout</button>.</p>}
-    {loading ? <div className="py-20" role="status"><Loader2 className="animate-spin" /><span className="sr-only">Loading plans</span></div> : catalog && <>
+    {loading && !catalog ? <div className="py-20" role="status"><Loader2 className="animate-spin" /><span className="sr-only">Loading plans</span></div> : catalog && <>
       {!catalog.payments_enabled && <p className="billing-notice" role="status">Checkout is currently unavailable. You can still try the readers with your free starter allowance.</p>}
       {catalog.payments_enabled && catalog.environment === "sandbox" && <p className="billing-notice" role="status">Test checkout only. No real payments are collected.</p>}
       <section aria-labelledby="packs-heading" className="billing-offers">
@@ -137,7 +154,7 @@ export default function BillingPage() {
           <h3>{pack.name}</h3><p className="pack-purpose">{["For a draft you are ready to share.", "For another pass, or a few different perspectives.", "For several drafts and the revisions between them."][index]}</p>
           <p><span className="pack-price">${pack.cents / 100}</span><span className="pack-frequency"> once</span></p>
           <p className="pack-allowance">{pack.credits} credits, yours until used</p>
-          <button data-testid={`buy-${pack.id}`} onClick={() => purchase(pack.id)} disabled={!!busy || !pack.available} className="button button-quiet">{busy === pack.id ? "Opening checkout?" : !pack.available ? "Checkout unavailable" : "Buy reading pack"}</button>
+          <button data-testid={`buy-${pack.id}`} onClick={() => purchase(pack.id)} disabled={!!busy || !pack.available} className="button button-quiet">{busy === pack.id ? "Opening checkout..." : !pack.available ? "Checkout unavailable" : "Buy reading pack"}</button>
         </article>)}</div>
       </section>
       <section aria-labelledby="plans-heading" className="billing-offers">
@@ -150,7 +167,7 @@ export default function BillingPage() {
             <p className="plan-allowance">{plan.credits} {plan.id === "free" ? "starter credits, once" : "credits each month"}</p>
             <ul><li><Check />Distinct AI reader perspectives</li><li><Check />Notes beside your manuscript</li><li><Check />Editorial reports</li><li><Check />{plan.id === "free" ? "No card required" : plan.rollover ? "One billing cycle of capped rollover" : "Optional one-time packs"}</li></ul>
             <button data-testid={`choose-${plan.id}`} onClick={() => plan.id === "free" ? navigate(user ? "/setup" : "/signup") : purchase(plan.id)} disabled={!!busy || (plan.id !== "free" && (!plan.available || balance?.next_plan === plan.id))} className={`button ${plan.id === "pro" ? "button-primary" : "button-quiet"}`}>
-              {busy === plan.id ? "Opening checkout?" : balance?.next_plan === plan.id ? "Your current selection" : plan.id === "free" ? "Try your first reading" : !plan.available ? "Checkout unavailable" : balance?.plan && balance.plan !== "free" ? "Switch to " + plan.name : "Choose " + plan.name}
+              {busy === plan.id ? "Opening checkout..." : balance?.next_plan === plan.id ? "Your current selection" : plan.id === "free" ? "Try your first reading" : !plan.available ? "Checkout unavailable" : balance?.plan && balance.plan !== "free" ? "Switch to " + plan.name : "Choose " + plan.name}
             </button>
           </article>)}
         </div>
@@ -163,10 +180,11 @@ export default function BillingPage() {
       </section>
     </>}
     <details className="billing-terms"><summary>How billing and rollover work</summary>
-      <p>Paddle processes payments. Applicable taxes are shown at checkout. Monthly plans renew automatically until cancelled; manage them from your billing account.</p>
-      <p>{hasRollover ? "On a consecutive paid renewal, unused available monthly credits roll into the next billing cycle, up to the new plan?s monthly allowance. Rollover is used first and expires at that cycle?s end; it does not roll again. No renewal means no rollover. Legacy plans retain their original allowances and expiration rules until you switch." : "Monthly credits expire at the end of their paid billing period."} Starter and purchased credits do not expire.</p>
+      <p>Paddle is our merchant of record and authorised reseller, handling payments, taxes, and receipts. Monthly plans renew automatically until cancelled. Cancel before your next billing date from Billing → Manage subscription; your current monthly credits remain available until their normal expiry. Cancellation stops renewal and does not automatically refund the current period.</p>
+      <p>{hasRollover ? "On a consecutive paid renewal, unused available monthly credits roll into the next billing cycle, up to the new plan's monthly allowance. Rollover is used first and expires at that cycle's end; it does not roll again. No renewal means no rollover. Legacy plans retain their original allowances and expiration rules until you switch." : "Monthly credits expire at the end of their paid billing period."} Starter and purchased credits do not expire.</p>
       <p>Credits cover AI work, including reader setup. Temporary reservations protect work in progress; unused amounts return after the call. Failed model calls are not charged. Estimates are not fixed-price guarantees, and a longer response may require more allowance. Saved manuscripts and reports remain accessible at zero balance.</p>
     </details>
+    <section className="billing-how-it-works" aria-labelledby="purchase-help-heading"><h2 id="purchase-help-heading">A little clarity before you buy.</h2><p>Try the free starter allowance with no card required. There is no fixed number of words or complete readings per credit pack: longer manuscripts, more readers, and additional reports use more credits.</p><p>We offer a full refund when requested within 14 days if no credits from that purchase have been used. For used credits, service problems, billing errors, and your statutory rights, read the <Link to="/refunds" className="text-link">Refund policy</Link>.</p><p>Roundtable is independently built and operated by Linda Meng. Product, billing, or privacy questions: <PolicyContact /></p></section>
     {balance?.history?.length > 0 && <details className="billing-terms"><summary>Recent billing activity</summary><div className="overflow-x-auto"><table className="w-full text-sm text-left"><thead><tr className="border-b border-ink-900/15"><th className="py-3">Activity</th><th>Date</th><th>Credits</th></tr></thead><tbody>{balance.history.map((entry, i) => <tr key={i} className="border-b border-ink-900/5"><td className="py-3 capitalize">{entry.kind}</td><td>{new Date(entry.created_at).toLocaleDateString()}</td><td>{format(entry.credits)}</td></tr>)}</tbody></table></div></details>}
   </main><SiteFooter /></div>;
 }

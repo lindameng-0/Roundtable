@@ -50,7 +50,7 @@ export const ModelSelector = () => {
         data-testid="model-selector-btn"
         onClick={() => setOpen((o) => !o)}
         className="flex items-center gap-2 text-xs text-ink-600 border border-ink-900/12 hover:border-clay hover:text-clay px-3 py-2 transition-all"
-        style={{ borderRadius: "2px", fontFamily: "'DM Sans', sans-serif" }}
+        style={{ borderRadius: "2px", fontFamily: "var(--body)" }}
       >
         <Settings2 className="w-3.5 h-3.5" strokeWidth={1.5} />
         <span>{current.label}</span>

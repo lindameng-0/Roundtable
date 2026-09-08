@@ -1,4 +1,5 @@
 import ReaderAvatar from "../components/ReaderAvatar";
+import { readerColorStyle } from "../readerPalette";
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import SiteHeader from "../components/SiteHeader";
@@ -19,14 +20,6 @@ const CHUNK_CHARS = 80 * 1024; // 80K chars per chunk (~80KB per request)
 
 const STEPS = ["manuscript", "genre", "readers"];
 
-
-const PERSONALITY_COLORS = {
-  analytical: "#66616A",
-  emotional: "#493449",
-  casual: "#526653",
-  skeptical: "#94712D",
-  genre_savvy: "#302D32",
-};
 
 // One-line reading style per archetype (matches backend READER_ARCHETYPES order)
 const ARCHETYPE_DESCRIPTIONS = {
@@ -393,10 +386,10 @@ export default function SetupPage() {
   const stepIndex = STEPS.indexOf(step);
 
   return (
-    <div className="min-h-screen bg-paper setup-page">
+    <div className={`min-h-screen bg-paper setup-page ${step === "readers" ? "reader-selection-page" : ""}`}>
       <SiteHeader />
       <nav className="setup-steps" aria-label="Manuscript setup progress"><ol>{["Manuscript", "Genre & audience", "Your readers"].map((label, i) => <li key={label} aria-current={i === stepIndex ? "step" : undefined}><span>{i < stepIndex ? "✓" : i + 1}</span><span>{label}</span></li>)}</ol></nav>
-      <main id="main-content" className="setup-content" tabIndex={-1}>
+      <main id="main-content" className={`setup-content ${step === "readers" ? "reader-selection" : ""}`} tabIndex={-1}>
         <AnimatePresence mode="wait">
           {/* ── Limit reached card ── */}
           {step === "manuscript" && (
@@ -408,7 +401,7 @@ export default function SetupPage() {
               transition={{ duration: 0.35 }}
             >
               <div className="mb-8">
-                <h2 className="font-serif text-4xl text-ink-900 mb-3" style={{ fontFamily: "'Instrument Serif', serif" }}>
+                <h2 className="font-serif text-4xl text-ink-900 mb-3" style={{ fontFamily: "var(--display)" }}>
                   Bring your manuscript to the table
                 </h2>
                 <p className="text-ink-600 text-base">
@@ -447,7 +440,7 @@ export default function SetupPage() {
                   onChange={(e) => setText(e.target.value)}
                   placeholder="Paste your manuscript here... or drag and drop a .txt, .docx, or .pdf file above"
                   className="w-full h-80 bg-transparent border-none focus:outline-none focus:ring-0 p-6 manuscript-text resize-none placeholder:text-ink-400"
-                  style={{ fontFamily: 'Georgia, serif', fontSize: '1rem', lineHeight: '1.85' }}
+                  style={{ fontFamily: "var(--reading-font)", fontSize: '1rem', lineHeight: '1.85' }}
                 />
                 {dragOver && (
                   <div className="absolute inset-0 flex items-center justify-center bg-paper/80 pointer-events-none">
@@ -521,7 +514,7 @@ export default function SetupPage() {
               transition={{ duration: 0.35 }}
             >
               <div className="mb-8">
-                <h2 className="font-serif text-4xl text-ink-900 mb-3" style={{ fontFamily: "'Instrument Serif', serif" }}>
+                <h2 className="font-serif text-4xl text-ink-900 mb-3" style={{ fontFamily: "var(--display)" }}>
                   Your story's identity
                 </h2>
                 <p className="text-ink-600 text-base">
@@ -707,11 +700,11 @@ export default function SetupPage() {
             >
               <div className="mb-8 flex items-start justify-between">
                 <div>
-                  <h2 className="font-serif text-4xl text-ink-900 mb-3" style={{ fontFamily: "'Instrument Serif', serif" }}>
-                    Your reading panel
+                  <h2 className="font-serif text-4xl text-ink-900 mb-3" style={{ fontFamily: "var(--display)" }}>
+                    Meet your readers
                   </h2>
                   <p className="text-ink-600 text-base">
-                    Choose 1–5 readers. Each brings a different perspective. Regenerate any you'd like to change.
+                    A few different minds, one manuscript. Choose up to five readers and guide what they pay attention to.
                   </p>
                 </div>
                 <button
@@ -726,7 +719,7 @@ export default function SetupPage() {
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mb-6">
+              <div className="reader-profiles">
                 <AnimatePresence mode="popLayout">
                   {personas
                     .filter((p) => selectedReaderIds.includes(p.id))
@@ -740,8 +733,8 @@ export default function SetupPage() {
                         exit={{ opacity: 0, x: -20 }}
                         transition={{ duration: 0.25 }}
                         data-testid={`reader-card-${i}`}
-                        className="bg-white border border-ink-900/8 p-6 relative group hover:shadow-md transition-all duration-300"
-                        style={{ borderRadius: "2px" }}
+                        className="reader-profile relative"
+                        style={readerColorStyle(p.avatar_index)}
                       >
                         {selectedReaderIds.length > 1 && (
                           <button
@@ -759,7 +752,7 @@ export default function SetupPage() {
                           onClick={() => regenerateReader(p.id)}
                           disabled={regeneratingId === p.id}
                           className="absolute top-4 right-4 opacity-100 transition-opacity text-ink-400 hover:text-clay flex items-center gap-1"
-                          style={selectedReaderIds.length > 1 ? { right: "2.5rem" } : {}}
+                          style={selectedReaderIds.length > 1 ? { right: "3.5rem" } : {}}
                           aria-label="Regenerate this reader"
                         >
                           <RefreshCw
@@ -768,8 +761,8 @@ export default function SetupPage() {
                           />
                         </button>
 
-                        <div className="flex items-start gap-3 mb-3">
-                          <div className="w-12 h-12 overflow-hidden flex-shrink-0" style={{ borderRadius: "2px" }}>
+                        <div className="reader-profile-heading">
+                          <div className="reader-portrait" style={{ borderRadius: "2px" }}>
                             <ReaderAvatar name={getReaderDisplayName(p, i)} index={p.avatar_index} />
                           </div>
                           <div className="flex-1 min-w-0">
@@ -781,30 +774,17 @@ export default function SetupPage() {
                           </div>
                         </div>
 
-                        <div className="mb-3">
-                          <span
-                            className="text-xs uppercase tracking-widest font-semibold px-2 py-1"
-                            style={{
-                              color: PERSONALITY_COLORS[p.personality] || "#66616A",
-                              backgroundColor: `${PERSONALITY_COLORS[p.personality] || "#66616A"}15`,
-                              borderRadius: "2px",
-                            }}
-                          >
-                            {p.personality}
-                          </span>
-                        </div>
+                        <p className="reader-habits">{p.reading_habits || p.bio}</p>
 
-                        <p className="text-xs text-ink-600 mb-3 leading-relaxed">{p.reading_habits}</p>
-
-                        <blockquote
+                        {p.quote && <blockquote
                           className="text-sm text-ink-600 border-l-2 border-clay pl-3 mt-3"
-                          style={{ fontFamily: "'Instrument Serif', serif", fontStyle: "italic", fontSize: "0.95rem" }}
+                          style={{ fontFamily: "var(--display)", fontStyle: "italic", fontSize: "0.95rem" }}
                         >
                           "{p.quote}"
-                        </blockquote>
+                        </blockquote>}
 
                         <div className="mt-4 pt-3 border-t border-ink-900/6">
-                          <p className="text-[10px] uppercase tracking-widest text-ink-400 mb-2">Personal tastes</p>
+                          <p className="text-[10px] uppercase tracking-widest text-ink-400 mb-2">Reading tastes</p>
                           <div className="flex flex-wrap gap-1">
                             {(p.liked_tropes || []).slice(0, 2).map((t, ti) => (
                               <span key={ti} className="text-xs text-sage bg-sage/10 px-2 py-0.5" style={{ borderRadius: "2px" }}>
@@ -821,7 +801,7 @@ export default function SetupPage() {
 
                         {(p.primary_focus || (p.secondary_focuses || []).length > 0) && (
                           <div className="mt-3">
-                            <p className="text-[10px] uppercase tracking-widest text-ink-400 mb-1.5">Your assignment</p>
+                            <p className="text-[10px] uppercase tracking-widest text-ink-400 mb-1.5">Reading focus</p>
                             <div className="flex flex-wrap gap-1">
                               {p.primary_focus && <span className="text-xs text-clay bg-clay/10 px-2 py-0.5">Primary · {focusLabel(p.primary_focus)}</span>}
                               {(p.secondary_focuses || []).map((focus) => <span key={focus} className="text-xs text-ink-500 bg-ink-900/5 px-2 py-0.5">{focusLabel(focus)}</span>)}
@@ -851,7 +831,7 @@ export default function SetupPage() {
                     <div className="flex items-start justify-between gap-4 mb-6">
                       <div>
                         <p className="text-xs uppercase tracking-widest text-clay">Light customization</p>
-                        <h3 className="font-serif text-2xl text-ink-900 mt-1" style={{ fontFamily: "'Instrument Serif', serif" }}>Guide what {getReaderDisplayName(reader)} watches</h3>
+                        <h3 className="font-serif text-2xl text-ink-900 mt-1" style={{ fontFamily: "var(--display)" }}>Guide what {getReaderDisplayName(reader)} watches</h3>
                         <p className="text-xs text-ink-500 mt-1">Focus changes attention, not opinion. Nothing here requires a comment.</p>
                       </div>
                       <button onClick={() => { setEditingReaderId(null); setReaderDraft(null); }} aria-label="Close reader customization"><X className="w-4 h-4 text-ink-400" /></button>
@@ -891,7 +871,7 @@ export default function SetupPage() {
                       </div>
 
                       <div>
-                        <p className="text-xs uppercase tracking-widest text-ink-400 mb-2">Personal tastes</p>
+                        <p className="text-xs uppercase tracking-widest text-ink-400 mb-2">Reading tastes</p>
                         <p className="text-xs text-ink-500 mb-3">Generated parts of this reader's identity. Remove only those that feel exaggerated or unsuitable.</p>
                         <div className="flex flex-wrap gap-1.5 min-h-8">
                           {readerDraft.liked_tropes.map((taste) => <button key={`like-${taste}`} type="button" onClick={() => removeDraftTaste("liked_tropes", taste)} title="Remove this taste" className="flex items-center gap-1 text-xs text-sage bg-sage/10 px-2 py-1">+ {taste}<X className="w-3 h-3" /></button>)}
@@ -943,14 +923,15 @@ export default function SetupPage() {
                   style={{ borderRadius: "2px" }}
                 >
                   <Plus className="w-4 h-4" strokeWidth={1.5} />
-                  Add Reader
+                  Add reader
                 </button>
                 {selectedReaderIds.length >= MAX_READERS && (
                   <p className="text-xs text-ink-400 mt-1.5">Maximum 5 readers.</p>
                 )}
               </div>
 
-              <div className="flex justify-between">
+              <div className="reader-selection-actions">
+                <span>{selectedReaderIds.length} of {MAX_READERS} readers selected</span>
                 <button
                   data-testid="back-to-genre-btn"
                   onClick={() => setStep("genre")}
@@ -966,7 +947,7 @@ export default function SetupPage() {
                   style={{ borderRadius: "2px" }}
                 >
                   <BookOpen className="w-4 h-4" strokeWidth={1.5} />
-                  Start Reading
+                  Start reading
                 </button>
               </div>
             </motion.div>

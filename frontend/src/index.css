@@ -1,4 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,9 +5,9 @@
 
 body {
   margin: 0;
-  font-family: 'DM Sans', system-ui, sans-serif;
-  background-color: #F7F5EE;
-  color: #302D32;
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  background-color: #faf7ef;
+  color: #45413a;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -49,11 +48,11 @@ body {
 
 /* Manuscript text styling */
 .manuscript-text {
-  font-family: Georgia, serif;
+  font-family: var(--reading-font);
   font-size: 1.125rem;
   line-height: 1.9;
   letter-spacing: 0.01em;
-  color: #302D32;
+  color: #45413a;
 }
 
 /* Typing animation for streaming */
@@ -87,11 +86,11 @@ body {
   background: #EEECE3;
 }
 ::-webkit-scrollbar-thumb {
-  background: #746C75;
+  background: #756e63;
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #66616A;
+  background: #6a645b;
 }
 
 /* Chip/tag style */
@@ -102,10 +101,10 @@ body {
   padding: 4px 10px;
   border: 1px solid rgba(45, 42, 38, 0.15);
   border-radius: 2px;
-  font-family: 'DM Sans', sans-serif;
+  font-family: var(--body);
   font-size: 0.75rem;
   background: white;
-  color: #302D32;
+  color: #45413a;
   transition: all 0.2s;
 }
 
@@ -116,7 +115,7 @@ body {
 
 /* Paper texture overlay on manuscript */
 .paper-texture {
-  background-color: #F7F5EE;
+  background-color: #faf7ef;
   background-image: 
     repeating-linear-gradient(
       transparent,

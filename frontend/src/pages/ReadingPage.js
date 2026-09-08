@@ -1,12 +1,14 @@
 import { useConfirmation } from "../components/ConfirmationProvider";
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import SiteHeader from "../components/SiteHeader";
 import { Loader2 } from "lucide-react";
 import axios from "axios";
 import { useReadingStream } from "../hooks/useReadingStream";
-import { ProgressBar } from "../components/ProgressBar";
+import ReadingToolbar from "../components/ReadingToolbar";
+import ReadingDrawer from "../components/ReadingDrawer";
+import { StallBanner } from "../components/StallBanner";
 import { ManuscriptView } from "../components/ManuscriptView";
 import { ReaderSidebar } from "../components/ReaderSidebar";
 import { getApi } from "../apiConfig";
@@ -22,7 +24,16 @@ export default function ReadingPage() {
   const selectedReaderIdsFromState = location.state?.selectedReaderIds;
 
   // Page-owned state
-  const [mobilePanel, setMobilePanel] = useState("manuscript");
+  const [drawer, setDrawer] = useState(null);
+  const [focusMode, setFocusMode] = useState(false);
+  const [activeSection, setActiveSection] = useState(null);
+  const drawerOrigin = useRef(null);
+  const navigationTarget = useRef(null);
+  const openDrawer = useCallback(kind => {
+    drawerOrigin.current = document.activeElement;
+    navigationTarget.current = null;
+    setDrawer(kind);
+  }, []);
   const [loadError, setLoadError] = useState("");
   const [manuscript, setManuscript] = useState(null);
   const [personas, setPersonas] = useState([]);
@@ -35,7 +46,7 @@ export default function ReadingPage() {
     commentsByLine, readerStatus, reflections, allComments,
     thinkingReaders, readingDone, setReadingDone, processingSection, totalSections,
     setTotalSections, isStalled, esRef, startReadingAll, loadExistingReactions,
-    handleRetry, handleViewPartial, workflowProgress, workflowUsage, workflowModels, workflowBudget,
+    handleRetry, handleViewPartial, workflowProgress,
   } = useReadingStream(manuscriptId);
 
   // Stop browser polling on unmount. The durable worker continues independently.
@@ -44,12 +55,27 @@ export default function ReadingPage() {
   }, [esRef]);
 
   useEffect(() => {
-    const handler = () => setOpenPopoverLine(null);
-    const escape = event => { if (event.key === "Escape") handler(); };
-    document.addEventListener("click", handler);
+    const escape = event => {
+      if (event.key === "Escape" && !drawer && openPopoverLine != null) {
+        setOpenPopoverLine(null);
+        document.getElementById(`note-mark-${openPopoverLine}`)?.focus({ preventScroll: true });
+      }
+    };
     document.addEventListener("keydown", escape);
-    return () => { document.removeEventListener("click", handler); document.removeEventListener("keydown", escape); };
-  }, []);
+    return () => document.removeEventListener("keydown", escape);
+  }, [drawer, openPopoverLine]);
+
+  useEffect(() => {
+    if (!manuscript) return;
+    const sections = [...(manuscript.sections || [])].sort((a,b) => a.section_number - b.section_number);
+    setActiveSection(sections[0]?.section_number);
+    const observer = new IntersectionObserver(entries => {
+      const visible = entries.find(entry => entry.isIntersecting);
+      if (visible) setActiveSection(Number(visible.target.id.replace("section-", "")));
+    }, { root: document.getElementById("main-content"), rootMargin: "-5% 0px -75% 0px" });
+    document.querySelectorAll(".book-section").forEach(section => observer.observe(section));
+    return () => observer.disconnect();
+  }, [manuscript]);
 
   const loadData = async () => {
     setLoadError("");
@@ -137,18 +163,26 @@ export default function ReadingPage() {
 
   const navigateToManuscript = useCallback((targetId, openLine = null) => {
     if (!targetId) return;
-    setMobilePanel("manuscript");
+    navigationTarget.current = targetId;
+    setDrawer(null);
+    if (openLine != null) setFocusMode(false);
     const element = document.getElementById(targetId);
     if (!element) return;
     setOpenPopoverLine(openLine);
     window.history.replaceState(null, "", `#${targetId}`);
-    window.requestAnimationFrame(() => element.scrollIntoView({ behavior: "smooth", block: "center" }));
+    window.requestAnimationFrame(() => {
+      element.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
+      element.focus({ preventScroll: true });
+    });
     element.classList.add("reader-nav-highlight");
     window.setTimeout(() => element.classList.remove("reader-nav-highlight"), 1800);
   }, []);
 
   const handleOpenPopover = useCallback((lineNumber) => {
     setOpenPopoverLine((prev) => (prev === lineNumber ? null : lineNumber));
+    if (lineNumber != null) window.requestAnimationFrame(() => {
+      document.getElementById(`note-mark-${lineNumber}`)?.closest(".prose-paragraph")?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
+    });
   }, []);
 
   const toggleType = (type) => {
@@ -166,55 +200,18 @@ export default function ReadingPage() {
   }
 
   return (
-    <div className="reading-page bg-paper flex flex-col overflow-hidden" style={{ fontFamily: "'DM Sans', sans-serif" }}>
-      <SiteHeader />
-      <ProgressBar
-        manuscript={manuscript}
-        navigate={navigate}
-        readingDone={readingDone}
-        processingSection={processingSection}
-        totalSections={totalSections}
-        loadingReport={loadingReport}
-        generateReport={openOrGenerateReport}
-        progress={progress}
-        workflowProgress={workflowProgress}
-        workflowUsage={workflowUsage}
-        workflowModels={workflowModels}
-        workflowBudget={workflowBudget}
-      />
-
-      <div className="mobile-reading-tabs" role="group" aria-label="Reading view"><button onClick={() => setMobilePanel("manuscript")} aria-pressed={mobilePanel === "manuscript"}>Manuscript</button><button onClick={() => setMobilePanel("readers")} aria-pressed={mobilePanel === "readers"}>Reader notes ({totalCommentCount})</button></div>
-      <main id="main-content" tabIndex={-1} className="reading-panels" data-panel={mobilePanel}>
-        <ManuscriptView
-          manuscript={manuscript}
-          commentsByLine={commentsByLine}
-          personas={personas}
-          openPopoverLine={openPopoverLine}
-          onOpenPopover={handleOpenPopover}
-          readingDone={readingDone}
-          totalSections={totalSections}
-          totalCommentCount={totalCommentCount}
-          generateReport={openOrGenerateReport}
-          loadingReport={loadingReport}
-        />
-        <ReaderSidebar
-          manuscriptId={manuscriptId}
-          onNavigate={navigateToManuscript}
-          personas={personas}
-          readerStatus={readerStatus}
-          reflections={reflections}
-          allComments={allComments}
-          thinkingReaders={thinkingReaders}
-          totalCommentCount={totalCommentCount}
-          activeTypes={activeTypes}
-          toggleType={toggleType}
-          setActiveTypes={setActiveTypes}
-          isStalled={isStalled}
-          readingDone={readingDone}
-          onRetry={() => handleRetry(manuscript, personas)}
-          onViewPartial={handleViewPartial}
-        />
+    <div className="reading-workspace">
+      <ReadingToolbar drawer={drawer} openDrawer={openDrawer} focusMode={focusMode} setFocusMode={value => { setFocusMode(value); if (value) setOpenPopoverLine(null); }} readingDone={readingDone} processingSection={processingSection} totalSections={totalSections} progress={progress} totalCommentCount={totalCommentCount} loadingReport={loadingReport} generateReport={openOrGenerateReport} />
+      <main id="main-content" tabIndex={-1} className="reading-canvas">
+        {isStalled && !readingDone && <div className="reading-stall"><StallBanner onRetry={() => handleRetry(manuscript, personas)} onViewPartial={handleViewPartial} /></div>}
+        <ManuscriptView manuscript={manuscript} commentsByLine={commentsByLine} personas={personas} openPopoverLine={openPopoverLine} onOpenPopover={handleOpenPopover} readingDone={readingDone} totalCommentCount={totalCommentCount} focusMode={focusMode} onOpenReaders={() => openDrawer("readers")} onNavigate={navigateToManuscript} />
       </main>
+      <ReadingDrawer drawer={drawer} close={() => setDrawer(null)} origin={drawerOrigin} navigationTarget={navigationTarget}>
+        {drawer === "contents" ? <nav className="book-contents" aria-label="Manuscript sections">
+          <button className="contents-title" onClick={() => navigateToManuscript("manuscript-start")}>{manuscript.title}<span>Beginning of manuscript</span></button>
+          {[...(manuscript.sections || [])].sort((a,b) => a.section_number - b.section_number).map(section => <button key={section.section_number} onClick={() => navigateToManuscript(`section-${section.section_number}`)} aria-current={activeSection === section.section_number ? "location" : undefined}><span>{section.section_number}</span>{section.title || `Section ${section.section_number}`}</button>)}
+        </nav> : <ReaderSidebar manuscriptId={manuscriptId} onNavigate={navigateToManuscript} personas={personas} readerStatus={readerStatus} reflections={reflections} allComments={allComments} thinkingReaders={thinkingReaders} totalCommentCount={totalCommentCount} activeTypes={activeTypes} toggleType={toggleType} setActiveTypes={setActiveTypes} isStalled={isStalled} readingDone={readingDone} onRetry={() => handleRetry(manuscript, personas)} onViewPartial={handleViewPartial} />}
+      </ReadingDrawer>
     </div>
   );
 }

@@ -57,7 +57,7 @@ export function CommentPopover({ lineNum, comments, activeTypes, onClose }) {
                   </span>
                   <span className="text-xs text-ink-400">{c.readerName}</span>
                 </div>
-                <p className="text-sm text-ink-800 leading-relaxed" style={{ fontFamily: "'Instrument Serif', serif", fontSize: "0.95rem" }}>
+                <p className="text-sm text-ink-800 leading-relaxed" style={{ fontFamily: "var(--display)", fontSize: "0.95rem" }}>
                   {c.comment}
                 </p>
               </div>

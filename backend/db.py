@@ -137,7 +137,7 @@ class _SupabaseTable:
 
     async def count_documents(self, filter_dict: Dict) -> int:
         def _run():
-            q = self._client.table(self._table).select("id", count="exact")
+            q = self._client.table(self._table).select("*", count="exact", head=True)
             q = _apply_filter(q, filter_dict)
             resp = q.execute()
             return resp.count if hasattr(resp, "count") and resp.count is not None else len(resp.data or [])
@@ -150,6 +150,22 @@ class _SupabaseDb:
 
     def __init__(self, url: str, key: str):
         self._client: Client = create_client(url, key)
+
+    async def increment_site_analytics(self, path, source, event):
+        await asyncio.to_thread(lambda: self._client.rpc("increment_site_analytics", {
+            "p_path": path, "p_source": source, "p_event": event,
+        }).execute())
+
+    async def read_site_analytics(self, since):
+        def run():
+            rows, offset = [], 0
+            while True:
+                page = self._client.table("site_analytics").select("*").gte("day", since).order("day").order("path").order("source").order("event").range(offset, offset + 999).execute().data or []
+                rows.extend(page)
+                if len(page) < 1000:
+                    return rows
+                offset += 1000
+        return await asyncio.to_thread(run)
 
     @property
     def credit_wallets(self):
@@ -351,6 +367,14 @@ class _PostgresDb:
     async def apply_credit_change(self, user_id, version, data, key, entry):
         return await self._pool.fetchval("SELECT apply_credit_change($1,$2,$3::jsonb,$4,$5::jsonb)",
                                         user_id, version, json.dumps(data), key, json.dumps(entry))
+
+    async def increment_site_analytics(self, path, source, event):
+        await self._pool.execute("SELECT increment_site_analytics($1,$2,$3)", path, source, event)
+
+    async def read_site_analytics(self, since):
+        from datetime import date
+        rows = await self._pool.fetch("SELECT * FROM site_analytics WHERE day >= $1 ORDER BY day", date.fromisoformat(since))
+        return [dict(row) for row in rows]
 
     def __getattr__(self, name: str) -> _PostgresTable:
         if name in self.TABLES:
@@ -764,6 +788,21 @@ class _MemoryDb:
         self._tables = {name: _MemoryTable(name, self._data[name]) for name in self.TABLES}
         self._cost_lock = asyncio.Lock()
         self._job_lock = asyncio.Lock()
+
+    async def increment_site_analytics(self, path, source, event):
+        from datetime import timezone, timedelta
+        day = datetime.now(timezone.utc).date()
+        cutoff = (day - timedelta(days=400)).isoformat()
+        rows = self._data.setdefault("site_analytics", [])
+        rows[:] = [row for row in rows if row["day"] >= cutoff]
+        for row in rows:
+            if (row["day"], row["path"], row["source"], row["event"]) == (day.isoformat(), path, source, event):
+                row["count"] += 1
+                return
+        rows.append(dict(day=day.isoformat(), path=path, source=source, event=event, count=1))
+
+    async def read_site_analytics(self, since):
+        return [dict(row) for row in self._data.get("site_analytics", []) if row["day"] >= since]
 
     def __getattr__(self, name: str) -> _MemoryTable:
         if name in self._tables:
