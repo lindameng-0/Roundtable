@@ -8,6 +8,7 @@ import uuid
 import config as cfg
 
 SCALE = 1000
+BUCKETS = ("rollover", "monthly", "starter", "topup")
 
 
 class InsufficientCredits(RuntimeError):
@@ -26,19 +27,41 @@ def units(cost):
 
 def normalize(data):
     state = copy.deepcopy(data or {})
-    for bucket in ("starter", "monthly", "topup"):
+    for bucket in BUCKETS:
         state.setdefault(bucket, 0)
     state.setdefault("holds", {})
     state.setdefault("plan", "free")
     state.setdefault("debt", 0)
     if state.get("grant_end", 0) <= time.time():
+        if state["monthly"] and state.get("grant_rollover"):
+            state["expired_monthly"] = {"amount": state["monthly"], "end": state["grant_end"]}
         state["monthly"] = 0
+    if state.get("rollover_end", 0) <= time.time():
+        state["rollover"] = 0
     # Reversed payments are recovered from unspent credits and future grants.
-    for bucket in ("topup", "monthly", "starter"):
+    for bucket in ("topup", "rollover", "monthly", "starter"):
         recovered = min(state[bucket], state["debt"])
         state[bucket] -= recovered
         state["debt"] -= recovered
     return state
+
+
+def grant_monthly(state, amount, start, end, plan, subscription_id, *, rollover=False):
+    """Grant a paid period once. Only its predecessor's unused monthly grant rolls."""
+    if start <= state.get("grant_start", -1):
+        return
+    previous_end = state.get("grant_end", 0)
+    continuous = previous_end == start and state.get("grant_subscription") == subscription_id
+    unspent = state.get("monthly", 0)
+    expired = state.get("expired_monthly") or {}
+    if expired.get("end") == previous_end:
+        unspent = expired.get("amount", 0)
+    carry = min(unspent, amount) if continuous and rollover and state.get("grant_rollover") else 0
+    live = end > time.time()
+    state.update(monthly=amount if live else 0, rollover=carry if live else 0,
+                 rollover_end=end, grant_start=start, grant_end=end, grant_plan=plan,
+                 grant_subscription=subscription_id, grant_rollover=rollover)
+    state.pop("expired_monthly", None)
 
 
 async def change(user_id, key, mutate):
@@ -60,8 +83,18 @@ async def change(user_id, key, mutate):
 async def ensure_wallet(user_id):
     def starter(state):
         state["starter"] += cfg.STARTER_CREDITS * SCALE
+        state["starter_granted"] = cfg.STARTER_CREDITS
         return {"kind": "starter", "credits": cfg.STARTER_CREDITS}
-    await change(user_id, "starter", starter)
+    original = await change(user_id, "starter", starter)
+    # Existing accounts receive only the difference, once; spent credits stay spent.
+    if original.get("credits", 0) < cfg.STARTER_CREDITS:
+        def upgrade(state):
+            granted = state.get("starter_granted", original.get("credits", 0))
+            extra = max(0, cfg.STARTER_CREDITS - granted)
+            state["starter"] += extra * SCALE
+            state["starter_granted"] = max(granted, cfg.STARTER_CREDITS)
+            return {"kind": "starter", "credits": extra}
+        await change(user_id, f"starter_allowance:{cfg.STARTER_CREDITS}", upgrade)
 
 
 async def balance(user_id):
@@ -76,7 +109,8 @@ async def balance(user_id):
     if state["holds"]:
         row = await cfg.db.credit_wallets.find_one({"id": user_id})
         state = normalize(row["data"])
-    return {"available_credits": max(0, sum(state[b] for b in ("starter", "monthly", "topup")) - state["debt"]) / SCALE,
+    return {"available_credits": max(0, sum(state[b] for b in BUCKETS) - state["debt"]) / SCALE,
+            "rollover_credits": state["rollover"] / SCALE, "rollover_end": state.get("rollover_end"),
             "starter_credits": state["starter"] / SCALE, "monthly_credits": state["monthly"] / SCALE,
             "topup_credits": state["topup"] / SCALE,
             "reserved_credits": sum(h["amount"] for h in state["holds"].values()) / SCALE,
@@ -89,16 +123,16 @@ async def reserve(user_id, amount, label):
     await ensure_wallet(user_id)
     rid = str(uuid.uuid4())
     def take(state):
-        available = sum(state[b] for b in ("monthly", "starter", "topup"))
+        available = sum(state[b] for b in BUCKETS)
         if state.get("payment_review") or state["debt"] or available < amount:
             raise InsufficientCredits(available, amount)
         left, split = amount, {}
-        for bucket in ("monthly", "starter", "topup"):
+        for bucket in BUCKETS:
             split[bucket] = min(state[bucket], left)
             state[bucket] -= split[bucket]
             left -= split[bucket]
         state["holds"][rid] = {"amount": amount, "split": split, "created": time.time(),
-                               "period_end": state.get("grant_end", 0)}
+                               "period_end": state.get("grant_end", 0), "rollover_end": state.get("rollover_end", 0)}
         return {"kind": "reservation", "credits": amount / SCALE, "label": label}
     await change(user_id, f"reserve:{rid}", take)
     return f"credit:{user_id}:{rid}"
@@ -112,11 +146,13 @@ async def finish(user_id, rid, actual):
         # A customer never pays more than was reserved for this call.
         charge = min(max(0, actual), hold["amount"])
         left = charge
-        for bucket in ("monthly", "starter", "topup"):
-            used = min(left, hold["split"][bucket])
+        for bucket in BUCKETS:
+            used = min(left, hold["split"].get(bucket, 0))
             left -= used
-            refund = hold["split"][bucket] - used
-            if bucket != "monthly" or (hold["period_end"] == state.get("grant_end") and hold["period_end"] > time.time()):
+            refund = hold["split"].get(bucket, 0) - used
+            expiry = "period_end" if bucket == "monthly" else "rollover_end"
+            current_expiry = state.get("grant_end" if bucket == "monthly" else "rollover_end")
+            if bucket not in {"monthly", "rollover"} or (hold.get(expiry) == current_expiry and (hold.get(expiry) or 0) > time.time()):
                 state[bucket] += refund
         return {"kind": "usage" if charge else "release", "credits": charge / SCALE}
     return await change(user_id, f"finish:{rid}", settle)

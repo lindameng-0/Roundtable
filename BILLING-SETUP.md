@@ -1,6 +1,6 @@
 # Credits and Paddle setup
 
-Implemented plans: Free (10 one-time starter credits), Pro ($19/month, 200 credits), Studio ($49/month, 600 credits). One-time packs: 100 credits/$12 and 250 credits/$30. Plans live in `backend/routers/billing.py`; the frontend reads that catalog. Change catalog amounts together with Paddle prices.
+Catalog v2: Free (50 one-time starter credits), Writer ($15/month, 200 credits), Studio ($29/month, 450 credits). One-time packs: 100 credits/$10, 220 credits/$20, and 400 credits/$35. Plans live in `backend/services/billing_catalog.py`; the frontend reads that catalog. Change catalog amounts together with Paddle prices. Packs need no subscription. Set `STARTER_CREDITS=50` on both Railway services if an existing environment override is present.
 
 ## Database and runtime
 
@@ -10,7 +10,7 @@ The migration intentionally clears passwords and sessions for existing `email,go
 
 Set `CREDITS_ENABLED=true`, `READER_PIPELINE_VERSION=v2`, and `AI_JOBS_ENABLED=true`. Run the existing worker process alongside the API. Production refuses to start with credits disabled or the unmetered V1 reader pipeline. Configure Uvicorn's trusted proxy addresses (`FORWARDED_ALLOW_IPS`) for the actual deployment; the application no longer trusts arbitrary X-Forwarded-For values itself. Do not use a wildcard on a directly reachable server.
 
-The starter grant is issued once per account, including existing accounts on their first credit-system request. Monthly credits expire at the paid period end; starter and top-up credits do not expire. There is no word allowance or per-manuscript dollar cap. Upload size and abuse rate limits remain.
+The starter grant is issued once per account. Existing accounts receive only the difference from their original grant, once, preserving prior spending. For v2 plans, unused monthly credits roll into the next consecutive paid cycle on the same subscription, capped at the new monthly allowance. Rollover is consumed first and expires at that cycle end; it never rolls twice. Credits are unavailable after expiry until a qualifying paid renewal arrives. Starter and top-up credits do not expire. There is no word allowance or per-manuscript dollar cap. Upload size and abuse rate limits remain.
 
 Credits are metered in integer thousandths. `CREDITS_PER_USD=100` converts the configured internal model-price estimates into credits. This is an initial conversion, not a verified margin guarantee. Calibrate the model-price table and conversion using representative manuscripts before selling at scale.
 
@@ -18,14 +18,17 @@ Each live model call reserves a bounded amount before contacting the provider. S
 
 ## Paddle sandbox configuration
 
-Create a Paddle Billing sandbox account and four USD prices:
+Create a Paddle Billing sandbox account and five new USD prices:
 
 | Environment variable | Price | Type |
 | --- | --- | --- |
-| `PADDLE_PRICE_PRO` | $19 / 200 credits | Monthly, frequency 1 |
-| `PADDLE_PRICE_STUDIO` | $49 / 600 credits | Monthly, frequency 1 |
-| `PADDLE_PRICE_TOPUP_100` | $12 / 100 credits | One-time |
-| `PADDLE_PRICE_TOPUP_250` | $30 / 250 credits | One-time |
+| `PADDLE_PRICE_WRITER_V2` | $15 / 200 credits | Monthly, frequency 1 |
+| `PADDLE_PRICE_STUDIO_V2` | $29 / 450 credits | Monthly, frequency 1 |
+| `PADDLE_PRICE_PACK_100` | $10 / 100 credits | One-time |
+| `PADDLE_PRICE_PACK_220` | $20 / 220 credits | One-time |
+| `PADDLE_PRICE_PACK_400` | $35 / 400 credits | One-time |
+
+Create products in Paddle **Catalog ? Products ? New product**, with tax category **SaaS**. Add the USD prices above (no trials) and copy their price IDs into the corresponding Railway API variables. Retain all old `PADDLE_PRICE_PRO`, `PADDLE_PRICE_STUDIO`, and `PADDLE_PRICE_TOPUP_*` variables for legacy renewals and refunds; never assign a v2 ID to a legacy variable. Legacy subscriptions keep their original allowance and expiry rules until the customer changes plan.
 
 Set `PADDLE_ENVIRONMENT=sandbox`, `PADDLE_API_KEY`, `PADDLE_CLIENT_TOKEN` (a `test_` client token), and `PADDLE_WEBHOOK_SECRET`. The API key and webhook secret are server-only. The client token is intentionally public and returned in the catalog. Use the sandbox host `https://sandbox-api.paddle.com`; the integration pins `Paddle-Version: 1`.
 
@@ -62,7 +65,7 @@ Subscription refunds, mismatched currencies, and adjustments with unavailable to
 
 Local validation covers mocked Paddle callbacks and isolated PostgreSQL concurrency. Before activation, complete actual Paddle sandbox Checkout and Portal flows: subscription, top-up, renewal, failed payment, cancellation, next-renewal plan change, duplicate notification, refund, and reversal. Test webhook delivery/retry with the deployed database and worker. Monitor failed notifications and payment-review cases. Scheduled remote reconciliation is not implemented.
 
-Use separate production API keys, client tokens, Price IDs, and notification secrets. Set `PADDLE_ENVIRONMENT=production` and explicitly set `PADDLE_LIVE_ENABLED=true` only after Paddle approval and sandbox acceptance. The default disables live payments. No live payments or deployment were enabled by this implementation.
+Use separate production API keys, client tokens, Price IDs, and notification secrets. Set `PADDLE_ENVIRONMENT=production` and explicitly set `PADDLE_LIVE_ENABLED=true` only after Paddle approval and sandbox acceptance. The default disables live payments. Deploying the code does not enable live payments: all credentials, new price IDs, the webhook destination, and the explicit live switch must be configured. An unavailable checkout is displayed honestly until then.
 
 Check deployed authentication cookies and deep links; the static frontend host needs rewrites or the existing GitHub Pages fallback for `/pricing` and `/billing`.
 

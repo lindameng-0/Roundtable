@@ -95,7 +95,7 @@ MAX_WORKFLOW_COST_USD = max(0.0, float(os.environ.get('MAX_WORKFLOW_COST_USD', '
 
 # Integer milli-credits avoid rounding drift across individual model calls.
 CREDITS_ENABLED = os.environ.get('CREDITS_ENABLED', 'true').lower() == 'true'
-STARTER_CREDITS = max(0, int(os.environ.get('STARTER_CREDITS', '10')))
+STARTER_CREDITS = max(0, int(os.environ.get('STARTER_CREDITS', '50')))
 CREDITS_PER_USD = max(1, int(os.environ.get('CREDITS_PER_USD', '100')))
 if ENVIRONMENT == 'production' and not CREDITS_ENABLED:
     raise RuntimeError('Credit enforcement is required in production')

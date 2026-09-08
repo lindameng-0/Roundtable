@@ -2,11 +2,12 @@ import { useConfirmation } from "../components/ConfirmationProvider";
 import React, { useCallback, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
-import { ArrowRight, Check, Loader2, RefreshCw } from "lucide-react";
+import { Check, Loader2, RefreshCw } from "lucide-react";
 import { getApi } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
 import SiteHeader, { SiteFooter } from "../components/SiteHeader";
 import { initializePaddle, openPaddleCheckout } from "../paddleCheckout";
+import "../billing.css";
 
 const API = getApi();
 const format = (n) => Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
@@ -103,43 +104,69 @@ export default function BillingPage() {
     } finally { setBusy(null); }
   };
 
+  const plans = catalog?.items.filter(item => item.mode === "subscription") || [];
+  const packs = catalog?.items.filter(item => item.mode === "payment") || [];
+  const hasRollover = catalog?.catalog_version >= 2;
+  const planName = plans.find(plan => plan.id === balance?.plan)?.name || "Free";
+
   return <div className="billing-page"><SiteHeader /><main id="main-content" className="page-width billing-content pb-20" tabIndex={-1}>
-      <div className="billing-intro"><div><p className="small-note">Plans &amp; credits</p><h1>Make room for<br />your next draft.</h1></div><p>Start with 10 credits to explore. Find a monthly plan that fits your writing, with a little extra whenever you need it.</p></div>
-      {error && <div role="alert" className="mt-6 border-l-2 border-red-700 bg-red-50 p-4 text-sm">{error}<button onClick={refresh} className="ml-4 underline">Retry</button></div>}
-      {location.search.includes("checkout=success") && <p role="status" className="mt-6 border border-ink-900/10 p-4 text-sm">You’ve returned from checkout. Credits appear after payment is confirmed; this can take a moment. You can refresh your balance below.</p>}
-      {location.search.includes("checkout=cancelled") && <p role="status" className="mt-6 text-sm text-ink-500">Checkout was cancelled. You can continue using your existing credits.</p>}
-      {balance && <section aria-label="Your credits" className="credit-summary mt-10 flex flex-wrap items-center justify-between gap-6">
-        <div><p className="text-xs uppercase tracking-widest text-ink-500">Your reading allowance</p><p className="font-serif text-4xl mt-2">{format(balance.available_credits)} <span className="text-xl">credits available</span></p></div>
-        <div className="text-sm leading-7 text-ink-500">
-          <p>{format(balance.monthly_credits)} monthly · {format(balance.topup_credits)} purchased · {format(balance.starter_credits)} starter</p>
-          <p>{format(balance.reserved_credits)} reserved for work in progress</p>
-          {balance.period_end && balance.plan !== "free" && <p>Current billing period ends {new Date(balance.period_end * 1000).toLocaleDateString()}</p>}
-          {balance.next_plan && balance.next_plan !== balance.plan && <p className="capitalize">Next paid renewal: {balance.next_plan}</p>}
-        </div>
-        <div className="flex gap-4"><button onClick={refresh} aria-label="Refresh balance" className="p-2"><RefreshCw className="w-4 h-4" /></button>{balance.has_customer && <button onClick={() => purchase("portal")} disabled={!!busy} className="text-sm underline underline-offset-4">Manage subscription</button>}</div>
-      </section>}
-      {balance?.payment_review && <p role="alert" className="mt-6 p-4 border-l-2 border-[#493449] text-sm">Your payment needs review before you can start new AI work. Please contact support. Your saved manuscripts and reports remain available.</p>}
-      {balance?.pending_checkout && <p className="mt-6 text-sm text-ink-500">You have an unfinished checkout. Choose the same plan or pack to resume it, or <button disabled={!!busy} onClick={cancelPending} className="underline underline-offset-4">cancel this checkout</button>.</p>}
-      {loading ? <div className="py-20" role="status"><Loader2 className="animate-spin" /><span className="sr-only">Loading plans</span></div> : catalog && <>
-        {!catalog.payments_enabled && <p className="mt-8 text-sm text-ink-500">Paid plans are opening soon. Starter credits are available when you create an account.</p>}
-        <section aria-label="Plans" className="plan-grid">
-          {[{ id: "free", name: "Free", cents: 0, credits: catalog.starter_credits }, ...catalog.items.filter(p => p.mode === "subscription")].map((plan) => <article key={plan.id} className={`plan-card ${plan.id}`}>
-            <div className="plan-name"><h2>{plan.name}</h2>{plan.id === "pro" && <span>A regular writing practice</span>}</div>
-            <p className="plan-purpose">{{free: "For your first fresh perspective.", pro: "For the draft taking shape.", studio: "For more stories on your desk."}[plan.id]}</p>
+    <div className="billing-intro"><div><p className="small-note">A fresh perspective, at your pace</p><h1>Room for your<br />next revision.</h1></div><p>Buy a reading pack when your draft is ready, or choose a monthly allowance for a regular writing practice. Every option includes the same reader perspectives and editorial tools.</p></div>
+    {error && <div role="alert" className="billing-notice">{error}<button onClick={refresh} className="ml-4 underline">Retry</button></div>}
+    {location.search.includes("checkout=success") && <p role="status" className="billing-notice">Your allowance updates after Paddle confirms payment. This can take a moment; refresh below to check.</p>}
+    {location.search.includes("checkout=cancelled") && <p role="status" className="billing-notice">Checkout was cancelled. Your existing allowance is unchanged.</p>}
+    {balance && <section aria-label="Your reading allowance" className="billing-wallet">
+      <div><p className="small-note">{planName} account</p><h2>{balance.available_credits > 0 ? "Ready for your next reading" : "Add room for another reading"}</h2><p>Your saved manuscripts, notes, and reports are always available.</p></div>
+      <div className="billing-wallet-actions"><button onClick={refresh} aria-label="Refresh balance" className="button button-quiet"><RefreshCw size={14} />Refresh</button>{balance.has_customer && <button onClick={() => purchase("portal")} disabled={!!busy} className="button button-quiet">Manage subscription</button>}</div>
+      <details className="billing-allowance-details"><summary>View your allowance</summary>
+        <p className="billing-balance">{format(balance.available_credits)} credits available</p>
+        <p>{format(balance.monthly_credits)} monthly, {format(balance.topup_credits)} purchased, and {format(balance.starter_credits)} starter credits.</p>
+        {Number(balance.rollover_credits) > 0 && <p>{format(balance.rollover_credits)} rollover credits, available until {new Date(balance.rollover_end * 1000).toLocaleDateString()}.</p>}
+        {Number(balance.reserved_credits) > 0 && <p>{format(balance.reserved_credits)} temporarily set aside for work in progress. Unused amounts return automatically.</p>}
+        {balance.period_end && balance.plan !== "free" && <p>Current billing period ends {new Date(balance.period_end * 1000).toLocaleDateString()}.</p>}
+        {balance.next_plan && balance.next_plan !== balance.plan && <p>Next renewal: {plans.find(plan => plan.id === balance.next_plan)?.name || balance.next_plan}.</p>}
+      </details>
+    </section>}
+    {balance?.payment_review && <p role="alert" className="billing-notice">Your payment needs review before you can start new AI work. Please contact support. Your saved work remains available.</p>}
+    {balance?.pending_checkout && <p className="billing-notice">You have an unfinished checkout. Choose the same offer to resume it, or <button disabled={!!busy} onClick={cancelPending} className="underline">cancel this checkout</button>.</p>}
+    {loading ? <div className="py-20" role="status"><Loader2 className="animate-spin" /><span className="sr-only">Loading plans</span></div> : catalog && <>
+      {!catalog.payments_enabled && <p className="billing-notice" role="status">Checkout is currently unavailable. You can still try the readers with your free starter allowance.</p>}
+      {catalog.payments_enabled && catalog.environment === "sandbox" && <p className="billing-notice" role="status">Test checkout only. No real payments are collected.</p>}
+      <section aria-labelledby="packs-heading" className="billing-offers">
+        <div className="billing-section-heading"><h2 id="packs-heading">A reading, when you need one.</h2><p>One-time packs. No subscription required. Purchased credits never expire.</p></div>
+        <div className="reading-pack-grid">{packs.map((pack, index) => <article className="reading-pack" key={pack.id}>
+          <h3>{pack.name}</h3><p className="pack-purpose">{["For a draft you are ready to share.", "For another pass, or a few different perspectives.", "For several drafts and the revisions between them."][index]}</p>
+          <p><span className="pack-price">${pack.cents / 100}</span><span className="pack-frequency"> once</span></p>
+          <p className="pack-allowance">{pack.credits} credits, yours until used</p>
+          <button data-testid={`buy-${pack.id}`} onClick={() => purchase(pack.id)} disabled={!!busy || !pack.available} className="button button-quiet">{busy === pack.id ? "Opening checkout?" : !pack.available ? "Checkout unavailable" : "Buy reading pack"}</button>
+        </article>)}</div>
+      </section>
+      <section aria-labelledby="plans-heading" className="billing-offers">
+        <div className="billing-section-heading"><h2 id="plans-heading">For a regular writing practice.</h2><p>Monthly plans give you a lower price per credit. You can add a one-time pack whenever you need more.</p></div>
+        <div className="plan-grid">
+          {[{ id: "free", name: "First reading", cents: 0, credits: catalog.starter_credits }, ...plans].map(plan => <article key={plan.id} className={`plan-card ${plan.id}`}>
+            <div className="plan-name"><h3>{plan.name}</h3></div>
+            <p className="plan-purpose">{{free: "Try a chapter or short excerpt first.", pro: "Keep a draft moving through revision.", studio: "Make space for more drafts and more perspectives."}[plan.id]}</p>
             <p className="mt-5"><span className="plan-price">${plan.cents / 100}</span>{plan.id !== "free" && <span className="text-sm text-ink-500"> / month</span>}</p>
             <p className="plan-allowance">{plan.credits} {plan.id === "free" ? "starter credits, once" : "credits each month"}</p>
-            <ul><li><Check />Distinct AI reader perspectives</li><li><Check />Feedback beside your manuscript</li><li><Check />Editorial reports</li><li><Check />{plan.id === "free" ? "No card required" : "Optional one-time credit top-ups"}</li></ul>
-            <button onClick={() => plan.id === "free" ? navigate(user ? "/setup" : "/signup") : purchase(plan.id)} disabled={!!busy || (plan.id !== "free" && (!plan.available || balance?.next_plan === plan.id))} className={`button ${plan.id === "pro" ? "button-primary" : "button-quiet"}`}>
-              {busy === plan.id ? "Opening checkout…" : balance?.next_plan === plan.id ? "Your current selection" : plan.id === "free" ? "Start reading" : !plan.available ? "Coming soon" : balance?.plan && balance.plan !== "free" ? "Switch to " + plan.name : "Choose " + plan.name}<ArrowRight className="w-4 h-4" />
+            <ul><li><Check />Distinct AI reader perspectives</li><li><Check />Notes beside your manuscript</li><li><Check />Editorial reports</li><li><Check />{plan.id === "free" ? "No card required" : plan.rollover ? "One billing cycle of capped rollover" : "Optional one-time packs"}</li></ul>
+            <button data-testid={`choose-${plan.id}`} onClick={() => plan.id === "free" ? navigate(user ? "/setup" : "/signup") : purchase(plan.id)} disabled={!!busy || (plan.id !== "free" && (!plan.available || balance?.next_plan === plan.id))} className={`button ${plan.id === "pro" ? "button-primary" : "button-quiet"}`}>
+              {busy === plan.id ? "Opening checkout?" : balance?.next_plan === plan.id ? "Your current selection" : plan.id === "free" ? "Try your first reading" : !plan.available ? "Checkout unavailable" : balance?.plan && balance.plan !== "free" ? "Switch to " + plan.name : "Choose " + plan.name}
             </button>
           </article>)}
-        </section>
-        <section className="mt-16 grid md:grid-cols-2 gap-10" aria-label="Top up credits">
-          <div><p className="text-xs uppercase tracking-widest text-[#493449]">For a particularly prolific month</p><h2 className="font-serif text-4xl mt-4">A little more room.</h2><p className="text-sm text-ink-500 mt-4 leading-7 max-w-md">Top-ups are one-time purchases. They don’t expire, and we use your monthly allowance first. Monthly plans offer a lower price per credit.</p></div>
-          <div className="border-t border-ink-900/15">{catalog.items.filter(p => p.mode === "payment").map(pack => <div key={pack.id} className="flex items-center justify-between gap-4 py-5 border-b border-ink-900/15"><span className="font-serif text-2xl">{pack.name}</span><span>${pack.cents / 100}</span><button onClick={() => purchase(pack.id)} disabled={!!busy || !pack.available} className="text-sm underline underline-offset-4 disabled:opacity-40">{busy === pack.id ? "Opening…" : "Add credits"}</button></div>)}</div>
-        </section>
-      </>}
-      <section className="mt-16 max-w-3xl border-t border-ink-900/15 pt-8"><h2 className="font-serif text-3xl">A note on credits</h2><p className="mt-4 text-sm leading-7 text-ink-500">Payments are processed by Paddle. Applicable taxes are shown at checkout. Credits cover AI work, including reader setup. We estimate reading and report usage before you start. The final amount depends on response length; temporary reservations are returned when unused. Failed model calls aren’t charged. Monthly credits expire at the end of their billing period. Starter and purchased credits don’t expire. Your saved manuscripts and reports remain accessible at zero balance.</p></section>
-      {balance?.history?.length > 0 && <section className="mt-12"><h2 className="font-serif text-3xl mb-5">Recent activity</h2><div className="overflow-x-auto"><table className="w-full text-sm text-left"><thead><tr className="border-b border-ink-900/15"><th className="py-3">Activity</th><th>Date</th><th>Credits</th></tr></thead><tbody>{balance.history.map((entry, i) => <tr key={i} className="border-b border-ink-900/5"><td className="py-3 capitalize">{entry.kind}</td><td>{new Date(entry.created_at).toLocaleDateString()}</td><td>{format(entry.credits)}</td></tr>)}</tbody></table></div></section>}
+        </div>
+      </section>
+      <section className="billing-how-it-works" aria-labelledby="allowance-heading"><h2 id="allowance-heading">What does a reading include?</h2>
+        <p>Choose your AI readers, follow their responses beside the manuscript, and bring their perspectives together in an editorial report. Longer manuscripts and larger panels use more of your allowance.</p>
+        <p>For a first try, start with a chapter or excerpt of around 5,000 words and three readers. We show an estimate for your selected readers and first report before you start. Your actual usage depends on the length of the responses.</p>
+        <p>There is no charge to reopen saved notes or reports. Changing a reader or asking for a new report uses additional credits.</p>
+        <Link to={user ? "/setup" : "/signup"} className="text-link">Bring your manuscript</Link>
+      </section>
+    </>}
+    <details className="billing-terms"><summary>How billing and rollover work</summary>
+      <p>Paddle processes payments. Applicable taxes are shown at checkout. Monthly plans renew automatically until cancelled; manage them from your billing account.</p>
+      <p>{hasRollover ? "On a consecutive paid renewal, unused available monthly credits roll into the next billing cycle, up to the new plan?s monthly allowance. Rollover is used first and expires at that cycle?s end; it does not roll again. No renewal means no rollover. Legacy plans retain their original allowances and expiration rules until you switch." : "Monthly credits expire at the end of their paid billing period."} Starter and purchased credits do not expire.</p>
+      <p>Credits cover AI work, including reader setup. Temporary reservations protect work in progress; unused amounts return after the call. Failed model calls are not charged. Estimates are not fixed-price guarantees, and a longer response may require more allowance. Saved manuscripts and reports remain accessible at zero balance.</p>
+    </details>
+    {balance?.history?.length > 0 && <details className="billing-terms"><summary>Recent billing activity</summary><div className="overflow-x-auto"><table className="w-full text-sm text-left"><thead><tr className="border-b border-ink-900/15"><th className="py-3">Activity</th><th>Date</th><th>Credits</th></tr></thead><tbody>{balance.history.map((entry, i) => <tr key={i} className="border-b border-ink-900/5"><td className="py-3 capitalize">{entry.kind}</td><td>{new Date(entry.created_at).toLocaleDateString()}</td><td>{format(entry.credits)}</td></tr>)}</tbody></table></div></details>}
   </main><SiteFooter /></div>;
 }

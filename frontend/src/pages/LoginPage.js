@@ -106,7 +106,7 @@ export default function LoginPage({ initialMode = "signin" }) {
               <div className="mb-8">
                 <p className="mb-3 text-xs font-semibold uppercase tracking-[0.22em] text-[#493449]">{mode === "signup" ? "Join the table" : "Welcome back"}</p>
                 <h1 className="font-serif text-4xl tracking-tight">{mode === "signup" ? "Create your account" : "Sign in to Roundtable"}</h1>
-                <p className="mt-3 text-sm leading-6 text-ink-500">{mode === "signup" ? "Your first 10 credits are on us. No card needed." : "Return to your manuscripts and reader reports."}</p>
+                <p className="mt-3 text-sm leading-6 text-ink-500">{mode === "signup" ? "Your first reading starts with a free allowance. No card needed." : "Return to your manuscripts and reader reports."}</p>
               </div>
 
               <div className="mb-6 grid grid-cols-2 border-b border-black/10">

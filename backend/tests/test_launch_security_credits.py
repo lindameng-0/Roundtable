@@ -208,12 +208,12 @@ def test_failed_provider_call_releases_credits(monkeypatch):
 
 
 def test_checkout_uses_catalog_and_resumes_without_duplicate_transaction(monkeypatch):
-    monkeypatch.setenv("PADDLE_PRICE_PRO", "pri_pro")
+    monkeypatch.setenv("PADDLE_PRICE_WRITER_V2", "pri_pro")
     calls, transactions = [], {}
     async def fake_paddle(method, path, data=None):
         calls.append((method, path, data))
         if path == "prices/pri_pro":
-            return {"status": "active", "unit_price": {"amount": "1900", "currency_code": "USD"},
+            return {"status": "active", "unit_price": {"amount": "1500", "currency_code": "USD"},
                     "billing_cycle": {"interval": "month", "frequency": 1}, "trial_period": None}
         if path == "customers" and method == "GET":
             return []
@@ -275,7 +275,7 @@ def test_paddle_refund_is_idempotent_and_reversal_restores_credits(monkeypatch):
 
 def test_plan_change_waits_for_paid_renewal_before_granting_credits(monkeypatch):
     from datetime import datetime, timezone
-    monkeypatch.setenv("PADDLE_PRICE_STUDIO", "pri_studio")
+    monkeypatch.setenv("PADDLE_PRICE_STUDIO_V2", "pri_studio")
     now = datetime.now(timezone.utc).isoformat()
     sub = {"id": "sub_writer", "customer_id": "ctm_test", "status": "active", "scheduled_change": None,
            "custom_data": {"roundtable_user_id": "security-user"}, "created_at": now, "updated_at": now,
@@ -283,7 +283,7 @@ def test_plan_change_waits_for_paid_renewal_before_granting_credits(monkeypatch)
     patches = []
     async def fake_paddle(method, path, data=None):
         if path.startswith("prices/"):
-            return {"status": "active", "unit_price": {"amount": "4900", "currency_code": "USD"},
+            return {"status": "active", "unit_price": {"amount": "2900", "currency_code": "USD"},
                     "billing_cycle": {"interval": "month", "frequency": 1}}
         if method == "PATCH":
             patches.append(data)

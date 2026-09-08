@@ -14,6 +14,7 @@ from pydantic import BaseModel
 import config as cfg
 from routers.auth import _get_session_user
 from services import credits
+from services.billing_catalog import CATALOG, LEGACY_CATALOG
 from services.rate_limit import enforce_rate_limit
 
 billing_router = APIRouter(prefix="/api/billing")
@@ -24,12 +25,6 @@ class PaddleError(HTTPException):
         self.provider_status = provider_status
         super().__init__(502, "The payment service could not complete this request. Please retry.")
 
-CATALOG = {
-    "pro": {"name": "Pro", "credits": 200, "cents": 1900, "mode": "subscription", "env": "PADDLE_PRICE_PRO"},
-    "studio": {"name": "Studio", "credits": 600, "cents": 4900, "mode": "subscription", "env": "PADDLE_PRICE_STUDIO"},
-    "topup_100": {"name": "100 credits", "credits": 100, "cents": 1200, "mode": "payment", "env": "PADDLE_PRICE_TOPUP_100"},
-    "topup_250": {"name": "250 credits", "credits": 250, "cents": 3000, "mode": "payment", "env": "PADDLE_PRICE_TOPUP_250"},
-}
 
 
 def environment():
@@ -72,7 +67,8 @@ async def wallet(user_id):
 
 @billing_router.get("/catalog")
 async def catalog():
-    return {"starter_credits": cfg.STARTER_CREDITS, "payments_enabled": enabled(),
+    return {"catalog_version": 2, "starter_credits": cfg.STARTER_CREDITS, "payments_enabled": enabled(),
+            "rollover_policy": "One paid billing cycle, capped at the new monthly allowance. Rollover is used first.",
             "provider": "paddle", "environment": environment(),
             "client_token": os.environ.get("PADDLE_CLIENT_TOKEN", "") if enabled() else "",
             "items": [{"id": key, **{k: v for k, v in item.items() if k != "env"},
@@ -273,7 +269,9 @@ def verify_signature(raw, header):
 
 
 def price_item(price_id):
-    return next(((key, item) for key, item in CATALOG.items()
+    if not price_id:
+        return None, None
+    return next(((key, item) for key, item in [*CATALOG.items(), *LEGACY_CATALOG.items()]
                  if os.environ.get(item["env"]) == price_id), (None, None))
 
 
@@ -330,10 +328,9 @@ async def fulfill_transaction(transaction):
             raise HTTPException(503, "Payment has no billing period")
         start, end = timestamp(period["starts_at"]), timestamp(period["ends_at"])
         def grant(state):
-            if start >= state.get("grant_start", -1):
-                state.update(monthly=item["credits"] * credits.SCALE if end > time.time() else 0,
-                             grant_start=start, grant_end=end, grant_plan=plan)
-            return {"kind": "monthly", "credits": item["credits"], "period_start": start,
+            credits.grant_monthly(state, item["credits"] * credits.SCALE, start, end, plan,
+                                  sid, rollover=bool(item.get("rollover")))
+            return {"kind": "monthly", "credits": item["credits"], "rollover_credits": state.get("rollover", 0) / credits.SCALE, "period_start": start,
                     "period_end": end, "transaction_id": transaction["id"]}
         await credits.change(uid, f"paddle_period:{sid}:{start}", grant)
         await sync_subscription(sub)
