@@ -1,40 +1,119 @@
 {
   "pages": {
-    "/": {"title": "AI Beta Readers & Manuscript Feedback | Roundtable", "description": "Get manuscript feedback from up to five distinct AI beta readers. Explore passage-level reactions, compare perspectives, and plan your next revision with Roundtable."},
-    "/pricing": {"title": "Roundtable Pricing | AI Reading Plans & Credits", "description": "Explore Roundtable's free starter credits, credit packs, and monthly plans for AI manuscript feedback. See how reading credits work before you start."},
-    "/ai-beta-reader": {"title": "AI Beta Reader for Your Fiction Draft | Roundtable", "description": "Learn how an AI beta reader responds to character, pacing, and plot. Compare distinct perspectives on your draft with Roundtable's AI reading panel."},
-    "/manuscript-feedback": {"title": "Manuscript Feedback for Your Next Revision | Roundtable", "description": "Turn manuscript feedback into a revision plan. Explore passage-level reader reactions and an editorial report with Roundtable's AI readers."},
-    "/terms": {"title": "Terms of Service | Roundtable", "description": "Read Roundtable's terms for AI manuscript feedback, accounts, credits, subscriptions, and use of the service."},
-    "/privacy": {"title": "Privacy Policy | Roundtable", "description": "How Roundtable handles account information, manuscripts, AI processing, anonymous site analytics, and your privacy choices."},
-    "/refunds": {"title": "Refund Policy | Roundtable", "description": "Read Roundtable's refund and cancellation policy for credit packs and subscriptions, and learn how to request help."}
+    "/": {
+      "title": "AI Beta Readers & Manuscript Feedback | Roundtable",
+      "description": "Get manuscript feedback from up to five distinct AI beta readers. Explore passage-level reactions, compare perspectives, and plan your next revision with Roundtable."
+    },
+    "/pricing": {
+      "title": "Roundtable Pricing | AI Reading Plans & Credits",
+      "description": "Explore Roundtable's free starter credits, credit packs, and monthly plans for AI manuscript feedback. See how reading credits work before you start."
+    },
+    "/ai-beta-reader": {
+      "title": "AI Beta Reader for Your Fiction Draft | Roundtable",
+      "description": "Learn how an AI beta reader responds to character, pacing, and plot. Compare distinct perspectives on your draft with Roundtable's AI reading panel."
+    },
+    "/manuscript-feedback": {
+      "title": "Manuscript Feedback for Your Next Revision | Roundtable",
+      "description": "Turn manuscript feedback into a revision plan. Explore passage-level reader reactions and an editorial report with Roundtable's AI readers."
+    },
+    "/terms": {
+      "title": "Terms of Service | Roundtable",
+      "description": "Read Roundtable's terms for AI manuscript feedback, accounts, credits, subscriptions, and use of the service."
+    },
+    "/privacy": {
+      "title": "Privacy Policy | Roundtable",
+      "description": "How Roundtable handles account information, manuscripts, AI processing, anonymous site analytics, and your privacy choices."
+    },
+    "/refunds": {
+      "title": "Refund Policy | Roundtable",
+      "description": "Read Roundtable's refund and cancellation policy for credit packs and subscriptions, and learn how to request help."
+    },
+    "/sample-reading": {
+      "title": "Sample Manuscript Feedback: An Annotated Fiction Opening | Roundtable",
+      "description": "Explore a fiction opening alongside illustrative reader reactions, an editorial assessment, and a before-and-after revision. See how to turn feedback into choices."
+    },
+    "/connect-assistant": {
+      "title": "Connect Your AI Assistant to Roundtable | MCP Manuscript Feedback",
+      "description": "Use a compatible MCP assistant to retrieve Roundtable manuscript feedback or arrange readings with account credits. Create scoped, expiring, revocable connection keys."
+    }
   },
   "faq": [
-    {"question": "What is Roundtable?", "answer": "Roundtable is an AI manuscript feedback tool for writers. It brings together up to five AI readers with different perspectives, connects their reactions to passages in your draft, and brings observations together in an editorial report."},
-    {"question": "How does an AI beta reader work?", "answer": "An AI beta reader uses a language model to respond to your writing from a chosen perspective. In Roundtable, you can give readers different tastes and focus areas, such as character connection, pacing, or plot logic, then compare what they notice."},
-    {"question": "Can AI feedback replace human beta readers or an editor?", "answer": "AI feedback can help you explore a draft before sharing it with people. It can also miss context, misunderstand your intent, or give conflicting advice. Human beta readers bring lived experience, and professional editors bring judgment that an AI panel cannot guarantee. You decide which suggestions serve your story."},
-    {"question": "What can I upload?", "answer": "You can paste your writing or upload a TXT, DOCX, or PDF file. Confirm the extracted text, genre, and intended audience before starting a reading."},
-    {"question": "Can I try Roundtable for free?", "answer": "You can create an account and try Roundtable with free starter credits without a payment card. Credit use varies with manuscript length, reader setup, panel size, and additional reports. The Pricing page explains the current allowances and paid options."},
-    {"question": "Will my manuscript be public?", "answer": "Your manuscript and saved feedback are accessed through your account; they are not public search pages. Providing AI feedback requires sending relevant content to external AI providers. Read the Privacy policy for details about processing, access, and retention."}
+    {
+      "question": "What is Roundtable?",
+      "answer": "Roundtable is an AI manuscript feedback tool for writers. It brings together up to five AI readers with different perspectives, connects their reactions to passages in your draft, and brings observations together in an editorial report."
+    },
+    {
+      "question": "How does an AI beta reader work?",
+      "answer": "An AI beta reader uses a language model to respond to your writing from a chosen perspective. In Roundtable, you can give readers different tastes and focus areas, such as character connection, pacing, or plot logic, then compare what they notice."
+    },
+    {
+      "question": "Can AI feedback replace human beta readers or an editor?",
+      "answer": "AI feedback can help you explore a draft before sharing it with people. It can also miss context, misunderstand your intent, or give conflicting advice. Human beta readers bring lived experience, and professional editors bring judgment that an AI panel cannot guarantee. You decide which suggestions serve your story."
+    },
+    {
+      "question": "What can I upload?",
+      "answer": "You can paste your writing or upload a TXT, DOCX, or PDF file. Confirm the extracted text, genre, and intended audience before starting a reading."
+    },
+    {
+      "question": "Can I try Roundtable for free?",
+      "answer": "You can create an account and try Roundtable with free starter credits without a payment card. Credit use varies with manuscript length, reader setup, panel size, and additional reports. The Pricing page explains the current allowances and paid options."
+    },
+    {
+      "question": "Will my manuscript be used to train AI?",
+      "answer": "Roundtable does not use your manuscript to train AI models, and we have opted out of training with our AI providers. We send relevant manuscript text to those providers to generate analysis and feedback. Training opt-outs do not mean zero retention; the Privacy policy explains provider processing and storage."
+    },
+    {
+      "question": "Will my manuscript be published or shared publicly?",
+      "answer": "No. Uploading to Roundtable does not publish your manuscript or make your feedback public. You keep your rights to your writing, and we do not acquire publishing rights or permission to use it in public marketing. Relevant content is processed by the service providers described in our Privacy policy."
+    },
+    {
+      "question": "Do you store my manuscript, and can I delete it?",
+      "answer": "Yes. Roundtable saves your manuscript and feedback in your account so you can return to them. You can delete a manuscript or contact support to request deletion. Active readings must finish before manuscript deletion. Deletion may not immediately remove backup copies, and external providers follow their own retention arrangements. See the Privacy policy for details and account deletion requests."
+    }
   ],
   "guides": {
     "/ai-beta-reader": {
       "heading": "An AI beta reader, with more than one point of view.",
       "intro": "An AI beta reader gives you a simulated reader response to a draft: where attention holds, what feels unclear, and which characters connect. Roundtable lets you compare a panel of distinct AI perspectives before deciding what to revise.",
       "sections": [
-        {"heading": "Ask a specific reading question", "text": "Instead of asking whether your story is good, choose a question the draft can answer. Does the opening establish a reason to keep reading? Is the protagonist's choice understandable? Does a reveal arrive before the reader has enough context? Give different readers different priorities."},
-        {"heading": "Read the passage behind the reaction", "text": "A broad judgment is difficult to act on. Roundtable places reader reactions beside the manuscript so you can return to the words that prompted them. Compare an emotional reader's connection with an analytical reader's questions about structure and a skeptical reader's doubts about logic."},
-        {"heading": "Use disagreement as a revision question", "text": "If one reader enjoys uncertainty and another feels lost, that is a choice to examine. Revisit the intended audience and ask what readers need to know at this point. Agreement is not proof, and disagreement does not mean the passage is broken."},
-        {"heading": "Bring human readers into the process", "text": "An AI panel does not represent a real audience or predict sales. After exploring its feedback, share the revised draft with human beta readers who know your genre. For sensitive subject matter or publication decisions, seek people with relevant experience."}
+        {
+          "heading": "Ask a specific reading question",
+          "text": "Instead of asking whether your story is good, choose a question the draft can answer. Does the opening establish a reason to keep reading? Is the protagonist's choice understandable? Does a reveal arrive before the reader has enough context? Give different readers different priorities."
+        },
+        {
+          "heading": "Read the passage behind the reaction",
+          "text": "A broad judgment is difficult to act on. Roundtable places reader reactions beside the manuscript so you can return to the words that prompted them. Compare an emotional reader's connection with an analytical reader's questions about structure and a skeptical reader's doubts about logic."
+        },
+        {
+          "heading": "Use disagreement as a revision question",
+          "text": "If one reader enjoys uncertainty and another feels lost, that is a choice to examine. Revisit the intended audience and ask what readers need to know at this point. Agreement is not proof, and disagreement does not mean the passage is broken."
+        },
+        {
+          "heading": "Bring human readers into the process",
+          "text": "An AI panel does not represent a real audience or predict sales. After exploring its feedback, share the revised draft with human beta readers who know your genre. For sensitive subject matter or publication decisions, seek people with relevant experience."
+        }
       ]
     },
     "/manuscript-feedback": {
       "heading": "Make manuscript feedback useful to your next revision.",
       "intro": "Useful manuscript feedback connects an observation to a passage and gives you a question to test. Roundtable combines passage-level AI reader reactions with an editorial report, helping you move from scattered impressions to a considered revision plan.",
       "sections": [
-        {"heading": "Start with the draft's purpose", "text": "Choose the genre and audience, then name the part of the reading experience you want to understand. An opening chapter may need a clear hook; a later chapter may need emotional continuity. Focus the reading on what you are ready to revise."},
-        {"heading": "Separate structure from sentence work", "text": "Look first at character goals, cause and effect, pacing, and missing context. Polishing a sentence before deciding whether the scene belongs can create avoidable work. Keep line-level observations for a later pass when the structure is settled."},
-        {"heading": "Compare patterns in the editorial report", "text": "Use Roundtable's editorial report to bring the panel's observations together. Return to the original passages before accepting a conclusion. Repeated confusion can identify a place to investigate, but several AI readers can still share the same mistaken assumption."},
-        {"heading": "Revise one question at a time", "text": "Choose a small number of changes with a clear purpose. For example: make the scene goal visible earlier, add the missing cause of a decision, or shorten the delay before a reveal. Re-read afterward and check whether the change serves your intended effect."}
+        {
+          "heading": "Start with the draft's purpose",
+          "text": "Choose the genre and audience, then name the part of the reading experience you want to understand. An opening chapter may need a clear hook; a later chapter may need emotional continuity. Focus the reading on what you are ready to revise."
+        },
+        {
+          "heading": "Separate structure from sentence work",
+          "text": "Look first at character goals, cause and effect, pacing, and missing context. Polishing a sentence before deciding whether the scene belongs can create avoidable work. Keep line-level observations for a later pass when the structure is settled."
+        },
+        {
+          "heading": "Compare patterns in the editorial report",
+          "text": "Use Roundtable's editorial report to bring the panel's observations together. Return to the original passages before accepting a conclusion. Repeated confusion can identify a place to investigate, but several AI readers can still share the same mistaken assumption."
+        },
+        {
+          "heading": "Revise one question at a time",
+          "text": "Choose a small number of changes with a clear purpose. For example: make the scene goal visible earlier, add the missing cause of a decision, or shorten the delay before a reveal. Re-read afterward and check whether the change serves your intended effect."
+        }
       ]
     }
   }

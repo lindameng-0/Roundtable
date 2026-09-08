@@ -26,7 +26,7 @@ All four are linked from the shared footer. Signup and pricing also link the rel
 - Accounts are for adults **18+**.
 - Authors retain manuscript rights. Limited permission is granted to process content; no public-marketing licence is taken.
 - No perpetual-storage promise. If the service closes for reasons unrelated to a user's breach, appropriate refunds cover unused purchased credits and undelivered subscription service.
-- Roundtable does not train its own models on manuscripts. Confirm this remains your operating policy. The text intentionally does not promise that every external provider offers zero retention or no training.
+- Roundtable does not train models on manuscripts. On September 8, 2026, the owner confirmed opting out of provider training; the homepage, upload notice, FAQ, and privacy policy now reflect that confirmation. Provider settings were not independently inspected. Keep training disabled when changing provider accounts or routes, and retain the relevant configuration evidence. This does not establish zero retention: storage, backups, and provider retention remain disclosed.
 
 ## Pricing maintenance and launch
 

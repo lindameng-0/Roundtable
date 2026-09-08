@@ -168,6 +168,10 @@ class _SupabaseDb:
         return await asyncio.to_thread(run)
 
     @property
+    def integration_keys(self):
+        return _SupabaseTable(self._client, "integration_keys")
+
+    @property
     def credit_wallets(self):
         return _SupabaseTable(self._client, "credit_wallets")
 
@@ -352,7 +356,7 @@ class _PostgresTable:
 
 class _PostgresDb:
     TABLES = {
-        "credit_wallets", "credit_entries",
+        "credit_wallets", "credit_entries", "integration_keys",
         "manuscripts", "reader_personas", "reader_memories", "reader_reactions",
         "editor_reports", "report_versions", "workflow_tasks", "users", "user_sessions",
         "email_verification_tokens", "password_reset_tokens", "oauth_states",
@@ -763,7 +767,7 @@ class _MemoryDb:
     """Process-local database. Data is intentionally cleared on restart."""
 
     TABLES = (
-        "credit_wallets", "credit_entries",
+        "credit_wallets", "credit_entries", "integration_keys",
         "manuscripts",
         "reader_personas",
         "reader_memories",

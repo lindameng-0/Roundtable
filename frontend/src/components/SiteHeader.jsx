@@ -18,5 +18,5 @@ export default function SiteHeader() {
 }
 
 export function SiteFooter() {
-  return <footer className="site-footer no-print"><Brand /><p>Independently built by Linda Meng.</p><nav className="site-footer-links" aria-label="Pricing and policies"><Link to="/ai-beta-reader">AI beta readers</Link><Link to="/manuscript-feedback">Manuscript feedback</Link><Link to="/pricing">Pricing</Link><Link to="/terms">Terms of service</Link><Link to="/privacy">Privacy policy</Link><Link to="/refunds">Refund policy</Link></nav></footer>;
+  return <footer className="site-footer no-print"><Brand /><p>A little perspective for your next draft.</p><nav className="site-footer-links" aria-label="Resources, pricing and policies"><Link to="/connect-assistant">Assistant connections</Link><Link to="/sample-reading">Sample reading</Link><Link to="/ai-beta-reader">AI beta readers</Link><Link to="/manuscript-feedback">Manuscript feedback</Link><Link to="/pricing">Pricing</Link><Link to="/terms">Terms of service</Link><Link to="/privacy">Privacy policy</Link><Link to="/refunds">Refund policy</Link></nav></footer>;
 }

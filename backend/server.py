@@ -12,6 +12,8 @@ from routers.jobs import jobs_router
 from routers.billing import billing_router
 from services.credits import InsufficientCredits
 from routers.analytics import analytics_router
+from routers.integrations import integrations_router
+from mcp_server import mcp_gateway
 
 logging.basicConfig(
     level=logging.INFO,
@@ -28,7 +30,8 @@ async def lifespan(_app: FastAPI):
         released = await cleanup_costs()
         if released:
             logging.getLogger(__name__).warning("Released %s stale AI cost reservation(s)", released)
-    yield
+    async with mcp_gateway.lifespan():
+        yield
     close = getattr(db, "close", None)
     if close:
         await close()
@@ -40,6 +43,8 @@ app.include_router(auth_router)
 app.include_router(jobs_router)
 app.include_router(billing_router)
 app.include_router(analytics_router)
+app.include_router(integrations_router)
+app.mount("/api/mcp", mcp_gateway)
 
 @app.exception_handler(InsufficientCredits)
 async def insufficient_credits_handler(request, exc):
@@ -56,7 +61,7 @@ allow_origins = [o.strip() for o in origins_raw.split(",") if o.strip()]
 @app.middleware("http")
 async def reject_cross_site_cookie_requests(request: Request, call_next):
     """Prevent cross-site use of the session cookie, including costly GET streams."""
-    protected_prefixes = ("/api/manuscripts", "/api/jobs", "/api/user", "/api/config/model", "/api/auth/logout", "/api/billing", "/api/analytics/summary")
+    protected_prefixes = ("/api/manuscripts", "/api/jobs", "/api/user", "/api/config/model", "/api/auth/logout", "/api/billing", "/api/analytics/summary", "/api/integrations")
     if (
         os.environ.get("ENVIRONMENT", "development").strip().lower() == "production"
         and request.cookies.get("session_token")

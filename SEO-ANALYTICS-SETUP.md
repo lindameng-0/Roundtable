@@ -1,6 +1,6 @@
 # Search visibility and owner analytics
 
-Implemented locally; this document does not indicate a production deployment.
+Published September 8, 2026. Source commit `a8dad62` deployed successfully to the Railway web and worker services, and the production build was published to GitHub Pages. Live checks confirmed public HTML, sitemap, robots.txt, the support address, healthy PostgreSQL/worker status, a successful analytics write, and HTTP 401 for unsigned dashboard API access. Owner sign-in must use the verified owner account.
 
 ## Publish
 
@@ -17,7 +17,7 @@ The owner confirmed `roundtablesupport@gmail.com` as the public support inbox. I
 - Verify `roundtable.works` in [Google Search Console](https://search.google.com/search-console), normally using its DNS TXT record. Submit `https://roundtable.works/sitemap.xml`, inspect the homepage and both guides, and request indexing after publication. Check any available generative-AI inclusion setting for the property.
 - Verify/import the domain in [Bing Webmaster Tools](https://www.bing.com/webmasters), submit the same sitemap, inspect index coverage, and review AI Performance when available for the property.
 - Confirm that DNS, CDN, and firewall settings let search crawlers fetch the public HTML, CSS, and JavaScript. Manuscript and owner routes stay protected and out of the sitemap. `robots.txt` is a crawl instruction, never an authorization mechanism.
-- These account/DNS actions require access not supplied in this task. No verification token, search-console connection, indexing submission, or production deployment has been invented.
+- The owner confirmed Google and Bing account verification on September 8, 2026. Sitemap submission is handled in those dashboards; publishing the website does not submit it automatically.
 
 ## What is measured
 
@@ -43,3 +43,18 @@ Run `python -m pytest backend/tests/test_site_analytics.py backend/tests/test_em
 From `frontend`, run `npm.cmd test -- --watch=false --runInBand --runTestsByPath src/searchExperience.test.js` and `npm.cmd run build`. Public HTML generation is part of the build and fails if a page is missing substantial content. Production SQL migration execution must also be checked against the deployed database; local unit tests use the memory backend.
 
 Verified in this workspace: 16 backend tests and 3 frontend tests passed; seven generated public pages had exactly one H1, canonical URL, indexable robots metadata, and structured data; the private fallback remained unindexed. Playwright checked the public guide at 390px, the owner dashboard at 390px/1440px, non-owner denial, a 7-day filter, and an API-error state. Browser dashboard data was mocked; backend tests exercised actual session lookup. The production build passes with pre-existing React hook warnings in ReadingPage and ReportPage. Preview screenshots are under `output/playwright/owner-analytics-*.png`.
+
+## Sample reading and MCP update
+
+The homepage now identifies Roundtable as AI beta readers for fiction writers.
+`/sample-reading` adds a curated, clearly labeled editorial demonstration with
+passage-linked perspectives, an assessment, and an explained revision. It is
+linked from the homepage, guides, and footer. `/connect-assistant` documents MCP
+connections; `/connections` is authenticated and stays unindexed. The sitemap
+now contains nine public pages. Existing privacy and product-copy edits were
+preserved, with an additional factual disclosure for assistant connections.
+
+See `MCP-SETUP.md` for authentication, supported clients, tools, and deployment.
+Validation includes the HTTP MCP protocol and an independent official SDK client,
+a three-section mock reading/report through the worker, mobile/desktop browser
+checks, frontend search tests, and rendered-HTML/sitemap checks.

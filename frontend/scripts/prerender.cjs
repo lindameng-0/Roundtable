@@ -24,6 +24,8 @@ const { renderToString } = require("react-dom/server");
 const { MemoryRouter } = require("react-router-dom");
 const { AuthProvider } = require("../src/context/AuthContext");
 const ConfirmationProvider = require("../src/components/ConfirmationProvider").default;
+const ConnectAssistantPage = require("../src/pages/ConnectAssistantPage").default;
+const SampleReadingPage = require("../src/pages/SampleReadingPage").default;
 const HomePage = require("../src/pages/HomePage").default;
 const GuidePage = require("../src/pages/GuidePage").default;
 const BillingPage = require("../src/pages/BillingPage").default;
@@ -40,7 +42,7 @@ const clean = template.replace(/<title>[\s\S]*?<\/title>/g, "")
   .replace(/<meta\s+[^>]*(?:name=["'](?:description|robots|twitter:[^"']+)["']|property=["']og:[^"']+["'])[^>]*>/g, "")
   .replace(/<link\s+[^>]*rel=["']canonical["'][^>]*>/g, "");
 for (const [route, page] of Object.entries(pages)) {
-  const Component = route === "/" ? HomePage : route === "/pricing" ? BillingPage : ["/terms", "/privacy", "/refunds"].includes(route) ? PolicyPage : GuidePage;
+  const Component = route === "/connect-assistant" ? ConnectAssistantPage : route === "/sample-reading" ? SampleReadingPage : route === "/" ? HomePage : route === "/pricing" ? BillingPage : ["/terms", "/privacy", "/refunds"].includes(route) ? PolicyPage : GuidePage;
   const body = renderToString(React.createElement(AuthProvider, null,
     React.createElement(MemoryRouter, { initialEntries: [route] },
       React.createElement(ConfirmationProvider, null, React.createElement(Component, { kind: route.slice(1) })))));

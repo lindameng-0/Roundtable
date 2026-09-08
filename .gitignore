@@ -144,3 +144,6 @@ frontend/node_modules/.cache/default-development/11.pack
 # Local browser review artifacts
 .playwright-cli/
 output/playwright/
+
+# Workspace-only development dependencies
+.tmp/

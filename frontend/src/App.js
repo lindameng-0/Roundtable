@@ -6,6 +6,11 @@ import "./App.css";
 import "./reading-workspace.css";
 import "./policies.css";
 import "./search-analytics.css";
+import "./sample-reading.css";
+import "./connections.css";
+import ConnectAssistantPage from "./pages/ConnectAssistantPage";
+const ConnectionsPage = lazy(() => import("./pages/ConnectionsPage"));
+import SampleReadingPage from "./pages/SampleReadingPage";
 import SearchExperience from "./components/SearchExperience";
 import GuidePage from "./pages/GuidePage";
 const OwnerAnalyticsPage = lazy(() => import("./pages/OwnerAnalyticsPage"));
@@ -63,7 +68,7 @@ function RootRedirect() {
 function RouteExperience() {
   const { pathname } = useLocation();
   useEffect(() => {
-    const title = { "/owner/analytics": "Owner analytics", "/": "A reading room for your manuscript", "/login": "Sign in", "/signup": "Create an account", "/dashboard": "Your manuscripts", "/setup": "New manuscript", "/pricing": "Plans & credits", "/billing": "Credits & billing", "/forgot-password": "Reset your password", "/reset-password": "Choose a new password", "/verify-email": "Verify your email" }[pathname] || (pathname.startsWith("/report/") ? "Editorial report" : "Reading room");
+    const title = { "/connections": "Assistant connections", "/owner/analytics": "Owner analytics", "/": "A reading room for your manuscript", "/login": "Sign in", "/signup": "Create an account", "/dashboard": "Your manuscripts", "/setup": "New manuscript", "/pricing": "Plans & credits", "/billing": "Credits & billing", "/forgot-password": "Reset your password", "/reset-password": "Choose a new password", "/verify-email": "Verify your email" }[pathname] || (pathname.startsWith("/report/") ? "Editorial report" : "Reading room");
     const policyTitle = { "/terms": "Terms of service", "/privacy": "Privacy policy", "/refunds": "Refund policy" }[pathname];
     document.title = `${policyTitle || title} | Roundtable`;
     window.scrollTo(0, 0);
@@ -79,6 +84,9 @@ function App() {
         <BrowserRouter><ConfirmationProvider><RouteExperience /><SearchExperience />
           <Suspense fallback={<div className="page-width py-20" role="status">Loading Roundtable?</div>}><Routes>
             {/* Public routes */}
+            <Route path="/connections" element={<ProtectedRoute><ConnectionsPage /></ProtectedRoute>} />
+            <Route path="/connect-assistant" element={<ConnectAssistantPage />} />
+            <Route path="/sample-reading" element={<SampleReadingPage />} />
             <Route path="/ai-beta-reader" element={<GuidePage />} />
             <Route path="/manuscript-feedback" element={<GuidePage />} />
             <Route path="/owner/analytics" element={<ProtectedRoute><OwnerAnalyticsPage /></ProtectedRoute>} />

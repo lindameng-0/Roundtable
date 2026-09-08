@@ -19,7 +19,7 @@ analytics_router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
 class Event(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    path: Literal["/", "/pricing", "/ai-beta-reader", "/manuscript-feedback", "/terms", "/privacy", "/refunds", "/signup", "/login"]
+    path: Literal["/", "/pricing", "/ai-beta-reader", "/manuscript-feedback", "/sample-reading", "/connect-assistant", "/terms", "/privacy", "/refunds", "/signup", "/login"]
     source: Literal["direct", "google", "bing", "other-search", "chatgpt", "perplexity", "claude", "gemini", "copilot", "social", "other"] = "direct"
     event: Literal["pageview", "signup_click"] = "pageview"
 

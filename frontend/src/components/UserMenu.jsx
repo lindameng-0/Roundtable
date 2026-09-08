@@ -65,6 +65,7 @@ export function UserMenu() {
             </div>
             <div className="py-1">
               <button onClick={() => { setOpen(false); navigate("/billing"); }} className="w-full text-left px-3 py-2 text-xs text-ink-700 hover:bg-paper">Credits &amp; billing</button>
+              <button onClick={() => { setOpen(false); navigate("/connections"); }} className="w-full text-left px-3 py-2 text-xs text-ink-700 hover:bg-paper">Assistant connections</button>
               <button
                 data-testid="user-menu-dashboard"
                 onClick={() => { setOpen(false); navigate("/dashboard"); }}

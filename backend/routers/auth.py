@@ -200,6 +200,9 @@ async def _get_session_user(request: Request) -> dict:
     validate it against the DB, and return the user dict.
     Raises HTTP 401 if not authenticated or session is expired.
     """
+    from services.integration_auth import IntegrationRequest
+    if isinstance(request, IntegrationRequest):
+        return request.integration_user
     session_token = request.cookies.get("session_token")
     if not session_token:
         raise HTTPException(status_code=401, detail="Not authenticated")
