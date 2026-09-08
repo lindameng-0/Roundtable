@@ -1,17 +1,11 @@
+import ReaderAvatar from "./ReaderAvatar";
 import React, { useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { BarChart2, Loader2 } from "lucide-react";
 import { X } from "lucide-react";
 
-const READER_AVATAR_URLS = [
-  "https://images.unsplash.com/photo-1581883556531-e5f8027f557f?crop=entropy&cs=srgb&fm=jpg&q=85&w=80",
-  "https://images.unsplash.com/photo-1658909835269-e76abd3ffb5d?crop=entropy&cs=srgb&fm=jpg&q=85&w=80",
-  "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=80",
-  "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=80",
-  "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=80",
-];
 
-const READER_COLORS = ["#C86B56", "#5C5855", "#8da399", "#D4Af37", "#2D2A26"];
+const READER_COLORS = ["#493449", "#66616A", "#526653", "#94712D", "#302D32"];
 
 // New comment types: reaction | confusion | question | craft | callback
 const COMMENT_TYPE_COLORS = {
@@ -42,6 +36,7 @@ function MarginDot({ lineNumber, comments, personas, onOpen }) {
 
   return (
     <motion.button
+      aria-label={`Read ${comments.length} ${comments.length === 1 ? "comment" : "comments"} on this paragraph`}
       data-testid={`margin-dot-line-${lineNumber}`}
       initial={{ scale: 0, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
@@ -77,13 +72,13 @@ function CommentPopover({ lineNumber, commentsByLine, personas, onClose }) {
       exit={{ opacity: 0, y: -8, scale: 0.96 }}
       transition={{ duration: 0.18 }}
       data-testid="comment-popover"
-      className="absolute left-8 bg-white border border-ink-900/10 shadow-xl z-50 w-80"
+      className="manuscript-popover absolute left-8 bg-white border border-ink-900/10 shadow-xl z-50 w-80"
       style={{ borderRadius: "4px", top: "0" }}
       onClick={(e) => e.stopPropagation()}
     >
       <div className="flex items-center justify-between px-4 py-3 border-b border-ink-900/6">
         <p className="text-xs text-ink-400 uppercase tracking-widest">¶ {lineNumber}</p>
-        <button onClick={onClose} className="text-ink-400 hover:text-ink-900 transition-colors">
+        <button aria-label="Close reader comments" onClick={onClose} className="text-ink-400 hover:text-ink-900 transition-colors">
           <X className="w-3.5 h-3.5" strokeWidth={1.5} />
         </button>
       </div>
@@ -97,12 +92,7 @@ function CommentPopover({ lineNumber, commentsByLine, personas, onClose }) {
             <div key={i} className={`px-4 py-3 ${i > 0 ? "border-t border-ink-900/6" : ""}`}>
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-5 h-5 rounded-sm overflow-hidden flex-shrink-0" style={{ border: `1.5px solid ${readerColor}` }}>
-                  <img
-                    src={READER_AVATAR_URLS[avatarIdx % READER_AVATAR_URLS.length]}
-                    alt={c.readerName}
-                    className="w-full h-full object-cover"
-                    onError={(e) => { e.target.style.display = "none"; }}
-                  />
+                  <ReaderAvatar name={c.readerName} index={avatarIdx} />
                 </div>
                 <span className="text-xs font-semibold text-ink-900">{c.readerName}</span>
                 <span className="text-xs px-1.5 py-0.5 ml-auto" style={{ background: typeStyle.bg, color: typeStyle.text, borderRadius: "2px" }}>
@@ -135,14 +125,14 @@ function AnnotatedParagraph({ lineData, commentsByLine, personas, openPopoverLin
         data-paragraph-id={paragraphId || `p-${String(line).padStart(6, "0")}`}
         className={`manuscript-text transition-colors duration-200 ${hasComments ? "cursor-pointer" : ""}`}
         style={{
-          fontFamily: "'Cormorant Garamond', serif",
+          fontFamily: 'Georgia, serif',
           fontSize: "1.1rem",
           lineHeight: "1.9",
           background: isOpen ? "rgba(200, 107, 86, 0.04)" : "transparent",
           borderRadius: "2px",
           padding: "0 2px",
         }}
-        onClick={hasComments ? (e) => onOpenPopover(line, e) : undefined}
+        onClick={hasComments ? (e) => { e.stopPropagation(); onOpenPopover(line, e); } : undefined}
       >
         {text}
       </p>
@@ -183,7 +173,7 @@ export function ManuscriptView({
     >
       <div className="max-w-2xl mx-auto px-8 py-12">
         <div className="mb-10">
-          <h1 className="font-serif text-3xl text-ink-900 mb-2" style={{ fontFamily: "'Cormorant Garamond', serif" }}>
+          <h1 className="font-serif text-3xl text-ink-900 mb-2" style={{ fontFamily: 'Georgia, serif' }}>
             {manuscript.title}
           </h1>
           <div className="flex items-center gap-3 text-xs text-ink-400">
@@ -198,7 +188,7 @@ export function ManuscriptView({
           <div id={`section-${section.section_number}`} key={section.section_number} className="mb-10 scroll-mt-24">
             <h2
               className="font-serif text-xl text-ink-900 mb-6 pt-4 border-t border-ink-900/8"
-              style={{ fontFamily: "'Cormorant Garamond', serif" }}
+              style={{ fontFamily: 'Georgia, serif' }}
             >
               {section.title}
             </h2>
@@ -223,7 +213,7 @@ export function ManuscriptView({
             style={{ borderRadius: "2px" }}
             data-testid="reading-complete-banner"
           >
-            <h3 className="font-serif text-xl text-ink-900 mb-2" style={{ fontFamily: "'Cormorant Garamond', serif" }}>
+            <h3 className="font-serif text-xl text-ink-900 mb-2" style={{ fontFamily: 'Georgia, serif' }}>
               Your readers have finished.
             </h3>
             <p className="text-sm text-ink-600 mb-4">

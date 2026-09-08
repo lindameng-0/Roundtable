@@ -10,6 +10,7 @@ from typing import Any, Dict, List
 import config as _cfg
 from config import db
 from services.cost_control import CostLimitExceeded, preflight_estimate
+from services.credits import InsufficientCredits
 from services.editor import generate_copy_edit_appendix, generate_editor_report
 from services.manuscript import split_manuscript
 from services.readers import reader_pipeline
@@ -90,7 +91,7 @@ async def _save_progress(job: Dict[str, Any], progress: Dict[str, Any]) -> None:
 
 def _require_affordable(estimate: Dict[str, Any]) -> None:
     if not estimate.get("can_start"):
-        raise PermanentJobError("The estimated cost is above this manuscript's remaining AI budget.")
+        raise PermanentJobError("Not enough credits. Add credits on the billing page to continue.")
 
 
 async def execute_reading_job(job: Dict[str, Any]) -> Dict[str, Any]:
@@ -209,7 +210,7 @@ async def execute_editor_report_job(job: Dict[str, Any]) -> Dict[str, Any]:
     await _save_progress(job, {"stage": "generating_report", "completed": 0, "total": 1})
     try:
         report_data = await generate_editor_report(manuscript, reactions)
-    except CostLimitExceeded as exc:
+    except (CostLimitExceeded, InsufficientCredits) as exc:
         raise PermanentJobError(str(exc)) from exc
 
     report_doc = {
@@ -257,7 +258,7 @@ async def execute_copy_edit_job(job: Dict[str, Any]) -> Dict[str, Any]:
     await _save_progress(job, {"stage": "copy_edit", "completed": 0, "total": 1})
     try:
         appendix = await generate_copy_edit_appendix(manuscript)
-    except CostLimitExceeded as exc:
+    except (CostLimitExceeded, InsufficientCredits) as exc:
         raise PermanentJobError(str(exc)) from exc
     report_json = report.get("report_json") or {}
     report_json["copy_edit_appendix"] = appendix

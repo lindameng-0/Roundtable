@@ -38,10 +38,8 @@ limiter = SlidingWindowRateLimiter()
 
 
 def client_ip(request: Request) -> str:
-    # Railway supplies X-Forwarded-For. Its first entry is the originating client.
-    forwarded = request.headers.get("x-forwarded-for", "").split(",", 1)[0].strip()
-    if forwarded:
-        return forwarded
+    # Let the ASGI server resolve forwarding headers from explicitly trusted
+    # proxies. Arbitrary caller-controlled X-Forwarded-For must not bypass limits.
     return request.client.host if request.client else "unknown"
 
 

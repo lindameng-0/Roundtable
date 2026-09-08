@@ -1,6 +1,8 @@
+import { useConfirmation } from "../components/ConfirmationProvider";
 import React, { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { toast } from "sonner";
+import SiteHeader from "../components/SiteHeader";
 import { Loader2 } from "lucide-react";
 import axios from "axios";
 import { useReadingStream } from "../hooks/useReadingStream";
@@ -13,12 +15,15 @@ import { manuscriptRequestConfig } from "../manuscriptAccess";
 const API = getApi();
 
 export default function ReadingPage() {
+  const confirm = useConfirmation();
   const { manuscriptId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const selectedReaderIdsFromState = location.state?.selectedReaderIds;
 
   // Page-owned state
+  const [mobilePanel, setMobilePanel] = useState("manuscript");
+  const [loadError, setLoadError] = useState("");
   const [manuscript, setManuscript] = useState(null);
   const [personas, setPersonas] = useState([]);
   const [loadingReport, setLoadingReport] = useState(false);
@@ -40,11 +45,14 @@ export default function ReadingPage() {
 
   useEffect(() => {
     const handler = () => setOpenPopoverLine(null);
+    const escape = event => { if (event.key === "Escape") handler(); };
     document.addEventListener("click", handler);
-    return () => document.removeEventListener("click", handler);
+    document.addEventListener("keydown", escape);
+    return () => { document.removeEventListener("click", handler); document.removeEventListener("keydown", escape); };
   }, []);
 
   const loadData = async () => {
+    setLoadError("");
     try {
       const [mRes, pRes] = await Promise.all([
         axios.get(`${API}/manuscripts/${manuscriptId}`, manuscriptRequestConfig(manuscriptId)),
@@ -79,6 +87,7 @@ export default function ReadingPage() {
       const status = err.response?.status;
       const detail = err.response?.data?.detail ?? err.response?.data?.message;
       const msg = typeof detail === "string" ? detail : (Array.isArray(detail) ? detail.map((d) => d.msg ?? d).join(", ") : err.message);
+      setLoadError(status === 404 ? "This manuscript could not be found." : "We couldn’t load this reading. Please try again.");
       if (status === 404) {
         toast.error("Manuscript not found. It may have been deleted or the link is wrong.");
       } else {
@@ -108,12 +117,12 @@ export default function ReadingPage() {
       });
       if (!existing) {
         const estimateRes = await axios.get(`${API}/manuscripts/${manuscriptId}/cost-estimate?operation=editor`, config);
-        const estimate = Number(estimateRes.data.estimated_cost_usd || 0);
+        const estimate = Number(estimateRes.data.estimated_credits || 0);
         if (!estimateRes.data.can_start) {
-          toast.error(`The editor is estimated at $${estimate.toFixed(3)}, above the remaining manuscript budget.`);
+          toast.error(`The editor needs about ${estimate.toFixed(2)} credits. Add credits on the billing page to continue.`);
           return;
         }
-        if (!window.confirm(`Generate the editor report? This is estimated to use about $${estimate.toFixed(3)} of AI credit.`)) return;
+        if (!(await confirm({ title: "Create your editorial report?", description: `Estimated usage: ${estimate.toFixed(2)} credits. The final amount depends on response length.`, action: "Create report" }))) return;
         await axios.post(`${API}/manuscripts/${manuscriptId}/editor-report`, {}, config);
       }
       navigate(`/report/${manuscriptId}`);
@@ -128,11 +137,12 @@ export default function ReadingPage() {
 
   const navigateToManuscript = useCallback((targetId, openLine = null) => {
     if (!targetId) return;
+    setMobilePanel("manuscript");
     const element = document.getElementById(targetId);
     if (!element) return;
     setOpenPopoverLine(openLine);
     window.history.replaceState(null, "", `#${targetId}`);
-    element.scrollIntoView({ behavior: "smooth", block: "center" });
+    window.requestAnimationFrame(() => element.scrollIntoView({ behavior: "smooth", block: "center" }));
     element.classList.add("reader-nav-highlight");
     window.setTimeout(() => element.classList.remove("reader-nav-highlight"), 1800);
   }, []);
@@ -152,15 +162,12 @@ export default function ReadingPage() {
   const totalCommentCount = allComments.length;
 
   if (!manuscript) {
-    return (
-      <div className="min-h-screen bg-paper flex items-center justify-center">
-        <Loader2 className="w-6 h-6 animate-spin text-clay" strokeWidth={1.5} />
-      </div>
-    );
+    return <div><SiteHeader /><main id="main-content" className="feedback-state" tabIndex={-1}>{loadError ? <div role="alert"><p>{loadError}</p><button className="button button-quiet" onClick={loadData}>Try again</button></div> : <div role="status"><Loader2 className="animate-spin mb-3" size={22} />Opening the reading room…</div>}</main></div>;
   }
 
   return (
-    <div className="h-screen bg-paper flex flex-col overflow-hidden" style={{ fontFamily: "'Manrope', sans-serif" }}>
+    <div className="reading-page bg-paper flex flex-col overflow-hidden" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+      <SiteHeader />
       <ProgressBar
         manuscript={manuscript}
         navigate={navigate}
@@ -176,7 +183,8 @@ export default function ReadingPage() {
         workflowBudget={workflowBudget}
       />
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="mobile-reading-tabs" role="group" aria-label="Reading view"><button onClick={() => setMobilePanel("manuscript")} aria-pressed={mobilePanel === "manuscript"}>Manuscript</button><button onClick={() => setMobilePanel("readers")} aria-pressed={mobilePanel === "readers"}>Reader notes ({totalCommentCount})</button></div>
+      <main id="main-content" tabIndex={-1} className="reading-panels" data-panel={mobilePanel}>
         <ManuscriptView
           manuscript={manuscript}
           commentsByLine={commentsByLine}
@@ -206,7 +214,7 @@ export default function ReadingPage() {
           onRetry={() => handleRetry(manuscript, personas)}
           onViewPartial={handleViewPartial}
         />
-      </div>
+      </main>
     </div>
   );
 }

@@ -1,9 +1,11 @@
 import React, { useState } from "react";
 import axios from "axios";
-import { BookOpen, CheckCircle2, Eye, EyeOff, Loader2, XCircle } from "lucide-react";
+import { CheckCircle2, Eye, EyeOff, Loader2, XCircle } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { getApi } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
+
+import AuthLayout from "../components/AuthLayout";
 
 const API = getApi();
 
@@ -47,9 +49,8 @@ export default function ResetPasswordPage() {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#f3f0e9] px-5 py-10">
+    <AuthLayout>
       <section className="w-full max-w-md border border-black/10 bg-[#fffdfa] p-8 shadow-[0_24px_70px_rgba(33,31,27,0.08)] sm:p-10">
-        <div className="mb-8 flex items-center gap-3"><BookOpen className="h-6 w-6 text-[#7f3f4a]" strokeWidth={1.5} /><span className="font-serif text-2xl">Roundtable</span></div>
         {status === "success" ? (
           <Result icon={<CheckCircle2 className="h-6 w-6" />} title="Password updated" message="Your password has been changed and existing sessions were signed out." />
         ) : status === "error" ? (
@@ -62,12 +63,12 @@ export default function ResetPasswordPage() {
               <PasswordField label="New password" value={password} onChange={setPassword} visible={showPassword} onToggle={() => setShowPassword((value) => !value)} />
               <PasswordField label="Confirm password" value={confirmPassword} onChange={setConfirmPassword} visible={showPassword} onToggle={() => setShowPassword((value) => !value)} />
               {error && <p className="border-l-2 border-red-500 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-              <button type="submit" disabled={submitting} className="flex w-full items-center justify-center gap-2 bg-[#7f3f4a] px-4 py-3.5 text-sm font-semibold text-white hover:bg-[#69333d] disabled:opacity-60">{submitting && <Loader2 className="h-4 w-4 animate-spin" />}Update password</button>
+              <button type="submit" disabled={submitting} className="flex w-full items-center justify-center gap-2 bg-[#493449] px-4 py-3.5 text-sm font-semibold text-white hover:bg-[#624861] disabled:opacity-60">{submitting && <Loader2 className="h-4 w-4 animate-spin" />}Update password</button>
             </form>
           </>
         )}
       </section>
-    </main>
+    </AuthLayout>
   );
 }
 
@@ -76,5 +77,5 @@ function PasswordField({ label, value, onChange, visible, onToggle }) {
 }
 
 function Result({ icon, title, message, error = false }) {
-  return <div><div className={`mb-6 grid h-12 w-12 place-items-center rounded-full ${error ? "bg-red-50 text-red-600" : "bg-[#e5eee8] text-[#416557]"}`}>{icon}</div><h1 className="font-serif text-3xl">{title}</h1><p className="mt-3 text-sm leading-6 text-ink-500">{message}</p><Link to={error ? "/forgot-password" : "/login"} className="mt-7 inline-flex bg-[#7f3f4a] px-6 py-3 text-sm font-semibold text-white hover:bg-[#69333d]">{error ? "Request another link" : "Continue to sign in"}</Link></div>;
+  return <div><div className={`mb-6 grid h-12 w-12 place-items-center rounded-full ${error ? "bg-red-50 text-red-600" : "bg-[#e5eee8] text-[#416557]"}`}>{icon}</div><h1 className="font-serif text-3xl">{title}</h1><p className="mt-3 text-sm leading-6 text-ink-500">{message}</p><Link to={error ? "/forgot-password" : "/login"} className="mt-7 inline-flex bg-[#493449] px-6 py-3 text-sm font-semibold text-white hover:bg-[#624861]">{error ? "Request another link" : "Continue to sign in"}</Link></div>;
 }

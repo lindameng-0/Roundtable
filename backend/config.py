@@ -93,6 +93,15 @@ READER_MAX_CONCURRENCY = max(1, int(os.environ.get('READER_MAX_CONCURRENCY', '2'
 READER_START_STAGGER_SECONDS = max(0.0, float(os.environ.get('READER_START_STAGGER_SECONDS', '2')))
 MAX_WORKFLOW_COST_USD = max(0.0, float(os.environ.get('MAX_WORKFLOW_COST_USD', '25')))
 
+# Integer milli-credits avoid rounding drift across individual model calls.
+CREDITS_ENABLED = os.environ.get('CREDITS_ENABLED', 'true').lower() == 'true'
+STARTER_CREDITS = max(0, int(os.environ.get('STARTER_CREDITS', '10')))
+CREDITS_PER_USD = max(1, int(os.environ.get('CREDITS_PER_USD', '100')))
+if ENVIRONMENT == 'production' and not CREDITS_ENABLED:
+    raise RuntimeError('Credit enforcement is required in production')
+if CREDITS_ENABLED and READER_PIPELINE_VERSION != 'v2':
+    raise RuntimeError('Credit enforcement requires READER_PIPELINE_VERSION=v2')
+
 # ── Google OAuth (own credentials) ────────────────────────────────────────────
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
 GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '')

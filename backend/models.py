@@ -6,16 +6,6 @@ class ManuscriptCreate(BaseModel):
     title: Optional[str] = "Untitled Manuscript"
     raw_text: str
     model: Optional[str] = "gemini-2.5-flash"
-    cost_limit_usd: Optional[float] = None
-
-    @field_validator("cost_limit_usd")
-    @classmethod
-    def validate_cost_limit(cls, value):
-        if value is None:
-            return value
-        if value < 0 or value > 1000:
-            raise ValueError("Budget must be between $0 and $1,000; $0 means unlimited")
-        return round(float(value), 6)
 
 
 class ManuscriptResponse(BaseModel):

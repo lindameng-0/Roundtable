@@ -8,6 +8,7 @@ import config as _cfg
 from config import db
 from services.model_routing import ModelRoute, route_for_reader, route_for_role, usage_record
 from services.reader_memory import count_tokens
+from services import credits
 
 
 class CostLimitExceeded(RuntimeError):
@@ -24,6 +25,10 @@ def estimate_cost(route: ModelRoute, input_tokens: int, output_tokens: int) -> O
 
 
 async def budget_status(manuscript: Dict) -> Dict:
+    if _cfg.CREDITS_ENABLED:
+        account = await credits.balance(manuscript["user_id"])
+        return {**account, "unlimited": True, "remaining_usd": None,
+                "limit_usd": 0, "spent_usd": 0, "reserved_usd": 0}
     limit = float(manuscript.get("cost_limit_usd", _cfg.MAX_WORKFLOW_COST_USD) or 0)
     spent = float(manuscript.get("cost_spent_usd") or 0)
     reserved = float(manuscript.get("cost_reserved_usd") or 0)
@@ -38,6 +43,11 @@ async def budget_status(manuscript: Dict) -> Dict:
 
 
 async def reserve(manuscript_id: str, role: str, operation_key: str, estimated_cost_usd: Optional[float]) -> Optional[str]:
+    if _cfg.CREDITS_ENABLED:
+        manuscript = await db.manuscripts.find_one({"id": manuscript_id})
+        if not manuscript or not manuscript.get("user_id"):
+            raise RuntimeError("A billable operation must belong to an account")
+        return await credits.reserve(manuscript["user_id"], credits.units(estimated_cost_usd), role)
     if estimated_cost_usd is None or estimated_cost_usd <= 0:
         return None
     reservation_id = str(uuid.uuid4())
@@ -49,11 +59,17 @@ async def reserve(manuscript_id: str, role: str, operation_key: str, estimated_c
 
 
 async def settle(reservation_id: Optional[str], actual_cost_usd: Optional[float]) -> None:
+    if reservation_id and reservation_id.startswith("credit:"):
+        await credits.settle_token(reservation_id, actual_cost_usd)
+        return
     if reservation_id:
         await db.settle_cost(reservation_id, float(actual_cost_usd or 0))
 
 
 async def release(reservation_id: Optional[str]) -> None:
+    if reservation_id and reservation_id.startswith("credit:"):
+        await credits.settle_token(reservation_id, 0)
+        return
     if reservation_id:
         await db.release_cost(reservation_id)
 
@@ -113,6 +129,13 @@ async def preflight_estimate(manuscript: Dict, readers: Iterable[Dict], operatio
     budget = await budget_status(manuscript)
     remaining = budget["remaining_usd"]
     unknown_pricing = any(row.get("has_unknown_pricing") for row in serializable.values())
+    if _cfg.CREDITS_ENABLED:
+        estimated_credits = round(expected * _cfg.CREDITS_PER_USD, 3)
+        return {"operation": operation, "estimated_credits": estimated_credits,
+                "available_credits": budget["available_credits"], "budget": budget,
+                "can_start": not unknown_pricing and estimated_credits <= budget["available_credits"],
+                "has_unknown_pricing": unknown_pricing,
+                "note": "Estimated credits; usage varies with response length. Unused reservations are returned."}
     return {
         "operation": operation,
         "estimated_cost_usd": expected,

@@ -152,6 +152,20 @@ class _SupabaseDb:
         self._client: Client = create_client(url, key)
 
     @property
+    def credit_wallets(self):
+        return _SupabaseTable(self._client, "credit_wallets")
+
+    @property
+    def credit_entries(self):
+        return _SupabaseTable(self._client, "credit_entries")
+
+    async def apply_credit_change(self, user_id, version, data, key, entry):
+        return await asyncio.to_thread(lambda: self._client.rpc("apply_credit_change", {
+            "p_user": user_id, "p_version": version, "p_data": data,
+            "p_key": key, "p_entry": entry,
+        }).execute().data)
+
+    @property
     def manuscripts(self) -> _SupabaseTable:
         return _SupabaseTable(self._client, "manuscripts")
 
@@ -247,6 +261,8 @@ def get_db(url: str, key: str) -> _SupabaseDb:
 
 
 _JSON_COLUMNS = {
+    "credit_wallets": {"data"},
+    "credit_entries": {"data"},
     "manuscripts": {"comparable_books", "sections"},
     "reader_personas": {"liked_tropes", "disliked_tropes", "secondary_focuses"},
     "reader_memories": {"memory_json"},
@@ -320,6 +336,7 @@ class _PostgresTable:
 
 class _PostgresDb:
     TABLES = {
+        "credit_wallets", "credit_entries",
         "manuscripts", "reader_personas", "reader_memories", "reader_reactions",
         "editor_reports", "report_versions", "workflow_tasks", "users", "user_sessions",
         "email_verification_tokens", "password_reset_tokens", "oauth_states",
@@ -330,6 +347,10 @@ class _PostgresDb:
 
     def __init__(self, url: str, migrations_dir: Path):
         self._url, self._migrations_dir, self._pool = url, Path(migrations_dir), None
+
+    async def apply_credit_change(self, user_id, version, data, key, entry):
+        return await self._pool.fetchval("SELECT apply_credit_change($1,$2,$3::jsonb,$4,$5::jsonb)",
+                                        user_id, version, json.dumps(data), key, json.dumps(entry))
 
     def __getattr__(self, name: str) -> _PostgresTable:
         if name in self.TABLES:
@@ -718,6 +739,7 @@ class _MemoryDb:
     """Process-local database. Data is intentionally cleared on restart."""
 
     TABLES = (
+        "credit_wallets", "credit_entries",
         "manuscripts",
         "reader_personas",
         "reader_memories",
@@ -751,6 +773,19 @@ class _MemoryDb:
     def clear(self) -> None:
         for rows in self._data.values():
             rows.clear()
+
+    async def apply_credit_change(self, user_id, version, data, key, entry):
+        async with self._cost_lock:
+            wallet = next((w for w in self._data["credit_wallets"] if w["id"] == user_id), None)
+            if wallet is None:
+                wallet = {"id": user_id, "version": 0, "data": {}}
+                self._data["credit_wallets"].append(wallet)
+            if wallet["version"] != version or any(e["id"] == key for e in self._data["credit_entries"]):
+                return False
+            wallet.update(version=version + 1, data=copy.deepcopy(data))
+            self._data["credit_entries"].append({"id": key, "user_id": user_id,
+                "data": copy.deepcopy(entry), "created_at": datetime.now().isoformat()})
+            return True
 
     async def reserve_cost(self, reservation_id, manuscript_id, role, operation_key, estimated_cost_usd):
         async with self._cost_lock:

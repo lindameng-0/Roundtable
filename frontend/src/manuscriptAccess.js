@@ -7,7 +7,7 @@ export function manuscriptRequestConfig(_manuscriptId, extra = {}) {
     ...extra,
     withCredentials: true,
     headers: {
-      ...getManuscriptHeaders(manuscriptId),
+      ...getManuscriptHeaders(),
       ...(extra.headers || {}),
     },
   };

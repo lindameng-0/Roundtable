@@ -9,6 +9,8 @@ from config import db
 from routers.api import api_router
 from routers.auth import auth_router
 from routers.jobs import jobs_router
+from routers.billing import billing_router
+from services.credits import InsufficientCredits
 
 logging.basicConfig(
     level=logging.INFO,
@@ -35,6 +37,11 @@ app = FastAPI(lifespan=lifespan)
 app.include_router(api_router)
 app.include_router(auth_router)
 app.include_router(jobs_router)
+app.include_router(billing_router)
+
+@app.exception_handler(InsufficientCredits)
+async def insufficient_credits_handler(request, exc):
+    return JSONResponse({"detail": exc.details}, status_code=402)
 default_origins = (
     "https://roundtable.works"
     if os.environ.get("ENVIRONMENT", "development").strip().lower() == "production"
@@ -47,10 +54,11 @@ allow_origins = [o.strip() for o in origins_raw.split(",") if o.strip()]
 @app.middleware("http")
 async def reject_cross_site_cookie_requests(request: Request, call_next):
     """Prevent cross-site use of the session cookie, including costly GET streams."""
-    protected_prefixes = ("/api/manuscripts", "/api/jobs", "/api/user", "/api/config/model", "/api/auth/logout")
+    protected_prefixes = ("/api/manuscripts", "/api/jobs", "/api/user", "/api/config/model", "/api/auth/logout", "/api/billing")
     if (
         os.environ.get("ENVIRONMENT", "development").strip().lower() == "production"
         and request.cookies.get("session_token")
+        and request.url.path != "/api/billing/webhook"
         and request.url.path.startswith(protected_prefixes)
         and request.headers.get("origin") not in allow_origins
     ):

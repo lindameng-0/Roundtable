@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { ArrowRight, BookOpen, CheckCircle2, Eye, EyeOff, Loader2, Mail } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { ArrowRight, CheckCircle2, Eye, EyeOff, Loader2, Mail } from "lucide-react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import { getApi, getApiBase } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
+
+import AuthLayout from "../components/AuthLayout";
 
 const API = getApi();
 const GOOGLE_LOGIN_URL = getApiBase() + "/api/auth/google/login";
@@ -28,6 +30,7 @@ function errorMessage(error) {
 }
 
 export default function LoginPage({ initialMode = "signin" }) {
+  const [params] = useSearchParams();
   const [mode, setMode] = useState(initialMode);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -42,9 +45,9 @@ export default function LoginPage({ initialMode = "signin" }) {
 
   useEffect(() => {
     setMode(initialMode);
-    setError("");
+    setError(params.has("error") ? "Google sign-in didn’t finish. Please try again, or sign in with your email." : "");
     setVerificationSent(false);
-  }, [initialMode]);
+  }, [initialMode, params]);
 
   const switchMode = (nextMode) => {
     setMode(nextMode);
@@ -64,7 +67,7 @@ export default function LoginPage({ initialMode = "signin" }) {
       } else {
         const response = await axios.post(`${API}/auth/login`, { email, password }, { withCredentials: true });
         login(response.data.user);
-        navigate("/setup", { replace: true });
+        navigate("/dashboard", { replace: true });
       }
     } catch (requestError) {
       setError(errorMessage(requestError));
@@ -87,33 +90,7 @@ export default function LoginPage({ initialMode = "signin" }) {
   };
 
   return (
-    <main className="min-h-screen bg-[#f3f0e9] text-ink-900 lg:grid lg:grid-cols-[minmax(360px,0.9fr)_minmax(520px,1.1fr)]">
-      <section className="relative hidden overflow-hidden bg-[#17211e] px-12 py-12 text-white lg:flex lg:flex-col lg:justify-between">
-        <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "radial-gradient(circle at 1px 1px, #d5b77a 1px, transparent 0)", backgroundSize: "24px 24px" }} />
-        <div className="relative flex items-center gap-3">
-          <div className="grid h-10 w-10 place-items-center border border-[#d5b77a]/50 bg-[#d5b77a]/10"><BookOpen className="h-5 w-5 text-[#d5b77a]" strokeWidth={1.5} /></div>
-          <span className="font-serif text-3xl tracking-tight">Roundtable</span>
-        </div>
-        <div className="relative max-w-xl pb-8">
-          <p className="mb-5 text-xs font-semibold uppercase tracking-[0.28em] text-[#d5b77a]">The reading room</p>
-          <h1 className="font-serif text-5xl leading-[1.06] xl:text-6xl">Hear where your story lands before it meets the world.</h1>
-          <p className="mt-7 max-w-lg text-base leading-7 text-white/65">Bring a manuscript to a panel of distinct readers. Follow their reactions, questions, and shifting trust from the first page to the last.</p>
-          <div className="mt-10 grid grid-cols-3 gap-3" aria-hidden="true">
-            {["Pacing", "Character", "Continuity"].map((label, index) => (
-              <div key={label} className="border border-white/10 bg-white/[0.04] p-4">
-                <div className={`mb-7 h-2 w-2 rounded-full ${index === 0 ? "bg-[#d5b77a]" : index === 1 ? "bg-[#8ca79b]" : "bg-[#9c7b86]"}`} />
-                <span className="text-xs tracking-wide text-white/55">{label}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-        <p className="relative text-xs text-white/40">Your manuscript stays private to your account.</p>
-      </section>
-
-      <section className="flex min-h-screen items-center justify-center px-5 py-10 sm:px-10">
-        <div className="w-full max-w-md">
-          <div className="mb-9 flex items-center gap-3 lg:hidden"><BookOpen className="h-6 w-6 text-[#7f3f4a]" strokeWidth={1.5} /><span className="font-serif text-2xl">Roundtable</span></div>
-
+    <AuthLayout>
           {verificationSent ? (
             <div className="border border-black/10 bg-[#fffdfa] p-8 shadow-[0_24px_70px_rgba(33,31,27,0.08)] sm:p-10">
               <div className="mb-6 grid h-12 w-12 place-items-center rounded-full bg-[#e5eee8] text-[#416557]"><Mail className="h-5 w-5" /></div>
@@ -121,52 +98,50 @@ export default function LoginPage({ initialMode = "signin" }) {
               <p className="mt-3 text-sm leading-6 text-ink-500">We sent a verification link to <strong className="font-semibold text-ink-800">{email}</strong>. Verify your email before signing in.</p>
               {resent && <p className="mt-4 flex items-center gap-2 text-sm text-[#416557]"><CheckCircle2 className="h-4 w-4" />A new link has been requested.</p>}
               {error && <p className="mt-4 border-l-2 border-red-500 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-              <button type="button" onClick={resend} disabled={submitting} className="mt-7 w-full border border-black/15 px-4 py-3 text-sm font-semibold hover:border-[#7f3f4a] hover:text-[#7f3f4a] disabled:opacity-50">{submitting ? "Sending…" : "Resend verification email"}</button>
+              <button type="button" onClick={resend} disabled={submitting} className="mt-7 w-full border border-black/15 px-4 py-3 text-sm font-semibold hover:border-[#493449] hover:text-[#493449] disabled:opacity-50">{submitting ? "Sending…" : "Resend verification email"}</button>
               <button type="button" onClick={() => switchMode("signin")} className="mt-4 w-full text-sm text-ink-500 underline underline-offset-4 hover:text-ink-900">Return to sign in</button>
             </div>
           ) : (
             <>
               <div className="mb-8">
-                <p className="mb-3 text-xs font-semibold uppercase tracking-[0.22em] text-[#7f3f4a]">{mode === "signup" ? "Join the table" : "Welcome back"}</p>
+                <p className="mb-3 text-xs font-semibold uppercase tracking-[0.22em] text-[#493449]">{mode === "signup" ? "Join the table" : "Welcome back"}</p>
                 <h1 className="font-serif text-4xl tracking-tight">{mode === "signup" ? "Create your account" : "Sign in to Roundtable"}</h1>
-                <p className="mt-3 text-sm leading-6 text-ink-500">{mode === "signup" ? "Start with an email and password, or continue with Google." : "Return to your manuscripts and reader reports."}</p>
+                <p className="mt-3 text-sm leading-6 text-ink-500">{mode === "signup" ? "Your first 10 credits are on us. No card needed." : "Return to your manuscripts and reader reports."}</p>
               </div>
 
               <div className="mb-6 grid grid-cols-2 border-b border-black/10">
-                <button type="button" onClick={() => switchMode("signin")} className={`pb-3 text-sm font-semibold ${mode === "signin" ? "border-b-2 border-[#7f3f4a] text-ink-900" : "text-ink-400"}`}>Sign in</button>
-                <button type="button" onClick={() => switchMode("signup")} className={`pb-3 text-sm font-semibold ${mode === "signup" ? "border-b-2 border-[#7f3f4a] text-ink-900" : "text-ink-400"}`}>Create account</button>
+                <button type="button" onClick={() => switchMode("signin")} className={`pb-3 text-sm font-semibold ${mode === "signin" ? "border-b-2 border-[#493449] text-ink-900" : "text-ink-400"}`}>Sign in</button>
+                <button type="button" onClick={() => switchMode("signup")} className={`pb-3 text-sm font-semibold ${mode === "signup" ? "border-b-2 border-[#493449] text-ink-900" : "text-ink-400"}`}>Create account</button>
               </div>
 
               <form onSubmit={submit} className="space-y-4">
-                {mode === "signup" && <Field label="Name"><input value={name} onChange={(event) => setName(event.target.value)} required minLength={2} maxLength={80} autoComplete="name" className="auth-input" placeholder="Your name" /></Field>}
-                <Field label="Email"><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required autoComplete="email" className="auth-input" placeholder="you@example.com" /></Field>
+                {mode === "signup" && <Field label="Name"><input id="auth-name" value={name} onChange={(event) => setName(event.target.value)} required minLength={2} maxLength={80} autoComplete="name" className="auth-input" placeholder="Your name" /></Field>}
+                <Field label="Email"><input id="auth-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required autoComplete="email" className="auth-input" placeholder="you@example.com" /></Field>
                 <Field
                   label="Password"
-                  action={mode === "signin" ? <Link to="/forgot-password" className="normal-case tracking-normal text-[#7f3f4a] hover:underline">Forgot password?</Link> : null}
+                  action={mode === "signin" ? <Link to="/forgot-password" className="normal-case tracking-normal text-[#493449] hover:underline">Forgot password?</Link> : null}
                 >
                   <span className="relative block">
-                    <input type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} required minLength={mode === "signup" ? 10 : undefined} maxLength={128} autoComplete={mode === "signup" ? "new-password" : "current-password"} className="auth-input pr-12" placeholder={mode === "signup" ? "At least 10 characters" : "Your password"} />
+                    <input id="auth-password" type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} required minLength={mode === "signup" ? 10 : undefined} maxLength={128} autoComplete={mode === "signup" ? "new-password" : "current-password"} className="auth-input pr-12" placeholder={mode === "signup" ? "At least 10 characters" : "Your password"} />
                     <button type="button" onClick={() => setShowPassword((value) => !value)} className="absolute inset-y-0 right-0 grid w-12 place-items-center text-ink-400 hover:text-ink-700" aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>
                   </span>
                   {mode === "signup" && <span className="mt-2 block text-xs text-ink-400">Use 10+ characters with at least one letter and one number.</span>}
                 </Field>
-                {error && <p className="border-l-2 border-red-500 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-                <button type="submit" disabled={submitting} className="group flex w-full items-center justify-center gap-2 bg-[#7f3f4a] px-4 py-3.5 text-sm font-semibold text-white hover:bg-[#69333d] disabled:opacity-60">
+                {error && <p role="alert" className="border-l-2 border-red-500 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+                <button type="submit" disabled={submitting} className="group flex w-full items-center justify-center gap-2 bg-[#493449] px-4 py-3.5 text-sm font-semibold text-white hover:bg-[#624861] disabled:opacity-60">
                   {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <>{mode === "signup" ? "Create account" : "Sign in"}<ArrowRight className="h-4 w-4 group-hover:translate-x-0.5" /></>}
                 </button>
               </form>
 
               <div className="my-6 flex items-center gap-4 text-xs uppercase tracking-[0.18em] text-ink-300"><span className="h-px flex-1 bg-black/10" />or<span className="h-px flex-1 bg-black/10" /></div>
               <a href={GOOGLE_LOGIN_URL} className="flex w-full items-center justify-center gap-3 border border-black/15 bg-[#fffdfa] px-4 py-3.5 text-sm font-semibold hover:border-black/30 hover:bg-white" data-testid="google-signin-btn"><GoogleMark />Continue with Google</a>
-              <p className="mt-7 text-center text-xs text-ink-400">{mode === "signup" ? <>Already have an account? <Link to="/login" className="font-semibold text-[#7f3f4a] hover:underline">Sign in</Link></> : <>New to Roundtable? <Link to="/signup" className="font-semibold text-[#7f3f4a] hover:underline">Create an account</Link></>}</p>
+              <p className="mt-7 text-center text-xs text-ink-400">{mode === "signup" ? <>Already have an account? <Link to="/login" className="font-semibold text-[#493449] hover:underline">Sign in</Link></> : <>New to Roundtable? <Link to="/signup" className="font-semibold text-[#493449] hover:underline">Create an account</Link></>}</p>
             </>
           )}
-        </div>
-      </section>
-    </main>
+    </AuthLayout>
   );
 }
 
 function Field({ label, action, children }) {
-  return <label className="block"><span className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-ink-500"><span>{label}</span>{action}</span>{children}</label>;
+  return <div className="block"><div className="mb-2 flex items-center justify-between text-xs font-semibold text-ink-500"><label htmlFor={`auth-${label.toLowerCase()}`}>{label}</label>{action}</div>{children}</div>;
 }

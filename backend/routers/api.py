@@ -42,6 +42,7 @@ from services.editor import (
 from services.workflow import ensure_task_ledger, update_task, workflow_status
 from services.report_versions import append_report_version, list_report_versions
 from services.cost_control import CostLimitExceeded, budget_status, preflight_estimate
+from services.credits import InsufficientCredits
 from services.llm_gateway import structured_completion
 from services.model_routing import route_for_role
 from services.reader_focus import FOCUS_GROUPS
@@ -123,6 +124,10 @@ def _selected_readers_complete(existing_reactions: List[Dict], readers: List[Dic
 
 def _require_affordable(estimate: Dict) -> None:
     if not estimate.get("can_start"):
+        if _cfg.CREDITS_ENABLED:
+            from services.credits import InsufficientCredits, SCALE
+            raise InsufficientCredits(int(estimate.get("available_credits", 0) * SCALE),
+                                      int(estimate.get("estimated_credits", 0) * SCALE))
         budget = estimate.get("budget") or {}
         raise HTTPException(402, {
             "code": "budget_insufficient",
@@ -192,7 +197,9 @@ async def get_available_models():
 
 @api_router.post("/config/model")
 async def update_model(req: ModelConfigRequest, request: Request):
-    await _get_session_user(request)
+    user = await _get_session_user(request)
+    if not _is_admin(user.get("email")):
+        raise HTTPException(403, "Administrator access required")
     if req.provider != "gemini" or req.model not in AVAILABLE_READER_MODELS:
         raise HTTPException(400, "This reading pipeline currently supports Gemini 2.5 Flash or Pro")
     _cfg.LLM_MODEL = req.model
@@ -209,31 +216,9 @@ async def update_model(req: ModelConfigRequest, request: Request):
 
 @api_router.get("/user/usage")
 async def get_user_usage(request: Request):
-    """
-    Return cumulative word usage for the current user.
-    Response: { words_used, words_limit, is_admin }
-    Unauthenticated → words_used 0, words_limit WORDS_LIMIT, is_admin false.
-    """
-    user = await _get_optional_user(request)
-    if not user:
-        return {"words_used": 0, "words_limit": WORDS_LIMIT, "is_admin": False}
-    email = (user.get("email") or "").strip()
-    is_admin = _is_admin(email)
-    words_used = 0
-    if not is_admin:
-        manuscripts = await db.manuscripts.find(
-            {"user_id": user["user_id"]}, None
-        ).to_list(1000)
-        words_used = sum(
-            _count_words(m.get("raw_text") or "")
-            for m in manuscripts
-        )
-    return {
-        "words_used": words_used,
-        "words_limit": WORDS_LIMIT,
-        "is_admin": is_admin,
-        "email": email or None,
-    }
+    user = await _get_session_user(request)
+    from services.credits import balance
+    return await balance(user["user_id"])
 
 
 # ─── Waitlist (when user hits manuscript limit) ─────────────────────────────────
@@ -339,31 +324,6 @@ async def create_manuscript(manuscript: ManuscriptCreate, request: Request):
         3600,
     )
 
-    # Usage limit: non-admin authenticated users get WORDS_LIMIT total words
-    if user_id and user:
-        if not _is_admin(user.get("email") or ""):
-            manuscript_words = _count_words(raw_text)
-            manuscripts = await db.manuscripts.find(
-                {"user_id": user_id}, None
-            ).to_list(1000)
-            current_words_used = sum(
-                _count_words(m.get("raw_text") or "")
-                for m in manuscripts
-            )
-            words_remaining = max(0, WORDS_LIMIT - current_words_used)
-            if current_words_used + manuscript_words > WORDS_LIMIT:
-                from fastapi.responses import JSONResponse
-                return JSONResponse(
-                    status_code=403,
-                    content={
-                        "error": "limit_reached",
-                        "words_used": current_words_used,
-                        "words_limit": WORDS_LIMIT,
-                        "words_remaining": words_remaining,
-                        "manuscript_words": manuscript_words,
-                    },
-                )
-
     doc_id = str(uuid.uuid4())
     sections, total_lines = split_manuscript(raw_text)
 
@@ -378,7 +338,7 @@ async def create_manuscript(manuscript: ManuscriptCreate, request: Request):
         sample = raw_text[:3000]
         completion = await asyncio.wait_for(
             structured_completion(
-                route=route_for_role("persona"), role="genre", system_prompt=genre_prompt,
+                route=route_for_role("persona"), role="genre", system_prompt=genre_prompt, billing_user_id=user_id,
                 user_prompt=f"Analyze:\n\n{sample}", max_tokens=500,
             ),
             timeout=45.0,
@@ -403,7 +363,7 @@ async def create_manuscript(manuscript: ManuscriptCreate, request: Request):
         "sections": sections,
         "total_sections": len(sections),
         "total_lines": total_lines,
-        "cost_limit_usd": manuscript.cost_limit_usd if manuscript.cost_limit_usd is not None else _cfg.MAX_WORKFLOW_COST_USD,
+        "cost_limit_usd": 0 if _cfg.CREDITS_ENABLED else _cfg.MAX_WORKFLOW_COST_USD,
         "cost_spent_usd": genre_detection_cost,
         "cost_reserved_usd": 0,
         "reader_config_locked": False,
@@ -558,7 +518,7 @@ async def get_personas(manuscript_id: str, request: Request):
                 manuscript.get("age_range", "Adult"),
                 count=DEFAULT_READER_COUNT,
             )
-        except HTTPException:
+        except (HTTPException, InsufficientCredits):
             raise
         except Exception as e:
             logger.exception("Persona generation failed for manuscript %s", manuscript_id)
@@ -948,13 +908,8 @@ async def get_manuscript_budget(manuscript_id: str, request: Request):
 
 @api_router.patch("/manuscripts/{manuscript_id}/budget")
 async def update_manuscript_budget(manuscript_id: str, body: BudgetUpdateRequest, request: Request):
-    manuscript = await _get_owned_manuscript(manuscript_id, request)
-    committed = float(manuscript.get("cost_spent_usd") or 0) + float(manuscript.get("cost_reserved_usd") or 0)
-    if body.cost_limit_usd > 0 and body.cost_limit_usd < committed:
-        raise HTTPException(409, f"Budget cannot be lower than the ${committed:.4f} already spent or reserved.")
-    await db.manuscripts.update_one({"id": manuscript_id}, {"$set": {"cost_limit_usd": body.cost_limit_usd}})
-    manuscript["cost_limit_usd"] = body.cost_limit_usd
-    return await budget_status(manuscript)
+    await _get_session_user(request)
+    raise HTTPException(410, "Manuscript spending limits have been replaced by account credits")
 
 
 @api_router.get("/manuscripts/{manuscript_id}/reactions/{section_number}")
@@ -1025,6 +980,8 @@ async def create_editor_report(
     # Generate report from whatever reactions we have (partial OK if some readers/sections errored)
     try:
         report_data = await _build_editor_report(manuscript, reactions)
+    except InsufficientCredits:
+        raise
     except CostLimitExceeded as exc:
         raise HTTPException(402, {"code": "budget_insufficient", "message": str(exc), **exc.details})
     except Exception as exc:
@@ -1090,6 +1047,8 @@ async def create_copy_edit_appendix(manuscript_id: str, request: Request):
         raise HTTPException(400, "Generate the Editor V3 report before running the optional copy edit.")
     try:
         appendix = await _build_copy_edit_appendix(manuscript)
+    except InsufficientCredits:
+        raise
     except CostLimitExceeded as exc:
         raise HTTPException(402, {"code": "budget_insufficient", "message": str(exc), **exc.details})
     except Exception as exc:

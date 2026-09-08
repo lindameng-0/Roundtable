@@ -1,9 +1,11 @@
-import React, { useState, useCallback, useEffect } from "react";
+import ReaderAvatar from "../components/ReaderAvatar";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { UserMenu } from "../components/UserMenu";
+import SiteHeader from "../components/SiteHeader";
+import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
-import { Upload, FileText, ChevronRight, RefreshCw, X, Plus, BookOpen, Trash2, CheckCircle, SlidersHorizontal, Save } from "lucide-react";
+import { Upload, FileText, ChevronRight, RefreshCw, X, Plus, BookOpen, Trash2, SlidersHorizontal, Save } from "lucide-react";
 import axios from "axios";
 import { getApi } from "../apiConfig";
 import { manuscriptRequestConfig } from "../manuscriptAccess";
@@ -17,20 +19,13 @@ const CHUNK_CHARS = 80 * 1024; // 80K chars per chunk (~80KB per request)
 
 const STEPS = ["manuscript", "genre", "readers"];
 
-const READER_AVATAR_URLS = [
-  "https://images.unsplash.com/photo-1581883556531-e5f8027f557f?crop=entropy&cs=srgb&fm=jpg&q=85&w=120",
-  "https://images.unsplash.com/photo-1658909835269-e76abd3ffb5d?crop=entropy&cs=srgb&fm=jpg&q=85&w=120",
-  "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=120",
-  "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=120",
-  "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=120",
-];
 
 const PERSONALITY_COLORS = {
-  analytical: "#5C5855",
-  emotional: "#C86B56",
-  casual: "#8da399",
-  skeptical: "#D4Af37",
-  genre_savvy: "#2D2A26",
+  analytical: "#66616A",
+  emotional: "#493449",
+  casual: "#526653",
+  skeptical: "#94712D",
+  genre_savvy: "#302D32",
 };
 
 // One-line reading style per archetype (matches backend READER_ARCHETYPES order)
@@ -80,7 +75,6 @@ export default function SetupPage() {
   const [comparableInput, setComparableInput] = useState("");
   const [personas, setPersonas] = useState([]);
   const [selectedReaderIds, setSelectedReaderIds] = useState([]);
-  const [costBudget, setCostBudget] = useState("5.00");
   const [costEstimate, setCostEstimate] = useState(null);
   const [regeneratingId, setRegeneratingId] = useState(null);
   const [editingReaderId, setEditingReaderId] = useState(null);
@@ -90,74 +84,11 @@ export default function SetupPage() {
 
   const [uploadedFileName, setUploadedFileName] = useState(null);
 
-  const [usage, setUsage] = useState({ used: 0, limit: 2, is_admin: false });
-  const [usageLoading, setUsageLoading] = useState(true);
-  const [hardLimitHit, setHardLimitHit] = useState(false);
-  const [feedbackMessage, setFeedbackMessage] = useState("");
-  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
-  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
-  const [waitlistEmail, setWaitlistEmail] = useState("");
-  const [waitlistSubmitting, setWaitlistSubmitting] = useState(false);
-  const [waitlistSaved, setWaitlistSaved] = useState(false);
-
-  // Show limit card if fully used OR if a submission was rejected due to budget
-  const limitReached = hardLimitHit || (usage && !usage.is_admin && usage.words_used >= usage.words_limit);
-
-  const fetchUsage = useCallback(async () => {
-    try {
-      const res = await axios.get(`${API}/user/usage`, { withCredentials: true });
-      setUsage(res.data);
-      if (res.data.email) setWaitlistEmail(res.data.email);
-    } catch {
-      setUsage({ words_used: 0, words_limit: 30000, is_admin: false });
-    } finally {
-      setUsageLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchUsage();
-  }, [fetchUsage]);
-
   useEffect(() => {
     axios.get(`${API}/config/models`)
       .then((res) => setPipelineConfig(res.data))
       .catch(() => setPipelineConfig(null));
   }, []);
-
-  const handleFeedbackSubmit = async (e) => {
-    e.preventDefault();
-    const msg = feedbackMessage.trim();
-    if (!msg) return;
-    setFeedbackSubmitting(true);
-    try {
-      await axios.post(`${API}/feedback`, { message: msg }, { withCredentials: true });
-      setFeedbackSubmitted(true);
-    } catch {
-      toast.error("Failed to submit — please try again");
-    } finally {
-      setFeedbackSubmitting(false);
-    }
-  };
-
-  const handleWaitlistSave = async (e) => {
-    e.preventDefault();
-    const email = waitlistEmail.trim();
-    if (!email || !email.includes("@")) {
-      toast.error("Please enter a valid email");
-      return;
-    }
-    setWaitlistSubmitting(true);
-    try {
-      await axios.post(`${API}/waitlist`, { email }, { withCredentials: true });
-      setWaitlistSaved(true);
-      toast.success("You're on the list!");
-    } catch {
-      toast.error("Failed to save — please try again");
-    } finally {
-      setWaitlistSubmitting(false);
-    }
-  };
 
   const handleFileUpload = async (file) => {
     if (!file) return;
@@ -188,16 +119,7 @@ export default function SetupPage() {
         setStep("genre");
         toast.success(`Extracted text from ${name}`);
       } catch (err) {
-        if (err.response?.status === 403 && err.response?.data?.error === "limit_reached") {
-          const d = err.response.data;
-          setUsage({ words_used: d.words_used ?? 30000, words_limit: d.words_limit ?? 30000, is_admin: false });
-          setHardLimitHit(true);
-          const mw = d.manuscript_words?.toLocaleString?.() ?? "";
-          const wr = (d.words_remaining ?? 0).toLocaleString();
-          toast.error(mw ? `This manuscript is ${mw} words but you only have ${wr} free words remaining.` : "You've reached your free word limit.");
-        } else {
-          toast.error(err?.response?.data?.detail || (name.endsWith(".pdf") ? "Failed to read .pdf file" : "Failed to read .docx file"));
-        }
+        toast.error(err?.response?.data?.detail?.message || err?.response?.data?.detail || "Could not upload manuscript");
       } finally {
         setLoading(false);
       }
@@ -225,7 +147,7 @@ export default function SetupPage() {
     }
     setLoading(true);
     try {
-      const payload = { title: title || "Untitled Manuscript", raw_text: text, model: model, cost_limit_usd: Number(costBudget) };
+      const payload = { title: title || "Untitled Manuscript", raw_text: text, model: model };
       const payloadStr = JSON.stringify(payload);
       // Use byte length (UTF-8), not string length — so we compare bytes to bytes
       const bodySizeBytes = new TextEncoder().encode(payloadStr).length;
@@ -240,7 +162,6 @@ export default function SetupPage() {
           title: title || "Untitled Manuscript",
           raw_text: firstChunk,
           model: model,
-          cost_limit_usd: Number(costBudget),
         }, { withCredentials: true });
         const manuscriptId = res?.data?.id;
         if (!manuscriptId) {
@@ -267,20 +188,12 @@ export default function SetupPage() {
     } catch (err) {
       const status = err.response?.status;
       const data = err.response?.data;
-      if (status === 403 && data?.error === "limit_reached") {
-        setUsage({ words_used: data.words_used ?? 30000, words_limit: data.words_limit ?? 30000, is_admin: false });
-        setHardLimitHit(true);
-        const mw = data.manuscript_words?.toLocaleString?.() ?? "";
-        const wr = (data.words_remaining ?? 0).toLocaleString();
-        toast.error(mw ? `This manuscript is ${mw} words but you only have ${wr} free words remaining.` : "You've reached your free word limit.");
-        return;
-      }
       const payloadStr = JSON.stringify({ title: title || "Untitled Manuscript", raw_text: text });
       const bodySizeBytes = new TextEncoder().encode(payloadStr).length;
       const sizeMB = (bodySizeBytes / (1024 * 1024)).toFixed(2);
       let msg;
       if (status === 404) {
-        msg = "Request not found (404). Ensure the backend is running and the site is configured with the correct API URL (see backend-url meta tag or REACT_APP_BACKEND_URL).";
+        msg = "We couldn’t process this manuscript. Please try again shortly.";
       } else if (status === 413) {
         msg = bodySizeBytes <= SAFE_BODY_SIZE
           ? `Server rejected the request (413). Your manuscript is ${sizeMB} MB, under the 100 MB limit — the server may need a higher upload limit.`
@@ -289,7 +202,7 @@ export default function SetupPage() {
         msg = err.response?.data?.detail ?? err.response?.data?.message ?? err.message ?? "Failed to process manuscript. Please try again.";
       }
       if (err.message === "Network Error" || !err.response) {
-        msg = "Cannot reach the server. If you're on the live site, set the backend URL: in index.html set the meta name=\"backend-url\" content to your Railway URL (e.g. https://your-app.up.railway.app), or rebuild with REACT_APP_BACKEND_URL.";
+        msg = "We couldn’t connect. Check your connection and try again; your pasted text is still here.";
       }
       const msgText = Array.isArray(msg) ? msg.map((m) => m.msg ?? m).join(", ") : msg;
       toast.error(msgText);
@@ -364,7 +277,7 @@ export default function SetupPage() {
       toast.success(`${getReaderDisplayName(newPersona)} added to the panel`);
     } catch (err) {
       const msg = err.response?.data?.detail ?? err.response?.data?.message ?? err.message;
-      toast.error(msg || "Failed to add reader");
+      toast.error(typeof msg === "string" ? msg : msg?.message || "Failed to add reader");
     } finally {
       setLoading(false);
     }
@@ -446,23 +359,23 @@ export default function SetupPage() {
     if (!manuscript?.id || step !== "readers" || selectedReaderIds.length === 0) return;
     const timer = window.setTimeout(async () => {
       try {
-        await axios.patch(`${API}/manuscripts/${manuscript.id}/budget`, { cost_limit_usd: Number(costBudget) }, manuscriptRequestConfig(manuscript.id));
         const ids = encodeURIComponent(selectedReaderIds.join(","));
         const res = await axios.get(`${API}/manuscripts/${manuscript.id}/cost-estimate?operation=remaining&reader_ids=${ids}`, manuscriptRequestConfig(manuscript.id));
         setCostEstimate(res.data);
       } catch (err) {
         setCostEstimate(null);
+        toast.error("Could not estimate credits. Please try selecting your readers again.");
       }
     }, 350);
     return () => window.clearTimeout(timer);
-  }, [manuscript?.id, step, selectedReaderIds, costBudget]);
+  }, [manuscript?.id, step, selectedReaderIds]);
 
   const startReading = async () => {
     try {
-      await axios.patch(`${API}/manuscripts/${manuscript.id}/budget`, { cost_limit_usd: Number(costBudget) }, manuscriptRequestConfig(manuscript.id));
+      if (!costEstimate || !costEstimate.can_start) { toast.error("Check your available credits before starting."); return; }
       navigate(`/read/${manuscript.id}`, { state: { selectedReaderIds } });
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Could not save the AI budget");
+      toast.error(err.response?.data?.detail?.message || err.response?.data?.detail || "Could not start reading");
     }
   };
 
@@ -480,151 +393,13 @@ export default function SetupPage() {
   const stepIndex = STEPS.indexOf(step);
 
   return (
-    <div className="min-h-screen bg-paper font-sans" style={{ fontFamily: "'Manrope', sans-serif" }}>
-      {/* Header */}
-      <header className="border-b border-ink-900/8 bg-paper sticky top-0 z-20">
-        <div className="max-w-5xl mx-auto px-8 py-5 flex items-center justify-between">
-          <div>
-            <h1 className="font-serif text-2xl text-ink-900 tracking-tight" style={{ fontFamily: "'Cormorant Garamond', serif" }}>
-              Roundtable
-            </h1>
-            <p className="text-xs text-ink-400 tracking-widest uppercase mt-0.5">A panel of readers for your story</p>
-            {!usageLoading && usage && step === "manuscript" && !limitReached && !usage.is_admin && (
-              <p className="text-xs text-ink-400 mt-1">
-                {(usage.words_used || 0).toLocaleString()} / {(usage.words_limit || 30000).toLocaleString()} words used
-              </p>
-            )}          </div>
-          <div className="flex items-center gap-4">
-            <UserMenu />
-          </div>
-        </div>
-      </header>
-
-      {/* Step indicator */}
-      {!limitReached && (
-      <div className="max-w-5xl mx-auto px-8 pt-8">
-        <div className="flex items-center gap-3 mb-10">
-          {[
-            { key: "manuscript", label: "Manuscript" },
-            { key: "genre", label: "Genre & Audience" },
-            { key: "readers", label: "Meet Your Readers" },
-          ].map((s, i) => (
-            <React.Fragment key={s.key}>
-              <div className="flex items-center gap-2">
-                <div
-                  className={`w-6 h-6 flex items-center justify-center text-xs font-semibold border transition-all duration-300 ${
-                    i < stepIndex
-                      ? "bg-clay border-clay text-white"
-                      : i === stepIndex
-                      ? "border-clay text-clay"
-                      : "border-ink-400/30 text-ink-400"
-                  }`}
-                  style={{ borderRadius: "2px" }}
-                >
-                  {i < stepIndex ? "✓" : i + 1}
-                </div>
-                <span className={`text-sm ${i === stepIndex ? "text-ink-900 font-medium" : "text-ink-400"}`}>
-                  {s.label}
-                </span>
-              </div>
-              {i < 2 && <div className="flex-1 h-px bg-ink-900/10 max-w-16" />}
-            </React.Fragment>
-          ))}
-        </div>
-      </div>
-      )}
-
-      <div className="max-w-5xl mx-auto px-8 pb-20">
+    <div className="min-h-screen bg-paper setup-page">
+      <SiteHeader />
+      <nav className="setup-steps" aria-label="Manuscript setup progress"><ol>{["Manuscript", "Genre & audience", "Your readers"].map((label, i) => <li key={label} aria-current={i === stepIndex ? "step" : undefined}><span>{i < stepIndex ? "✓" : i + 1}</span><span>{label}</span></li>)}</ol></nav>
+      <main id="main-content" className="setup-content" tabIndex={-1}>
         <AnimatePresence mode="wait">
           {/* ── Limit reached card ── */}
-          {limitReached && (
-            <motion.div
-              key="limit-reached"
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -16 }}
-              transition={{ duration: 0.35 }}
-              className="bg-white border border-ink-900/8 p-8 space-y-8"
-              style={{ borderRadius: "2px" }}
-            >
-              <h2 className="font-serif text-3xl text-ink-900" style={{ fontFamily: "'Cormorant Garamond', serif" }}>
-                You've used your free reads.
-              </h2>
-
-              {/* Feedback */}
-              <div className="border-t border-ink-900/8 pt-6">
-                {feedbackSubmitted ? (
-                  <div className="flex items-center gap-3 text-ink-600 text-sm">
-                    <CheckCircle className="w-4 h-4 text-sage flex-shrink-0" strokeWidth={1.5} />
-                    Thanks — your feedback helps us build Roundtable.
-                  </div>
-                ) : (
-                  <form onSubmit={handleFeedbackSubmit} className="space-y-3">
-                    <label className="text-xs text-ink-400 uppercase tracking-widest block">
-                      What would make you pay for Roundtable?
-                    </label>
-                    <input
-                      type="text"
-                      value={feedbackMessage}
-                      onChange={(e) => setFeedbackMessage(e.target.value)}
-                      placeholder="e.g. More readers, longer manuscripts, cheaper price…"
-                      className="w-full border border-ink-900/12 bg-white px-4 py-3 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none focus:border-clay transition-colors"
-                      style={{ borderRadius: "2px" }}
-                    />
-                    <button
-                      type="submit"
-                      disabled={feedbackSubmitting || !feedbackMessage.trim()}
-                      className="flex items-center gap-2 bg-clay hover:bg-clay-hover text-white px-5 py-2.5 text-sm font-medium transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
-                      style={{ borderRadius: "2px" }}
-                    >
-                      {feedbackSubmitting ? (
-                        <><RefreshCw className="w-4 h-4 animate-spin" strokeWidth={1.5} />Submitting…</>
-                      ) : "Submit"}
-                    </button>
-                  </form>
-                )}
-              </div>
-
-              {/* Waitlist */}
-              <div className="border-t border-ink-900/8 pt-6">
-                {waitlistSaved ? (
-                  <div className="flex items-center gap-3 text-ink-600 text-sm">
-                    <CheckCircle className="w-4 h-4 text-sage flex-shrink-0" strokeWidth={1.5} />
-                    We'll let you know when paid plans launch.
-                  </div>
-                ) : (
-                  <form onSubmit={handleWaitlistSave} className="space-y-3">
-                    <label className="text-xs text-ink-400 uppercase tracking-widest block">
-                      Notify me when paid plans launch
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        type="email"
-                        value={waitlistEmail}
-                        onChange={(e) => setWaitlistEmail(e.target.value)}
-                        placeholder="you@example.com"
-                        className="flex-1 border border-ink-900/12 bg-white px-4 py-3 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none focus:border-clay transition-colors"
-                        style={{ borderRadius: "2px" }}
-                      />
-                      <button
-                        type="submit"
-                        disabled={waitlistSubmitting || !waitlistEmail.trim()}
-                        className="flex items-center gap-2 border border-ink-900/12 hover:border-clay text-ink-700 hover:text-clay px-5 py-2.5 text-sm font-medium transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed bg-white"
-                        style={{ borderRadius: "2px" }}
-                      >
-                        {waitlistSubmitting ? (
-                          <RefreshCw className="w-4 h-4 animate-spin" strokeWidth={1.5} />
-                        ) : "Save"}
-                      </button>
-                    </div>
-                  </form>
-                )}
-              </div>
-            </motion.div>
-          )}
-
-          {/* ── Step 1: Manuscript ── */}
-          {!limitReached && step === "manuscript" && (
+          {step === "manuscript" && (
             <motion.div
               key="manuscript"
               initial={{ opacity: 0, y: 16 }}
@@ -633,35 +408,18 @@ export default function SetupPage() {
               transition={{ duration: 0.35 }}
             >
               <div className="mb-8">
-                <h2 className="font-serif text-4xl text-ink-900 mb-3" style={{ fontFamily: "'Cormorant Garamond', serif" }}>
+                <h2 className="font-serif text-4xl text-ink-900 mb-3" style={{ fontFamily: "'Instrument Serif', serif" }}>
                   Bring your manuscript to the table
                 </h2>
                 <p className="text-ink-600 text-base">
-                  Paste your text or upload a <strong>.txt</strong>, <strong>.docx</strong>, or <strong>.pdf</strong> file. Roundtable will assemble a panel of readers just for your story.
+                  A chapter, a short story, or the whole draft. Bring your words, then choose the readers you’d like to hear from.
                 </p>
               </div>
 
-              <div className="mb-8 border border-ink-900/10 bg-white p-5" data-testid="cost-control-panel">
-                <div className="flex flex-wrap items-end justify-between gap-4">
-                  <div>
-                    <p className="text-xs uppercase tracking-widest text-ink-400">AI spending limit</p>
-                    <p className="text-sm text-ink-600 mt-1">A hard cap for this manuscript. Reader quality and model routing stay unchanged.</p>
-                  </div>
-                  <label className="flex items-center gap-2 text-sm text-ink-700">
-                    <span>$</span>
-                    <input type="number" min="0.10" max="1000" step="0.50" value={costBudget} onChange={(event) => setCostBudget(event.target.value)} className="w-24 border border-ink-900/15 px-3 py-2 focus:outline-none focus:border-clay" aria-label="AI spending limit" />
-                  </label>
-                </div>
-                {costEstimate && (
-                  <div className="mt-4 pt-4 border-t border-ink-900/6 text-xs text-ink-500 flex flex-wrap justify-between gap-2">
-                    <span>Readers + first editor report: about ${Number(costEstimate.estimated_cost_usd || 0).toFixed(3)}</span>
-                    <span className={costEstimate.can_start ? "text-sage" : "text-red-600"}>{costEstimate.can_start ? "Within budget" : "Raise the limit before starting"}</span>
-                  </div>
-                )}
-              </div>
-
+              <div className="manuscript-upload"><div>
               <div className="mb-4">
-                <input
+                <label htmlFor="manuscript-title" className="block text-sm mb-2 text-ink-600">Title <span className="text-ink-400">(optional)</span></label>
+                <input id="manuscript-title"
                   data-testid="manuscript-title-input"
                   type="text"
                   placeholder="Manuscript title (optional)"
@@ -672,6 +430,7 @@ export default function SetupPage() {
                 />
               </div>
 
+              <label htmlFor="manuscript-text" className="block text-sm mb-2 text-ink-600">Your manuscript</label>
               {/* Drop zone */}
               <div
                 onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
@@ -682,13 +441,13 @@ export default function SetupPage() {
                 }`}
                 style={{ borderRadius: "2px" }}
               >
-                <textarea
+                <textarea id="manuscript-text"
                   data-testid="manuscript-text-area"
                   value={text}
                   onChange={(e) => setText(e.target.value)}
                   placeholder="Paste your manuscript here... or drag and drop a .txt, .docx, or .pdf file above"
-                  className="w-full h-80 bg-transparent border-none focus:outline-none focus:ring-0 p-6 manuscript-text resize-none placeholder:text-ink-400/50"
-                  style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.05rem", lineHeight: "1.85" }}
+                  className="w-full h-80 bg-transparent border-none focus:outline-none focus:ring-0 p-6 manuscript-text resize-none placeholder:text-ink-400"
+                  style={{ fontFamily: 'Georgia, serif', fontSize: '1rem', lineHeight: '1.85' }}
                 />
                 {dragOver && (
                   <div className="absolute inset-0 flex items-center justify-center bg-paper/80 pointer-events-none">
@@ -700,42 +459,22 @@ export default function SetupPage() {
                 )}
               </div>
 
-              {/* Word usage progress bar */}
-              {usage && !usage.is_admin && (
-                <div className="mb-5 bg-white border border-ink-900/8 px-4 py-3" style={{ borderRadius: "2px" }}>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs text-ink-500 font-medium">Free word budget</span>
-                    <span className="text-xs text-ink-500 tabular-nums">
-                      {(usage.words_used || 0).toLocaleString()} / {(usage.words_limit || 30000).toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="w-full h-2 bg-ink-900/8 overflow-hidden" style={{ borderRadius: "2px" }}>
-                    <div
-                      className="h-full transition-all duration-500"
-                      style={{
-                        width: `${Math.min(100, Math.round(((usage.words_used || 0) / (usage.words_limit || 30000)) * 100))}%`,
-                        backgroundColor: ((usage.words_used || 0) / (usage.words_limit || 30000)) >= 0.8 ? "#C86B56" : "#8da399",
-                      }}
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div className="flex items-center justify-between">
+              <div className="upload-actions">
                 <label
                   data-testid="file-upload-label"
-                  className="flex items-center gap-2 text-sm text-ink-600 cursor-pointer hover:text-clay transition-colors"
+                  className="upload-file-control flex items-center gap-2 text-sm text-ink-600 cursor-pointer hover:text-clay transition-colors"
                 >
                   <Upload className="w-4 h-4" strokeWidth={1.5} />
                   {uploadedFileName ? (
                     <span className="text-clay font-medium truncate max-w-xs" data-testid="uploaded-filename">{uploadedFileName}</span>
                   ) : (
-                    "Upload .txt, .docx, or .pdf"
+                    "Choose a file"
                   )}
                   <input
                     type="file"
                     accept=".txt,.docx,.pdf"
-                    className="hidden"
+                    className="sr-only"
+                    disabled={loading}
                     onChange={(e) => handleFileUpload(e.target.files[0])}
                     data-testid="file-upload-input"
                   />
@@ -768,6 +507,7 @@ export default function SetupPage() {
                   </button>
                 </div>
               </div>
+              </div><aside className="upload-notes"><h3>Before we begin</h3><p>Upload a TXT, DOCX, or PDF, or paste your writing directly. You can start with an excerpt of at least 100 characters.</p><p>Next, you’ll confirm the genre and shape your panel of up to five AI readers.</p><p>AI analysis and reader setup use credits. You’ll see an estimate before the full reading. <Link to="/billing">View your credits</Link></p></aside></div>
             </motion.div>
           )}
 
@@ -781,7 +521,7 @@ export default function SetupPage() {
               transition={{ duration: 0.35 }}
             >
               <div className="mb-8">
-                <h2 className="font-serif text-4xl text-ink-900 mb-3" style={{ fontFamily: "'Cormorant Garamond', serif" }}>
+                <h2 className="font-serif text-4xl text-ink-900 mb-3" style={{ fontFamily: "'Instrument Serif', serif" }}>
                   Your story's identity
                 </h2>
                 <p className="text-ink-600 text-base">
@@ -792,9 +532,9 @@ export default function SetupPage() {
               <div className="bg-white border border-ink-900/8 p-8 space-y-6" style={{ borderRadius: "2px" }}>
                 {/* Genre */}
                 <div>
-                  <label className="text-xs text-ink-400 uppercase tracking-widest block mb-2">Genre</label>
+                  <label htmlFor="genre-input" className="text-xs text-ink-400 uppercase tracking-widest block mb-2">Genre</label>
                   <input
-                    data-testid="genre-input"
+                    id="genre-input" data-testid="genre-input"
                     value={genre.genre || ""}
                     onChange={(e) => setGenre((g) => ({ ...g, genre: e.target.value }))}
                     className="w-full border border-ink-900/12 px-4 py-2.5 text-sm text-ink-900 focus:outline-none focus:border-clay transition-colors bg-paper"
@@ -804,9 +544,9 @@ export default function SetupPage() {
 
                 {/* Target Audience */}
                 <div>
-                  <label className="text-xs text-ink-400 uppercase tracking-widest block mb-2">Target Audience</label>
+                  <label htmlFor="audience-input" className="text-xs text-ink-400 uppercase tracking-widest block mb-2">Target audience</label>
                   <input
-                    data-testid="audience-input"
+                    id="audience-input" data-testid="audience-input"
                     value={genre.target_audience || ""}
                     onChange={(e) => setGenre((g) => ({ ...g, target_audience: e.target.value }))}
                     className="w-full border border-ink-900/12 px-4 py-2.5 text-sm text-ink-900 focus:outline-none focus:border-clay transition-colors bg-paper"
@@ -822,6 +562,7 @@ export default function SetupPage() {
                       <button
                         key={range}
                         data-testid={`age-range-${range.replace(/\s+/g, "-").toLowerCase()}`}
+                        aria-pressed={genre.age_range === range}
                         onClick={() => setGenre((g) => ({ ...g, age_range: range }))}
                         className={`chip cursor-pointer transition-all ${genre.age_range === range ? "border-clay text-clay bg-clay/5" : ""}`}
                       >
@@ -846,7 +587,7 @@ export default function SetupPage() {
                   </div>
                   <div className="flex gap-2">
                     <input
-                      data-testid="comparable-book-input"
+                      aria-label="Comparable book" data-testid="comparable-book-input"
                       value={comparableInput}
                       onChange={(e) => setComparableInput(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && addComparable()}
@@ -855,7 +596,7 @@ export default function SetupPage() {
                       style={{ borderRadius: "2px" }}
                     />
                     <button
-                      data-testid="add-comparable-btn"
+                      aria-label="Add comparable book" data-testid="add-comparable-btn"
                       onClick={addComparable}
                       className="px-3 py-2 border border-ink-900/12 hover:border-clay text-ink-600 hover:text-clay transition-colors"
                       style={{ borderRadius: "2px" }}
@@ -871,9 +612,9 @@ export default function SetupPage() {
                   <label className="text-xs text-ink-400 uppercase tracking-widest block mb-2">Reader quality</label>
                   {pipelineConfig?.pipeline_version === "v2" ? (
                     <div className="border border-sage/30 bg-sage/5 p-4" style={{ borderRadius: "2px" }}>
-                      <span className="block text-sm font-medium text-ink-900">Reader V2 evaluation panel</span>
+                      <span className="block text-sm font-medium text-ink-900">A continuous, attentive reading</span>
                       <span className="block text-xs text-ink-500 mt-1">
-                        Provider and model roles are configured by the local evaluation settings. This manuscript will use the active panel.
+                        Your readers follow the story in sequence, tracking their questions and impressions as they go.
                       </span>
                     </div>
                   ) : (
@@ -908,11 +649,7 @@ export default function SetupPage() {
                     ))}
                   </div>
                   )}
-                  <p className="text-xs text-ink-400 mt-2">
-                    {pipelineConfig?.pipeline_version === "v2"
-                      ? `Reader reactions use one model call that also updates continuity state. The final report uses ${pipelineConfig?.editor_model?.provider || "the configured provider"}:${pipelineConfig?.editor_model?.model || "editor model"}.`
-                      : `The final Editor report uses ${pipelineConfig?.editor_model?.provider || "the configured provider"}:${pipelineConfig?.editor_model?.model || "editor model"}.`}
-                  </p>
+                  <p className="text-xs text-ink-400 mt-2">You’ll see a credit estimate after choosing your readers.</p>
                 </div>
 
                 {/* Sections detected */}
@@ -970,7 +707,7 @@ export default function SetupPage() {
             >
               <div className="mb-8 flex items-start justify-between">
                 <div>
-                  <h2 className="font-serif text-4xl text-ink-900 mb-3" style={{ fontFamily: "'Cormorant Garamond', serif" }}>
+                  <h2 className="font-serif text-4xl text-ink-900 mb-3" style={{ fontFamily: "'Instrument Serif', serif" }}>
                     Your reading panel
                   </h2>
                   <p className="text-ink-600 text-base">
@@ -1021,7 +758,7 @@ export default function SetupPage() {
                           data-testid={`regen-reader-${i}`}
                           onClick={() => regenerateReader(p.id)}
                           disabled={regeneratingId === p.id}
-                          className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity text-ink-400 hover:text-clay flex items-center gap-1"
+                          className="absolute top-4 right-4 opacity-100 transition-opacity text-ink-400 hover:text-clay flex items-center gap-1"
                           style={selectedReaderIds.length > 1 ? { right: "2.5rem" } : {}}
                           aria-label="Regenerate this reader"
                         >
@@ -1033,15 +770,7 @@ export default function SetupPage() {
 
                         <div className="flex items-start gap-3 mb-3">
                           <div className="w-12 h-12 overflow-hidden flex-shrink-0" style={{ borderRadius: "2px" }}>
-                            <img
-                              src={READER_AVATAR_URLS[p.avatar_index % READER_AVATAR_URLS.length]}
-                              alt={getReaderDisplayName(p, i)}
-                              className="w-full h-full object-cover"
-                              onError={(e) => {
-                                e.target.style.display = "none";
-                                e.target.parentElement.style.background = "#F5F2EB";
-                              }}
-                            />
+                            <ReaderAvatar name={getReaderDisplayName(p, i)} index={p.avatar_index} />
                           </div>
                           <div className="flex-1 min-w-0">
                             <h3 className="font-medium text-ink-900 text-base">{getReaderDisplayName(p, i)}</h3>
@@ -1056,8 +785,8 @@ export default function SetupPage() {
                           <span
                             className="text-xs uppercase tracking-widest font-semibold px-2 py-1"
                             style={{
-                              color: PERSONALITY_COLORS[p.personality] || "#5C5855",
-                              backgroundColor: `${PERSONALITY_COLORS[p.personality] || "#5C5855"}15`,
+                              color: PERSONALITY_COLORS[p.personality] || "#66616A",
+                              backgroundColor: `${PERSONALITY_COLORS[p.personality] || "#66616A"}15`,
                               borderRadius: "2px",
                             }}
                           >
@@ -1069,7 +798,7 @@ export default function SetupPage() {
 
                         <blockquote
                           className="text-sm text-ink-600 border-l-2 border-clay pl-3 mt-3"
-                          style={{ fontFamily: "'Cormorant Garamond', serif", fontStyle: "italic", fontSize: "0.95rem" }}
+                          style={{ fontFamily: "'Instrument Serif', serif", fontStyle: "italic", fontSize: "0.95rem" }}
                         >
                           "{p.quote}"
                         </blockquote>
@@ -1122,7 +851,7 @@ export default function SetupPage() {
                     <div className="flex items-start justify-between gap-4 mb-6">
                       <div>
                         <p className="text-xs uppercase tracking-widest text-clay">Light customization</p>
-                        <h3 className="font-serif text-2xl text-ink-900 mt-1" style={{ fontFamily: "'Cormorant Garamond', serif" }}>Guide what {getReaderDisplayName(reader)} watches</h3>
+                        <h3 className="font-serif text-2xl text-ink-900 mt-1" style={{ fontFamily: "'Instrument Serif', serif" }}>Guide what {getReaderDisplayName(reader)} watches</h3>
                         <p className="text-xs text-ink-500 mt-1">Focus changes attention, not opinion. Nothing here requires a comment.</p>
                       </div>
                       <button onClick={() => { setEditingReaderId(null); setReaderDraft(null); }} aria-label="Close reader customization"><X className="w-4 h-4 text-ink-400" /></button>
@@ -1199,8 +928,8 @@ export default function SetupPage() {
 
               {costEstimate && (
                 <div className="mb-5 border border-ink-900/10 bg-white px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-xs text-ink-500">
-                  <span>Selected readers + first editor report: about ${Number(costEstimate.estimated_cost_usd || 0).toFixed(3)}</span>
-                  <span className={costEstimate.can_start ? "text-sage" : "text-red-600"}>{costEstimate.can_start ? `Within your $${Number(costBudget || 0).toFixed(2)} limit` : "Raise the AI limit before starting"}</span>
+                  <span>Selected readers + first editor report: about {Number(costEstimate.estimated_credits || 0).toFixed(2)} credits</span>
+                  <span className={costEstimate.can_start ? "text-sage" : "text-red-600"}>{costEstimate.can_start ? "Credits available" : "Add credits on the billing page to start"}</span>
                 </div>
               )}
 
@@ -1232,7 +961,7 @@ export default function SetupPage() {
                 <button
                   data-testid="start-reading-btn"
                   onClick={startReading}
-                  disabled={personas.length === 0 || selectedReaderIds.length === 0 || costEstimate?.can_start === false}
+                  disabled={personas.length === 0 || selectedReaderIds.length === 0 || !costEstimate?.can_start}
                   className="flex items-center gap-2 bg-clay hover:bg-clay-hover text-white px-8 py-3 text-sm font-semibold transition-all duration-200 disabled:opacity-40"
                   style={{ borderRadius: "2px" }}
                 >
@@ -1243,7 +972,7 @@ export default function SetupPage() {
             </motion.div>
           )}
         </AnimatePresence>
-      </div>
+      </main>
     </div>
   );
 }

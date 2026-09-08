@@ -11,6 +11,7 @@ Flow:
 # REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
 """
 import logging
+import hmac
 import secrets
 import urllib.parse
 import uuid
@@ -164,6 +165,7 @@ async def _issue_verification(user: dict) -> None:
     await db.email_verification_tokens.insert_one({
         "user_id": user["user_id"],
         "token_hash": token_hash,
+        "credential_hash": hash_opaque_token(user.get("password_hash") or ""),
         "expires_at": (now + timedelta(minutes=EMAIL_VERIFICATION_TTL_MINUTES)).isoformat(),
         "used_at": None,
         "created_at": now.isoformat(),
@@ -241,7 +243,7 @@ async def signup(body: SignupRequest, request: Request):
     password_digest = hash_password(body.password)
     if existing:
         await db.users.update_one(
-            {"user_id": existing["user_id"]},
+            {"user_id": existing["user_id"], "email_verified": False},
             {"$set": {"name": body.name, "password_hash": password_digest, "auth_provider": "email"}},
         )
         user = {**existing, "name": body.name, "password_hash": password_digest, "auth_provider": "email"}
@@ -281,7 +283,12 @@ async def verify_email(body: VerificationRequest, request: Request):
     user = await db.users.find_one({"user_id": record["user_id"]}, {"_id": 0})
     if not user:
         raise HTTPException(400, "This verification link is invalid or has expired")
-    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"email_verified": True}})
+    if not record.get("credential_hash") or not hmac.compare_digest(
+        record["credential_hash"], hash_opaque_token(user.get("password_hash") or "")
+    ):
+        raise HTTPException(400, "This verification link was replaced. Request a new verification email.")
+    await db.users.update_one({"user_id": user["user_id"], "password_hash": user.get("password_hash")},
+                             {"$set": {"email_verified": True}})
     await db.email_verification_tokens.update_one(
         {"id": record["id"]},
         {"$set": {"used_at": datetime.now(timezone.utc).isoformat()}},
@@ -408,11 +415,15 @@ async def google_login(request: Request):
         "prompt": "select_account",
     }
     google_url = GOOGLE_AUTH_URL + "?" + urllib.parse.urlencode(params)
-    return RedirectResponse(url=google_url, status_code=302)
+    response = RedirectResponse(url=google_url, status_code=302)
+    response.set_cookie("oauth_state", state, max_age=600, httponly=True,
+                        secure=SESSION_COOKIE_SECURE, samesite="lax", path="/api/auth/google")
+    return response
 
 
 @auth_router.get("/google/callback")
 async def google_callback(
+    request: Request,
     code: str = None,
     state: str = None,
     error: str = None,
@@ -437,7 +448,8 @@ async def google_callback(
         )
 
     state_valid = False
-    if state:
+    browser_state = request.cookies.get("oauth_state", "")
+    if state and browser_state and hmac.compare_digest(state, browser_state):
         token_hash = hash_opaque_token(state)
         consume = getattr(db, "consume_oauth_state", None)
         if consume:
@@ -500,13 +512,24 @@ async def google_callback(
         name = profile.get("name", email or "User")
         picture = profile.get("picture", "")
 
-        if profile.get("verified_email") is False:
+        if profile.get("verified_email") is not True:
             raise ValueError("Google did not return a verified email address")
 
         # ── Step 3: Upsert user in DB ──────────────────────────────────────
         existing = await db.users.find_one({"email": email}, {"_id": 0})
         if existing:
             user_id = existing["user_id"]
+            if not existing.get("email_verified"):
+                # A Google login proves ownership of the email, not ownership
+                # of a password set by an unverified registrant.
+                await db.users.update_one(
+                    {"user_id": user_id, "email_verified": False},
+                    {"$set": {"password_hash": None, "email_verified": True}},
+                )
+                await db.email_verification_tokens.delete_many({"user_id": user_id})
+                await db.password_reset_tokens.delete_many({"user_id": user_id})
+                await db.user_sessions.delete_many({"user_id": user_id})
+                existing = await db.users.find_one({"user_id": user_id}, {"_id": 0})
             provider = "email,google" if existing.get("password_hash") else "google"
             await db.users.update_one(
                 {"email": email},
@@ -529,6 +552,7 @@ async def google_callback(
         # to the frontend URL or JavaScript runtime.
         frontend_callback_url = f"{FRONTEND_URL}/auth/callback"
         redirect = RedirectResponse(url=frontend_callback_url, status_code=302)
+        redirect.delete_cookie("oauth_state", path="/api/auth/google", secure=SESSION_COOKIE_SECURE, samesite="lax")
         await _create_session(user_id, redirect)
         return redirect
 

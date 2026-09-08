@@ -1,17 +1,11 @@
+import ReaderAvatar from "./ReaderAvatar";
 import React, { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, ChevronRight, Loader2, MessageSquare, HelpCircle, CheckCircle } from "lucide-react";
 import { StallBanner } from "./StallBanner";
 
-const READER_AVATAR_URLS = [
-  "https://images.unsplash.com/photo-1581883556531-e5f8027f557f?crop=entropy&cs=srgb&fm=jpg&q=85&w=80",
-  "https://images.unsplash.com/photo-1658909835269-e76abd3ffb5d?crop=entropy&cs=srgb&fm=jpg&q=85&w=80",
-  "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=80",
-  "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=80",
-  "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=80",
-];
 
-const READER_COLORS = ["#C86B56", "#5C5855", "#8da399", "#D4Af37", "#2D2A26"];
+const READER_COLORS = ["#493449", "#66616A", "#526653", "#94712D", "#302D32"];
 
 // New comment type set
 const COMMENT_TYPE_COLORS = {
@@ -29,8 +23,8 @@ const COMMENT_TYPE_COLORS = {
 };
 
 const PERSONALITY_COLORS = {
-  analytical: "#5C5855", emotional: "#C86B56", casual: "#8da399",
-  skeptical: "#D4Af37", genre_savvy: "#2D2A26",
+  analytical: "#66616A", emotional: "#493449", casual: "#526653",
+  skeptical: "#94712D", genre_savvy: "#302D32",
 };
 
 // New types only (for filter bar)
@@ -72,12 +66,7 @@ function ThinkingStrip({ thinkingReaders, personas }) {
           return (
             <div key={readerId} className="flex items-center gap-2.5 px-3 py-2.5">
               <div className="w-6 h-6 overflow-hidden flex-shrink-0" style={{ borderRadius: "2px", border: `1.5px solid ${readerColor}` }}>
-                <img
-                  src={READER_AVATAR_URLS[(info.avatar_index ?? 0) % READER_AVATAR_URLS.length]}
-                  alt={displayName}
-                  className="w-full h-full object-cover"
-                  onError={(e) => { e.target.style.display = "none"; }}
-                />
+                <ReaderAvatar name={displayName} index={info.avatar_index} />
               </div>
               <div className="flex-1 min-w-0">
                 <span className="text-xs font-semibold text-ink-900">{displayName}</span>
@@ -120,7 +109,7 @@ function SectionJournalEntry({ entry, onNavigate }) {
         <p
           className="text-sm text-ink-700 leading-relaxed mb-3"
           style={{
-            fontFamily: "'Cormorant Garamond', serif",
+            fontFamily: "'Instrument Serif', serif",
             fontSize: "1rem",
             lineHeight: "1.75",
             fontStyle: "italic",
@@ -149,9 +138,9 @@ function SectionJournalEntry({ entry, onNavigate }) {
               className="flex gap-2 px-2.5 py-2 text-xs text-ink-700 leading-relaxed"
               style={{
                 background: "rgba(200, 107, 86, 0.06)",
-                borderLeft: "2px solid #C86B56",
+                borderLeft: "2px solid #493449",
                 borderRadius: "0 2px 2px 0",
-                fontFamily: "'Cormorant Garamond', serif",
+                fontFamily: "'Instrument Serif', serif",
                 fontSize: "0.9rem",
                 fontStyle: "italic",
               }}
@@ -199,7 +188,7 @@ function SectionJournalEntry({ entry, onNavigate }) {
 function ReaderPanel({ persona, readerStatus, reflections, totalComments, activeTypes, allComments, onNavigate }) {
   const [expanded, setExpanded] = useState(false);
   const [showMoments, setShowMoments] = useState(false);
-  const color = PERSONALITY_COLORS[persona?.personality] || "#5C5855";
+  const color = PERSONALITY_COLORS[persona?.personality] || "#66616A";
   const readerColor = READER_COLORS[persona?.avatar_index ?? 0];
   const { currentSection, done } = readerStatus || {};
 
@@ -229,12 +218,7 @@ function ReaderPanel({ persona, readerStatus, reflections, totalComments, active
         onClick={() => setExpanded((e) => !e)}
       >
         <div className="w-8 h-8 overflow-hidden flex-shrink-0" style={{ borderRadius: "2px", border: `2px solid ${readerColor}` }}>
-          <img
-            src={READER_AVATAR_URLS[(persona.avatar_index ?? 0) % READER_AVATAR_URLS.length]}
-            alt={getReaderDisplayName(persona)}
-            className="w-full h-full object-cover"
-            onError={(e) => { e.target.style.display = "none"; }}
-          />
+          <ReaderAvatar name={getReaderDisplayName(persona)} index={persona.avatar_index} />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-ink-900 truncate">{getReaderDisplayName(persona)}</p>
@@ -341,7 +325,7 @@ function QuestionItem({ item, manuscriptId, onNavigate }) {
       <div className="flex gap-2 items-start">
         {resolved ? <CheckCircle className="w-3.5 h-3.5 text-sage mt-0.5 flex-shrink-0" /> : <HelpCircle className="w-3.5 h-3.5 text-clay mt-0.5 flex-shrink-0" />}
         <div className="flex-1">
-          <p className={`text-sm text-ink-700 leading-relaxed ${resolved ? "line-through decoration-ink-400/40" : ""}`} style={{ fontFamily: "'Cormorant Garamond', serif", fontStyle: "italic" }}>{item.question}</p>
+          <p className={`text-sm text-ink-700 leading-relaxed ${resolved ? "line-through decoration-ink-400/40" : ""}`} style={{ fontFamily: "'Instrument Serif', serif", fontStyle: "italic" }}>{item.question}</p>
           <div className="flex flex-wrap gap-2 mt-1 text-xs text-ink-400"><span>{item.readerName} · raised §{item.raised_section}</span><span className={resolved ? "text-sage" : item.status === "open" ? "text-clay" : "text-amber-700"}>{statusLabel}</span></div>
         </div>
         {item.resolution && <ChevronRight className={`w-3 h-3 text-ink-400 transition-transform ${showResolution ? "rotate-90" : ""}`} />}
@@ -430,7 +414,7 @@ export function ReaderSidebar({
   );
 
   return (
-    <div className="w-2/5 overflow-y-auto bg-paper-dark flex flex-col" data-testid="reactions-sidebar">
+    <div className="w-2/5 overflow-y-auto bg-paper-dark flex flex-col" data-testid="reactions-sidebar" onClick={event => event.stopPropagation()}>
       <div className="p-5 flex-1">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-xs text-ink-400 uppercase tracking-widest">Your Readers</h3>
@@ -452,13 +436,13 @@ export function ReaderSidebar({
                 return (
                   <button
                     key={type}
-                    data-testid={`filter-type-${type}`}
+                    aria-pressed={isActive} data-testid={`filter-type-${type}`}
                     onClick={() => toggleType(type)}
                     className="text-xs px-2 py-1 border transition-all duration-150"
                     style={{
                       borderRadius: "2px",
                       background: isActive ? typeStyle.bg : "white",
-                      color: isActive ? typeStyle.text : "#8C8885",
+                      color: isActive ? typeStyle.text : "#746C75",
                       borderColor: isActive ? typeStyle.text + "40" : "rgba(45,42,38,0.1)",
                     }}
                   >

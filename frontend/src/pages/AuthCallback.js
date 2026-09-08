@@ -39,7 +39,7 @@ export default function AuthCallback() {
 
         // Clean up the URL and redirect
         window.history.replaceState(null, "", window.location.pathname);
-        setTimeout(() => navigate("/setup", { replace: true }), 0);
+        setTimeout(() => navigate("/dashboard", { replace: true }), 0);
       } catch (err) {
         console.error("Auth callback failed:", err);
         navigate("/login", { replace: true });
