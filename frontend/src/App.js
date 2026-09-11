@@ -13,6 +13,8 @@ const ConnectionsPage = lazy(() => import("./pages/ConnectionsPage"));
 import SampleReadingPage from "./pages/SampleReadingPage";
 import SearchExperience from "./components/SearchExperience";
 import GuidePage from "./pages/GuidePage";
+import UseCasePage from "./pages/UseCasePage";
+import useCases from "./useCases.json";
 const OwnerAnalyticsPage = lazy(() => import("./pages/OwnerAnalyticsPage"));
 
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -84,6 +86,8 @@ function App() {
         <BrowserRouter><ConfirmationProvider><RouteExperience /><SearchExperience />
           <Suspense fallback={<div className="page-width py-20" role="status">Loading Roundtable?</div>}><Routes>
             {/* Public routes */}
+            <Route path="/use-cases" element={<UseCasePage />} />
+            {Object.keys(useCases).map(path => <Route key={path} path={path} element={<UseCasePage />} />)}
             <Route path="/connections" element={<ProtectedRoute><ConnectionsPage /></ProtectedRoute>} />
             <Route path="/connect-assistant" element={<ConnectAssistantPage />} />
             <Route path="/sample-reading" element={<SampleReadingPage />} />

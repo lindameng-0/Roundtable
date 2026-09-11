@@ -35,6 +35,22 @@
     "/connect-assistant": {
       "title": "Connect Your AI Assistant to Roundtable | MCP Manuscript Feedback",
       "description": "Use a compatible MCP assistant to retrieve Roundtable manuscript feedback or arrange readings with account credits. Create scoped, expiring, revocable connection keys."
+    },
+    "/use-cases": {
+      "title": "Writing Use Cases: Worked Manuscript Revisions | Roundtable",
+      "description": "Explore opening chapters, scene pacing, and character motivation through sample passages, contrasting AI reader reactions, and explained revision choices."
+    },
+    "/use-cases/opening-chapter-feedback": {
+      "title": "Opening Chapter Feedback: Hook and Clarity | Roundtable",
+      "description": "See how contrasting AI reader reactions can help you revise a fiction opening. Follow a sample passage from mystery and confusion to a deliberate revision."
+    },
+    "/use-cases/pacing-feedback": {
+      "title": "Fiction Pacing Feedback: Tension and Scene Momentum | Roundtable",
+      "description": "Explore a worked pacing example with a scene excerpt, contrasting reader reactions, and a revision that keeps atmosphere while restoring urgency."
+    },
+    "/use-cases/character-motivation": {
+      "title": "Character Motivation Feedback: Make a Choice Believable | Roundtable",
+      "description": "Follow a fictional character's surprising choice through two reader perspectives. See how Roundtable can help you test motivation without explaining away ambiguity."
     }
   },
   "faq": [

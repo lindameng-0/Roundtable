@@ -30,6 +30,40 @@ The owner confirmed `roundtablesupport@gmail.com` as the public support inbox. I
 
 ## Ongoing growth work
 
+### Worked use cases (September 2026)
+
+The public build now contains 13 pages, including `/use-cases` and three distinct
+examples: `/use-cases/opening-chapter-feedback`, `/use-cases/pacing-feedback`, and
+`/use-cases/character-motivation`. Each explains the reading setup, shows original
+fiction beside contrasting illustrative reactions, and discusses a possible
+revision and its tradeoff. The examples are disclosed as AI-assisted editorial
+illustrations, not recorded product runs or customer results. Content lives in
+`frontend/src/useCases.json`; metadata lives in `searchContent.json`.
+
+The homepage, shared navigation, footer, and existing guides link to the examples.
+The build renders their complete content into HTML and includes them in the
+sitemap. Deploy the backend analytics allowlist update with the frontend so views
+on these paths are accepted.
+
+After `npm.cmd run build`, run `node scripts/check-public-html.cjs` from `frontend`.
+It checks all public pages for rendered content, titles, canonical URLs, indexing
+metadata, structured data, sitemap membership, and discovery through HTML links
+from the homepage. It also checks the unindexed private fallback. This check and
+the three frontend search tests passed. Browser checks passed at 390px and 1440px
+for the directory and three examples, including navigation to an example, its
+revision anchor, and signup. Screenshots are in `output/playwright/use-cases-*.png`.
+The production build passed with existing ReadingPage/ReportPage hook warnings.
+The analytics Event schema accepted all public paths and rejected a private path;
+the full backend suite could not collect because local MCP dependencies were
+missing or unreadable.
+
+These are local validation results, not evidence of live deployment or Google
+indexing. The supplied Search Console screenshot shows one indexed URL and four
+unindexed URLs but does not identify their exclusion reasons. After deployment,
+submit the generated sitemap and inspect the excluded URLs individually, checking
+Google's fetched HTML, HTTP status, chosen canonical, and exclusion reason before
+deciding on further fixes. Do not use page count alone as the success metric.
+
 The build uses actual React public content for prerendering, per-page descriptions/canonicals/social metadata, accurate organization/software/FAQ structured data, two practical writing guides, internal links, and a generated sitemap. Public guide copy and FAQ answers live in `frontend/src/searchContent.json`; FAQ schema uses the same answers. Keep facts and published pricing current. No fabricated reviews, ratings, or ranking guarantees are included.
 
 Weekly: inspect indexing errors and the queries leading to visits; compare equal periods; improve a page that already attracts relevant writers; add an honest example answering a recurring writing question; and review signup interest alongside actual account/manuscript totals. Share useful examples with relevant writing communities where their posting rules allow it. Avoid buying links or publishing near-duplicate keyword pages.
