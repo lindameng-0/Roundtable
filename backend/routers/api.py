@@ -1,14 +1,14 @@
 import json
 import uuid
 import asyncio
+import io
 import logging
-import hashlib
-import hmac
-import secrets
+import zipfile
+from pathlib import Path
 from typing import Dict, Any, List
 
 from fastapi import APIRouter, HTTPException, Request, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 import config as _cfg
 from config import db
@@ -42,9 +42,12 @@ from services.editor import (
 from services.workflow import ensure_task_ledger, update_task, workflow_status
 from services.report_versions import append_report_version, list_report_versions
 from services.cost_control import CostLimitExceeded, budget_status, preflight_estimate
+from services.credits import InsufficientCredits
 from services.llm_gateway import structured_completion
 from services.model_routing import route_for_role
 from services.reader_focus import FOCUS_GROUPS
+from services.rate_limit import enforce_rate_limit
+from services.ai_jobs import enqueue_ai_job, public_job, reading_idempotency_key
 from routers.auth import _get_session_user
 
 api_router = APIRouter(prefix="/api")
@@ -75,29 +78,14 @@ def _is_admin(email: str) -> bool:
     return email and (email.strip().lower() in [e.strip().lower() for e in getattr(_cfg, "ADMIN_EMAILS", [])])
 
 
-def _hash_manuscript_token(token: str) -> str:
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
-
-
 async def _get_owned_manuscript(manuscript_id: str, request: Request) -> Dict[str, Any]:
-    """Load a manuscript and enforce account or guest-capability ownership."""
+    """Load a manuscript and enforce strict authenticated account ownership."""
+    user = await _get_session_user(request)
     manuscript = await db.manuscripts.find_one({"id": manuscript_id}, {"_id": 0})
     if not manuscript:
         raise HTTPException(404, "Manuscript not found")
-
-    owner_id = manuscript.get("user_id")
-    if owner_id:
-        user = await _get_optional_user(request)
-        if not user or user.get("user_id") != owner_id:
-            raise HTTPException(403, "You do not have access to this manuscript")
-        return manuscript
-
-    token_hash = manuscript.get("access_token_hash")
-    if token_hash:
-        supplied = (request.headers.get("x-manuscript-token") or "").strip()
-        if not supplied or not hmac.compare_digest(_hash_manuscript_token(supplied), token_hash):
-            raise HTTPException(403, "A valid manuscript access token is required")
-    # Legacy anonymous rows predate capability tokens and remain accessible.
+    if not manuscript.get("user_id") or user.get("user_id") != manuscript.get("user_id"):
+        raise HTTPException(403, "You do not have access to this manuscript")
     return manuscript
 
 
@@ -115,6 +103,16 @@ async def _ensure_reader_config_unlocked(manuscript: Dict[str, Any]) -> None:
         raise HTTPException(409, "Reader focus is locked because this manuscript's reading run has started.")
 
 
+async def _limit_ai_operation(request: Request, manuscript: Dict[str, Any]) -> None:
+    """Apply shared per-account and per-IP limits before any costly AI work."""
+    owner_id = manuscript.get("user_id")
+    await enforce_rate_limit(
+        request, "ai_account", _cfg.AI_ACCOUNT_RATE_PER_HOUR, 3600,
+        identity=f"user:{owner_id}",
+    )
+    await enforce_rate_limit(request, "ai_ip", _cfg.AI_IP_RATE_PER_HOUR, 3600)
+
+
 def _selected_readers_complete(existing_reactions: List[Dict], readers: List[Dict]) -> bool:
     completed_reader_ids = {
         reaction.get("reader_id") for reaction in existing_reactions
@@ -126,6 +124,10 @@ def _selected_readers_complete(existing_reactions: List[Dict], readers: List[Dic
 
 def _require_affordable(estimate: Dict) -> None:
     if not estimate.get("can_start"):
+        if _cfg.CREDITS_ENABLED:
+            from services.credits import InsufficientCredits, SCALE
+            raise InsufficientCredits(int(estimate.get("available_credits", 0) * SCALE),
+                                      int(estimate.get("estimated_credits", 0) * SCALE))
         budget = estimate.get("budget") or {}
         raise HTTPException(402, {
             "code": "budget_insufficient",
@@ -152,7 +154,18 @@ async def health():
     database_ready = await ping() if ping else True
     if not database_ready:
         raise HTTPException(503, "Database is not ready")
-    return {"status": "ready", "database_backend": _cfg.DATABASE_BACKEND, "database_ready": True}
+    worker_count = getattr(db, "active_ai_workers", None)
+    active_workers = await worker_count() if worker_count else 0
+    return {
+        "status": "ready",
+        "database_backend": _cfg.DATABASE_BACKEND,
+        "database_ready": True,
+        "database_private_network": ".railway.internal" in (_cfg.DATABASE_URL or ""),
+        "ai_jobs_enabled": _cfg.AI_JOBS_ENABLED,
+        "ai_job_api_version": 2,
+        "ai_worker_ready": active_workers > 0,
+        "ai_worker_count": active_workers,
+    }
 
 
 @api_router.get("/config/models")
@@ -183,7 +196,10 @@ async def get_available_models():
 
 
 @api_router.post("/config/model")
-async def update_model(req: ModelConfigRequest):
+async def update_model(req: ModelConfigRequest, request: Request):
+    user = await _get_session_user(request)
+    if not _is_admin(user.get("email")):
+        raise HTTPException(403, "Administrator access required")
     if req.provider != "gemini" or req.model not in AVAILABLE_READER_MODELS:
         raise HTTPException(400, "This reading pipeline currently supports Gemini 2.5 Flash or Pro")
     _cfg.LLM_MODEL = req.model
@@ -200,31 +216,9 @@ async def update_model(req: ModelConfigRequest):
 
 @api_router.get("/user/usage")
 async def get_user_usage(request: Request):
-    """
-    Return cumulative word usage for the current user.
-    Response: { words_used, words_limit, is_admin }
-    Unauthenticated → words_used 0, words_limit WORDS_LIMIT, is_admin false.
-    """
-    user = await _get_optional_user(request)
-    if not user:
-        return {"words_used": 0, "words_limit": WORDS_LIMIT, "is_admin": False}
-    email = (user.get("email") or "").strip()
-    is_admin = _is_admin(email)
-    words_used = 0
-    if not is_admin:
-        manuscripts = await db.manuscripts.find(
-            {"user_id": user["user_id"]}, None
-        ).to_list(1000)
-        words_used = sum(
-            _count_words(m.get("raw_text") or "")
-            for m in manuscripts
-        )
-    return {
-        "words_used": words_used,
-        "words_limit": WORDS_LIMIT,
-        "is_admin": is_admin,
-        "email": email or None,
-    }
+    user = await _get_session_user(request)
+    from services.credits import balance
+    return await balance(user["user_id"])
 
 
 # ─── Waitlist (when user hits manuscript limit) ─────────────────────────────────
@@ -302,7 +296,6 @@ async def list_manuscripts(request: Request):
     for d in docs:
         d.pop("raw_text", None)
         d.pop("sections", None)
-        d.pop("access_token_hash", None)
     return docs
 
 
@@ -311,40 +304,25 @@ async def create_manuscript(manuscript: ManuscriptCreate, request: Request):
     raw_text = manuscript.raw_text.strip()
     if not raw_text:
         raise HTTPException(400, "Manuscript text cannot be empty")
+    if len(raw_text.encode("utf-8")) > MAX_BODY_SIZE_BYTES:
+        raise HTTPException(413, f"Manuscript exceeds the {_cfg.MAX_UPLOAD_MB} MB limit")
 
-    # Attach user_id if the user is authenticated (optional auth — anonymous allowed)
-    user_id = None
-    user = None
-    try:
-        user = await _get_session_user(request)
-        user_id = user["user_id"]
-    except HTTPException:
-        pass  # anonymous submission still allowed
-
-    # Usage limit: non-admin authenticated users get WORDS_LIMIT total words
-    if user_id and user:
-        if not _is_admin(user.get("email") or ""):
-            manuscript_words = _count_words(raw_text)
-            manuscripts = await db.manuscripts.find(
-                {"user_id": user_id}, None
-            ).to_list(1000)
-            current_words_used = sum(
-                _count_words(m.get("raw_text") or "")
-                for m in manuscripts
-            )
-            words_remaining = max(0, WORDS_LIMIT - current_words_used)
-            if current_words_used + manuscript_words > WORDS_LIMIT:
-                from fastapi.responses import JSONResponse
-                return JSONResponse(
-                    status_code=403,
-                    content={
-                        "error": "limit_reached",
-                        "words_used": current_words_used,
-                        "words_limit": WORDS_LIMIT,
-                        "words_remaining": words_remaining,
-                        "manuscript_words": manuscript_words,
-                    },
-                )
+    # Every manuscript belongs to the authenticated account that creates it.
+    user = await _get_session_user(request)
+    user_id = user["user_id"]
+    await enforce_rate_limit(
+        request,
+        "manuscript_create",
+        _cfg.MANUSCRIPT_CREATE_RATE_PER_HOUR,
+        3600,
+        identity=f"user:{user_id}",
+    )
+    await enforce_rate_limit(
+        request,
+        "manuscript_create_ip",
+        _cfg.MANUSCRIPT_CREATE_IP_RATE_PER_HOUR,
+        3600,
+    )
 
     doc_id = str(uuid.uuid4())
     sections, total_lines = split_manuscript(raw_text)
@@ -360,7 +338,7 @@ async def create_manuscript(manuscript: ManuscriptCreate, request: Request):
         sample = raw_text[:3000]
         completion = await asyncio.wait_for(
             structured_completion(
-                route=route_for_role("persona"), role="genre", system_prompt=genre_prompt,
+                route=route_for_role("persona"), role="genre", system_prompt=genre_prompt, billing_user_id=user_id,
                 user_prompt=f"Analyze:\n\n{sample}", max_tokens=500,
             ),
             timeout=45.0,
@@ -372,12 +350,10 @@ async def create_manuscript(manuscript: ManuscriptCreate, request: Request):
     except Exception as e:
         logger.warning("Genre detection failed, using defaults: %s", e)
 
-    guest_access_token = secrets.token_urlsafe(32) if not user_id else None
     doc = {
         "id": doc_id,
         "title": manuscript.title or "Untitled Manuscript",
         "user_id": user_id,
-        "access_token_hash": _hash_manuscript_token(guest_access_token) if guest_access_token else None,
         "raw_text": raw_text,
         "genre": genre_data.get("genre", "Fiction"),
         "target_audience": genre_data.get("target_audience", "General readers"),
@@ -387,7 +363,7 @@ async def create_manuscript(manuscript: ManuscriptCreate, request: Request):
         "sections": sections,
         "total_sections": len(sections),
         "total_lines": total_lines,
-        "cost_limit_usd": manuscript.cost_limit_usd if manuscript.cost_limit_usd is not None else _cfg.MAX_WORKFLOW_COST_USD,
+        "cost_limit_usd": 0 if _cfg.CREDITS_ENABLED else _cfg.MAX_WORKFLOW_COST_USD,
         "cost_spent_usd": genre_detection_cost,
         "cost_reserved_usd": 0,
         "reader_config_locked": False,
@@ -400,10 +376,7 @@ async def create_manuscript(manuscript: ManuscriptCreate, request: Request):
     except Exception as e:
         logger.exception("Failed to save manuscript to database")
         raise HTTPException(503, f"Database error: {str(e)}")
-    response_doc = {**doc}
-    response_doc.pop("access_token_hash", None)
-    response_doc["access_token"] = guest_access_token
-    return ManuscriptResponse(**response_doc)
+    return ManuscriptResponse(**doc)
 
 
 @api_router.patch("/manuscripts/{manuscript_id}/append-text", response_model=ManuscriptResponse)
@@ -413,7 +386,10 @@ async def append_manuscript_text(manuscript_id: str, body: AppendTextRequest, re
     if not chunk:
         raise HTTPException(400, "raw_text_chunk cannot be empty")
     doc = await _get_owned_manuscript(manuscript_id, request)
+    await _ensure_reader_config_unlocked(doc)
     new_raw = (doc.get("raw_text") or "") + chunk
+    if len(new_raw.encode("utf-8")) > MAX_BODY_SIZE_BYTES:
+        raise HTTPException(413, f"Manuscript exceeds the {_cfg.MAX_UPLOAD_MB} MB limit")
     sections, total_lines = split_manuscript(new_raw)
     update = {
         "raw_text": new_raw,
@@ -426,13 +402,32 @@ async def append_manuscript_text(manuscript_id: str, body: AppendTextRequest, re
     return ManuscriptResponse(**updated)
 
 
-# Max request body / form part size (100MB) for full-length manuscripts (500+ pages)
-MAX_BODY_SIZE_BYTES = 100 * 1024 * 1024
+MAX_BODY_SIZE_BYTES = _cfg.MAX_UPLOAD_MB * 1024 * 1024
+MAX_DOCX_UNCOMPRESSED_BYTES = 100 * 1024 * 1024
+
+
+async def _read_bounded_upload(file) -> bytes:
+    declared_size = getattr(file, "size", None)
+    if declared_size is not None and declared_size > MAX_BODY_SIZE_BYTES:
+        raise HTTPException(413, f"File exceeds the {_cfg.MAX_UPLOAD_MB} MB upload limit")
+    content = await file.read(MAX_BODY_SIZE_BYTES + 1)
+    if len(content) > MAX_BODY_SIZE_BYTES:
+        raise HTTPException(413, f"File exceeds the {_cfg.MAX_UPLOAD_MB} MB upload limit")
+    return content
 
 
 @api_router.post("/manuscripts/upload")
 async def upload_manuscript(request: Request):
-    """Accept .txt, .docx, or .pdf file. Form parsed with max_part_size=100MB for full-length books."""
+    """Accept a bounded, signature-validated .txt, .docx, or .pdf manuscript."""
+    # Authenticate before parsing or buffering a potentially large request body.
+    await _get_session_user(request)
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > MAX_BODY_SIZE_BYTES + 1024 * 1024:
+                raise HTTPException(413, f"Request exceeds the {_cfg.MAX_UPLOAD_MB} MB upload limit")
+        except ValueError:
+            raise HTTPException(400, "Invalid Content-Length header")
     async with request.form(max_part_size=MAX_BODY_SIZE_BYTES) as form:
         file = form.get("file")
         if not file or not getattr(file, "filename", None):
@@ -440,22 +435,31 @@ async def upload_manuscript(request: Request):
         title = form.get("title") or "Untitled Manuscript"
         if isinstance(title, list):
             title = title[0] if title else "Untitled Manuscript"
+        title = str(title).strip()[:200] or "Untitled Manuscript"
         filename = file.filename or ""
-        if filename.endswith(".docx"):
+        extension = Path(filename).suffix.lower()
+        content = await _read_bounded_upload(file)
+        if extension == ".docx":
             try:
                 from docx import Document
-                import io
-                content = await file.read()
+                if not content.startswith(b"PK\x03\x04"):
+                    raise ValueError("file signature is not DOCX")
+                with zipfile.ZipFile(io.BytesIO(content)) as archive:
+                    names = set(archive.namelist())
+                    if "[Content_Types].xml" not in names or "word/document.xml" not in names:
+                        raise ValueError("DOCX structure is invalid")
+                    if len(names) > 10_000 or sum(item.file_size for item in archive.infolist()) > MAX_DOCX_UNCOMPRESSED_BYTES:
+                        raise ValueError("DOCX expands beyond the safe processing limit")
                 doc = Document(io.BytesIO(content))
                 paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
                 raw_text = "\n\n".join(paragraphs)
             except Exception as e:
                 raise HTTPException(400, f"Failed to read .docx file: {e}")
-        elif filename.endswith(".pdf"):
+        elif extension == ".pdf":
             try:
                 import fitz  # PyMuPDF
-                import io
-                content = await file.read()
+                if not content.startswith(b"%PDF-"):
+                    raise ValueError("file signature is not PDF")
                 doc = fitz.open(stream=content, filetype="pdf")
                 parts = []
                 for page in doc:
@@ -464,9 +468,10 @@ async def upload_manuscript(request: Request):
                 raw_text = "\n\n".join(p.strip() for p in parts if p.strip())
             except Exception as e:
                 raise HTTPException(400, f"Failed to read .pdf file: {e}")
-        elif filename.endswith(".txt"):
-            content = await file.read()
-            raw_text = content.decode("utf-8", errors="replace").strip()
+        elif extension == ".txt":
+            if b"\x00" in content:
+                raise HTTPException(400, "Text files cannot contain null bytes")
+            raw_text = content.decode("utf-8-sig", errors="replace").strip()
         else:
             raise HTTPException(400, "Please upload a .txt, .docx, or .pdf file")
 
@@ -487,7 +492,8 @@ async def get_manuscript(manuscript_id: str, request: Request):
 
 @api_router.patch("/manuscripts/{manuscript_id}/genre")
 async def update_genre(manuscript_id: str, update: Dict[str, Any], request: Request):
-    await _get_owned_manuscript(manuscript_id, request)
+    manuscript = await _get_owned_manuscript(manuscript_id, request)
+    await _ensure_reader_config_unlocked(manuscript)
     allowed = {"genre", "target_audience", "age_range", "comparable_books", "model"}
     filtered = {k: v for k, v in update.items() if k in allowed}
     if "model" in filtered and filtered["model"] not in AVAILABLE_READER_MODELS:
@@ -500,12 +506,10 @@ async def update_genre(manuscript_id: str, update: Dict[str, Any], request: Requ
 
 @api_router.get("/manuscripts/{manuscript_id}/personas", response_model=List[ReaderPersonaResponse])
 async def get_personas(manuscript_id: str, request: Request):
-    await _get_owned_manuscript(manuscript_id, request)
+    manuscript = await _get_owned_manuscript(manuscript_id, request)
     personas = await db.reader_personas.find({"manuscript_id": manuscript_id}, {"_id": 0}).to_list(10)
     if not personas:
-        manuscript = await db.manuscripts.find_one({"id": manuscript_id}, {"_id": 0})
-        if not manuscript:
-            raise HTTPException(404, "Manuscript not found")
+        await _limit_ai_operation(request, manuscript)
         try:
             return await generate_all_personas(
                 manuscript_id,
@@ -514,7 +518,7 @@ async def get_personas(manuscript_id: str, request: Request):
                 manuscript.get("age_range", "Adult"),
                 count=DEFAULT_READER_COUNT,
             )
-        except HTTPException:
+        except (HTTPException, InsufficientCredits):
             raise
         except Exception as e:
             logger.exception("Persona generation failed for manuscript %s", manuscript_id)
@@ -534,6 +538,7 @@ async def get_personas(manuscript_id: str, request: Request):
 @api_router.post("/manuscripts/{manuscript_id}/personas/regenerate")
 async def regenerate_personas(manuscript_id: str, req: RegenerateRequest, request: Request):
     manuscript = await _get_owned_manuscript(manuscript_id, request)
+    await _limit_ai_operation(request, manuscript)
     await _ensure_reader_config_unlocked(manuscript)
     if not manuscript:
         raise HTTPException(404, "Manuscript not found")
@@ -572,6 +577,7 @@ async def add_persona(manuscript_id: str, request: Request):
     """Add the next reader from the preset list (max 5)."""
     try:
         manuscript = await _get_owned_manuscript(manuscript_id, request)
+        await _limit_ai_operation(request, manuscript)
         await _ensure_reader_config_unlocked(manuscript)
         return await add_one_persona(manuscript_id)
     except ValueError as e:
@@ -611,8 +617,81 @@ async def read_all_sections_stream(
     request: Request,
     reader_ids: str | None = Query(None, description="Comma-separated reader IDs to use; if omitted, all readers are used"),
 ):
-    """SSE: auto-reads all sections sequentially, N readers in parallel per section. Pauses when client disconnects."""
+    """Legacy SSE facade; durable deployments keep processing after disconnect."""
     manuscript = await _get_owned_manuscript(manuscript_id, request)
+    if _cfg.AI_JOBS_ENABLED:
+        await _limit_ai_operation(request, manuscript)
+        all_readers = await db.reader_personas.find({"manuscript_id": manuscript_id}, {"_id": 0}).to_list(10)
+        selected_ids = {item.strip() for item in (reader_ids or "").split(",") if item.strip()}
+        readers = [reader for reader in all_readers if not selected_ids or reader.get("id") in selected_ids]
+        if selected_ids and {reader.get("id") for reader in readers} != selected_ids:
+            raise HTTPException(400, "One or more selected readers are invalid")
+        if not readers:
+            raise HTTPException(400, "No readers found. Generate readers first.")
+        initial_estimate = await preflight_estimate(manuscript, readers, "readers")
+        _require_affordable(initial_estimate)
+        selected_ids = {reader["id"] for reader in readers}
+        readers_by_id = {reader["id"]: reader for reader in readers}
+        job = await enqueue_ai_job(
+            user_id=manuscript["user_id"], manuscript_id=manuscript_id,
+            job_type="reading",
+            idempotency_key=reading_idempotency_key(manuscript_id, list(selected_ids)),
+            payload={"reader_ids": sorted(selected_ids)}, retry_failed=True,
+        )
+        await db.manuscripts.update_one({"id": manuscript_id}, {"$set": {"reader_config_locked": True}})
+
+        async def durable_compatibility_stream():
+            """Translate stored worker progress into the legacy SSE event contract."""
+            initial = await workflow_status(manuscript, readers)
+            yield f"data: {json.dumps({'type': 'start', 'total_sections': manuscript.get('total_sections', 0), 'total_readers': len(readers), 'total_tasks': initial['total_tasks'], 'completed_tasks': initial['completed_tasks'], 'usage': initial.get('usage'), 'budget': initial.get('budget'), 'cost_estimate': initial_estimate})}\n\n"
+            emitted = set()
+            while True:
+                if await request.is_disconnected():
+                    return
+                reactions = await db.reader_reactions.find(
+                    {"manuscript_id": manuscript_id}, {"_id": 0}
+                ).sort("section_number", 1).to_list(5000)
+                for reaction in reactions:
+                    pair = (reaction.get("reader_id"), reaction.get("section_number"))
+                    if pair in emitted or reaction.get("reader_id") not in selected_ids:
+                        continue
+                    emitted.add(pair)
+                    response_json = reaction.get("response_json") or {}
+                    reader = readers_by_id.get(reaction.get("reader_id"), {})
+                    event = {
+                        **response_json,
+                        "type": "reader_complete", "reader_id": reaction.get("reader_id"),
+                        "reader_name": reaction.get("reader_name"),
+                        "avatar_index": reader.get("avatar_index", 0),
+                        "personality": reader.get("personality", ""),
+                        "section_number": reaction.get("section_number"),
+                        "inline_comments": reaction.get("inline_comments") or [],
+                        "section_reflection": reaction.get("section_reflection"),
+                        "reaction_id": reaction.get("id", ""),
+                    }
+                    yield f"data: {json.dumps(event)}\n\n"
+
+                latest = await db.ai_jobs.find_one({"id": job["id"]}, {"_id": 0})
+                if not latest:
+                    yield f"data: {json.dumps({'type': 'reader_error', 'message': 'Reading job no longer exists'})}\n\n"
+                    return
+                if latest.get("status") == "completed":
+                    final = await workflow_status(manuscript, readers)
+                    yield f"data: {json.dumps({'type': 'all_complete', 'workflow': final})}\n\n"
+                    return
+                if latest.get("status") == "failed":
+                    yield f"data: {json.dumps({'type': 'reader_error', 'message': latest.get('error') or 'Reading failed after automatic retries'})}\n\n"
+                    final = await workflow_status(manuscript, readers)
+                    yield f"data: {json.dumps({'type': 'all_complete', 'workflow': final})}\n\n"
+                    return
+                yield ": heartbeat\n\n"
+                await asyncio.sleep(_cfg.AI_JOB_POLL_SECONDS)
+
+        return StreamingResponse(
+            durable_compatibility_stream(), media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+        )
+    await _limit_ai_operation(request, manuscript)
 
     sections = manuscript.get("sections", [])
     raw_text = (manuscript.get("raw_text") or "").strip()
@@ -829,13 +908,8 @@ async def get_manuscript_budget(manuscript_id: str, request: Request):
 
 @api_router.patch("/manuscripts/{manuscript_id}/budget")
 async def update_manuscript_budget(manuscript_id: str, body: BudgetUpdateRequest, request: Request):
-    manuscript = await _get_owned_manuscript(manuscript_id, request)
-    committed = float(manuscript.get("cost_spent_usd") or 0) + float(manuscript.get("cost_reserved_usd") or 0)
-    if body.cost_limit_usd > 0 and body.cost_limit_usd < committed:
-        raise HTTPException(409, f"Budget cannot be lower than the ${committed:.4f} already spent or reserved.")
-    await db.manuscripts.update_one({"id": manuscript_id}, {"$set": {"cost_limit_usd": body.cost_limit_usd}})
-    manuscript["cost_limit_usd"] = body.cost_limit_usd
-    return await budget_status(manuscript)
+    await _get_session_user(request)
+    raise HTTPException(410, "Manuscript spending limits have been replaced by account credits")
 
 
 @api_router.get("/manuscripts/{manuscript_id}/reactions/{section_number}")
@@ -870,6 +944,17 @@ async def create_editor_report(
             "created_at": existing_report.get("created_at"),
             "cached": True,
         }
+    await _limit_ai_operation(request, manuscript)
+
+    if _cfg.AI_JOBS_ENABLED:
+        key = request.headers.get("idempotency-key")
+        if not key:
+            key = f"editor-report:{manuscript_id}:initial" if not force else f"editor-report:{manuscript_id}:{uuid.uuid4()}"
+        job = await enqueue_ai_job(
+            user_id=manuscript["user_id"], manuscript_id=manuscript_id,
+            job_type="editor_report", idempotency_key=key, payload={"force": force}, retry_failed=True,
+        )
+        return JSONResponse(public_job(job), status_code=202)
 
     total_sections = manuscript.get("total_sections", 0)
     readers = await db.reader_personas.find({"manuscript_id": manuscript_id}, {"_id": 0}).to_list(10)
@@ -895,6 +980,8 @@ async def create_editor_report(
     # Generate report from whatever reactions we have (partial OK if some readers/sections errored)
     try:
         report_data = await _build_editor_report(manuscript, reactions)
+    except InsufficientCredits:
+        raise
     except CostLimitExceeded as exc:
         raise HTTPException(402, {"code": "budget_insufficient", "message": str(exc), **exc.details})
     except Exception as exc:
@@ -943,6 +1030,15 @@ async def create_editor_report(
 @api_router.post("/manuscripts/{manuscript_id}/editor-report/copy-edit")
 async def create_copy_edit_appendix(manuscript_id: str, request: Request):
     manuscript = await _get_owned_manuscript(manuscript_id, request)
+    await _limit_ai_operation(request, manuscript)
+    if _cfg.AI_JOBS_ENABLED:
+        key = request.headers.get("idempotency-key") or f"copy-edit:{manuscript_id}:{uuid.uuid4()}"
+        job = await enqueue_ai_job(
+            user_id=manuscript["user_id"], manuscript_id=manuscript_id,
+            job_type="copy_edit", idempotency_key=key, payload={},
+        )
+        return JSONResponse(public_job(job), status_code=202)
+
     readers = await db.reader_personas.find({"manuscript_id": manuscript_id}, {"_id": 0}).to_list(10)
     copy_estimate = await preflight_estimate(manuscript, readers, "copyedit")
     _require_affordable(copy_estimate)
@@ -951,6 +1047,8 @@ async def create_copy_edit_appendix(manuscript_id: str, request: Request):
         raise HTTPException(400, "Generate the Editor V3 report before running the optional copy edit.")
     try:
         appendix = await _build_copy_edit_appendix(manuscript)
+    except InsufficientCredits:
+        raise
     except CostLimitExceeded as exc:
         raise HTTPException(402, {"code": "budget_insufficient", "message": str(exc), **exc.details})
     except Exception as exc:
@@ -993,7 +1091,7 @@ async def get_editor_report_version(manuscript_id: str, version: int, request: R
 @api_router.get("/manuscripts/{manuscript_id}/export")
 async def export_manuscript_workspace(manuscript_id: str, request: Request):
     manuscript = await _get_owned_manuscript(manuscript_id, request)
-    safe_manuscript = {key: value for key, value in manuscript.items() if key != "access_token_hash"}
+    safe_manuscript = dict(manuscript)
     async def rows(table, limit=5000):
         return await table.find({"manuscript_id": manuscript_id}, {"_id": 0}).to_list(limit)
     current_report = await db.editor_reports.find_one({"manuscript_id": manuscript_id}, {"_id": 0})
@@ -1004,6 +1102,7 @@ async def export_manuscript_workspace(manuscript_id: str, request: Request):
         "reactions": await rows(db.reader_reactions),
         "memories": await rows(db.reader_memories),
         "workflow_tasks": await rows(db.workflow_tasks),
+        "ai_jobs": [public_job(job) for job in await rows(db.ai_jobs, 100)],
         "current_report": current_report,
         "report_versions": await rows(db.report_versions, 100),
     }
@@ -1014,10 +1113,15 @@ async def delete_manuscript(manuscript_id: str, request: Request, confirm: bool 
     await _get_owned_manuscript(manuscript_id, request)
     if not confirm:
         raise HTTPException(400, "Deletion requires confirm=true")
+    if (
+        await db.ai_jobs.count_documents({"manuscript_id": manuscript_id, "status": "queued"})
+        or await db.ai_jobs.count_documents({"manuscript_id": manuscript_id, "status": "running"})
+    ):
+        raise HTTPException(409, "Wait for the active AI job to finish before deleting this manuscript")
     # PostgreSQL/Supabase cascade from manuscripts. Explicit cleanup preserves
     # identical behavior in the local memory backend.
     for table in (
-        db.report_versions, db.editor_reports, db.workflow_tasks, db.reader_memories,
+        db.ai_jobs, db.report_versions, db.editor_reports, db.workflow_tasks, db.reader_memories,
         db.reader_reactions, db.reader_personas,
     ):
         await table.delete_many({"manuscript_id": manuscript_id})

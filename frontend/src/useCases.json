@@ -1,0 +1,59 @@
+{
+  "/use-cases/opening-chapter-feedback": {
+    "label": "Opening chapter feedback",
+    "title": "Opening Chapter Feedback: Hook and Clarity | Roundtable",
+    "description": "See how contrasting AI reader reactions can help you revise a fiction opening. Follow a sample passage from mystery and confusion to a deliberate revision.",
+    "heading": "Does your opening raise the right question?",
+    "intro": "An opening can withhold the answer and still give readers their bearings. Use Roundtable to examine whether your first chapter creates curiosity about the story you mean to tell, or leaves readers unsure what is happening.",
+    "bring": "Bring the opening scene through its first meaningful choice or turn. Include the genre and intended audience. A single striking sentence cannot show whether the chapter delivers on its promise.",
+    "focus": "Give one reader Pacing and momentum and another Plot logic. In the writer focus note, ask: What question makes you want to continue, and where does missing context stop you following the action?",
+    "passage": "At six, Mara stole the key from her father's coat. By seven, she had returned it. At breakfast he asked whether she had slept well. She watched the garden gate and said yes.",
+    "reactions": [
+      { "reader": "A reader following suspense", "text": "Returning the key before breakfast makes this feel like a secret already in motion. I want to know what Mara did during that hour. The gate gives me somewhere to look for a consequence." },
+      { "reader": "A reader following cause and effect", "text": "I can follow the sequence, but I don't know what the key opens. If the next scene changes location, I may lose the connection between the theft and the gate." }
+    ],
+    "assessment": "The passage offers a clear sequence and an unresolved action. The disagreement is about orientation, not whether every secret needs explaining. Check the next scene: if it develops the gate, the original may be enough. If it introduces another mystery, one concrete connection could keep the first question alive.",
+    "revision": "At six, Mara stole the garden key from her father's coat. By seven, she had returned it. At breakfast he asked whether she had slept well. She watched the gate and said yes.",
+    "tradeoff": "Naming the garden key connects the theft to the place she watches. It narrows the mystery from what the key opens to what she did outside. Keep the original if discovering the key's purpose is itself an intended reveal.",
+    "next": "Read the chapter again with the small clarification in place. Ask a human reader what they expect to happen next before telling them your intention. Compare that expectation with your planned story, rather than counting how many readers call the opening a strong hook.",
+    "limit": "An AI panel can suggest competing interpretations of a hook. It cannot predict whether an agent will request the manuscript or whether an audience will buy the book."
+  },
+  "/use-cases/pacing-feedback": {
+    "label": "Pacing feedback",
+    "title": "Fiction Pacing Feedback: Scene Momentum | Roundtable",
+    "description": "Explore a worked pacing example with a scene excerpt, contrasting reader reactions, and a revision that keeps atmosphere while restoring urgency.",
+    "heading": "Find the pause that costs your scene its urgency.",
+    "intro": "Slow prose is not automatically a pacing problem. A pause can deepen anticipation, give a loss room to land, or interrupt a moment that needs to move. Roundtable helps you connect a reader's loss of momentum to the passage behind it.",
+    "bring": "Bring the whole scene, including its immediate goal and outcome. State whether you want breathless action, slow suspense, or a deliberate recovery beat. Without that intention, advice to make everything faster can flatten the story.",
+    "focus": "Choose Pacing and momentum for one reader and Emotional authenticity for another. Ask them to identify where anticipation grows or fades, and whether a reflective pause changes their understanding of the character.",
+    "passage": "The last ferry sounded its horn. Inez stopped on the quay. The warehouse windows glowed amber, the color of the bottles her grandfather had lined above his stove. Every summer he had polished them with a rag. She counted the windows. The horn sounded again.",
+    "reactions": [
+      { "reader": "A reader following momentum", "text": "The last ferry creates a deadline. The memory and window counting put that deadline on hold. I need to know whether she is hesitating on purpose or whether the description has stopped the action." },
+      { "reader": "A reader following emotion", "text": "The amber bottles make this departure feel personal. I would miss that connection if the whole memory disappeared, but I don't yet know what staying would mean to her." }
+    ],
+    "assessment": "Both reactions point to the same pause but assign it different value. Before cutting description, decide whether Inez's hesitation is the scene's conflict. If she wants to catch the ferry, carry the memory through an action. If she wants an excuse to stay, make that reluctance legible.",
+    "revision": "The last ferry sounded its horn. Inez ran past the warehouse windows, amber as the bottles above her grandfather's stove. At the gangway she looked back once. The horn sounded again.",
+    "tradeoff": "The revision keeps one image and moves Inez toward the ferry. It sacrifices the lingering, inward rhythm and makes departure her apparent goal. It would be the wrong edit if her refusal to leave is the point of the scene.",
+    "next": "Use the editorial report to look for repeated delays across scenes, then return to each passage. Separate pauses that develop a choice from pauses that repeat information. Revise one scene and read it aloud to check whether the new rhythm suits the intended mood.",
+    "limit": "AI reactions are prompts for investigation, not a pacing score you must optimize. A quiet scene may be exactly what your intended readers need after an intense chapter."
+  },
+  "/use-cases/character-motivation": {
+    "label": "Character motivation feedback",
+    "title": "Character Motivation Feedback for Fiction | Roundtable",
+    "description": "Follow a fictional character's surprising choice through two reader perspectives. See how Roundtable can help you test motivation without explaining away ambiguity.",
+    "heading": "A surprising choice still needs a reason.",
+    "intro": "Readers can dislike a decision and still believe the character would make it. Use Roundtable to explore that distinction when a betrayal, sacrifice, or change of heart feels unearned in your draft.",
+    "bring": "Include the decision scene and the earlier passage establishing the character's desire, fear, or obligation. If you submit only the decision, readers may ask for context that already exists elsewhere in the manuscript.",
+    "focus": "Set one reader's focus to Character motivation and another to Plot logic. Ask: What does the character seem to want at this moment? What makes this choice plausible, and which earlier detail supports that interpretation?",
+    "passage": "Leah had spent three months collecting proof against the director. When the investigator reached for the folder, she slid it back into her bag. 'I must have left it at home,' she said. Through the glass wall, her brother waved from the reception desk.",
+    "reactions": [
+      { "reader": "A reader following relationships", "text": "The brother's appearance makes me suspect she is protecting him. That gives the lie an emotional possibility, though I don't yet know what he stands to lose." },
+      { "reader": "A reader following logic", "text": "She reverses three months of work in a moment. I need some connection between her brother and the evidence to understand why seeing him changes her decision." }
+    ],
+    "assessment": "The emotional reading supplies a possible motive; the text has not established it. Check whether an earlier scene connects the brother to the director. If that connection exists, a reminder may suffice. If it does not, decide whether you want readers to understand the choice now or reinterpret it later.",
+    "revision": "Leah had spent three months collecting proof against the director. When the investigator reached for the folder, she saw her brother's signature on the first page. She slid it back into her bag. 'I must have left it at home,' she said.",
+    "tradeoff": "The signature makes the cost of disclosure immediate without stating Leah's feelings. It also introduces a concrete story fact: her brother is implicated. Use a detail that fits your actual plot; adding evidence solely to satisfy feedback can create a different story.",
+    "next": "Trace the choice backward through your manuscript. Note the desire, the competing obligation, and the moment one outweighs the other. Use passage-linked reactions to find what readers actually noticed. Keep a disagreement if it reflects the moral tension you intended, and revise when the missing connection prevents readers from understanding the choice at all.",
+    "limit": "An AI reader may invent a motive or overlook an earlier clue. Repeated agreement does not make an inferred motive a fact. You remain responsible for the character's continuity and the story you want to tell."
+  }
+}

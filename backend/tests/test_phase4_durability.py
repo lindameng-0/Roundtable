@@ -1,18 +1,33 @@
 """Phase 4 persistence contracts, using the deterministic memory backend."""
 from fastapi.testclient import TestClient
+import asyncio
+from datetime import datetime, timedelta, timezone
 
 from config import db
 from server import app
+from services.auth_security import hash_opaque_token
+from worker import run_worker
 
 
 def _create_workspace(client):
+    raw_session = "durability-session"
+    asyncio.run(db.users.insert_one({
+        "user_id": "durability-user", "email": "durability@example.com", "name": "Writer",
+        "email_verified": True, "auth_provider": "email", "created_at": datetime.now(timezone.utc).isoformat(),
+    }))
+    asyncio.run(db.user_sessions.insert_one({
+        "user_id": "durability-user", "token_hash": hash_opaque_token(raw_session),
+        "expires_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }))
+    client.cookies.set("session_token", raw_session)
     created = client.post("/api/manuscripts", json={
         "title": "Durability contract",
         "raw_text": "Chapter One\n\n" + ("A durable story beat. " * 30),
     })
     assert created.status_code == 200, created.text
     body = created.json()
-    return body, {"X-Manuscript-Token": body["access_token"]}
+    return body, {}
 
 
 def test_report_history_export_and_confirmed_deletion():
@@ -21,15 +36,18 @@ def test_report_history_export_and_confirmed_deletion():
         manuscript, headers = _create_workspace(client)
         mid = manuscript["id"]
         personas = client.get(f"/api/manuscripts/{mid}/personas", headers=headers).json()
-        stream = client.get(
-            f"/api/manuscripts/{mid}/read-all?reader_ids={personas[0]['id']}",
+        stream = client.post(
+            f"/api/manuscripts/{mid}/jobs/reading?reader_ids={personas[0]['id']}",
             headers=headers,
         )
-        assert stream.status_code == 200
+        assert stream.status_code == 202
+        asyncio.run(run_worker(once=True))
 
         first = client.post(f"/api/manuscripts/{mid}/editor-report", headers=headers)
-        assert first.status_code == 200, first.text
-        assert first.json()["version"] == 1
+        assert first.status_code == 202, first.text
+        asyncio.run(run_worker(once=True))
+        first_job = client.get(f"/api/jobs/{first.json()['id']}", headers=headers).json()
+        assert first_job["result"]["version"] == 1
 
         cached = client.post(f"/api/manuscripts/{mid}/editor-report", headers=headers)
         assert cached.json()["cached"] is True
@@ -37,8 +55,10 @@ def test_report_history_export_and_confirmed_deletion():
         assert [row["version"] for row in versions.json()] == [1]
 
         regenerated = client.post(f"/api/manuscripts/{mid}/editor-report?force=true", headers=headers)
-        assert regenerated.status_code == 200, regenerated.text
-        assert regenerated.json()["version"] == 2
+        assert regenerated.status_code == 202, regenerated.text
+        asyncio.run(run_worker(once=True))
+        regenerated_job = client.get(f"/api/jobs/{regenerated.json()['id']}", headers=headers).json()
+        assert regenerated_job["result"]["version"] == 2
         old = client.get(f"/api/manuscripts/{mid}/editor-report/versions/1", headers=headers)
         assert old.status_code == 200
         assert old.json()["report_json"]["schema_version"] == 3
@@ -47,7 +67,7 @@ def test_report_history_export_and_confirmed_deletion():
         assert exported.status_code == 200
         payload = exported.json()
         assert payload["format"] == "roundtable-workspace"
-        assert "access_token_hash" not in payload["manuscript"]
+        assert payload["manuscript"]["user_id"] == "durability-user"
         assert len(payload["report_versions"]) == 2
 
         refused = client.delete(f"/api/manuscripts/{mid}", headers=headers)

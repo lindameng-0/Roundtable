@@ -9,6 +9,7 @@ import config as _cfg
 from models import ReaderPersonaResponse
 from services.readers import DEFAULT_ATTENTION_BY_AVATAR
 from services.llm_gateway import structured_completion
+from services.credits import InsufficientCredits
 from services.model_routing import route_for_role
 
 logger = logging.getLogger(__name__)
@@ -183,6 +184,8 @@ Return ONLY this JSON (no other text):
             operation_key=f"persona:{avatar_index}",
         )
         data = completion.data
+    except InsufficientCredits:
+        raise
     except Exception:
         data = {}
 

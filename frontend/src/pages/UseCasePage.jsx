@@ -1,0 +1,23 @@
+import React from "react";
+import { Link, useLocation } from "react-router-dom";
+import SiteHeader, { SiteFooter } from "../components/SiteHeader";
+import cases from "../useCases.json";
+
+export function UseCaseLinks() {
+  return <div className="use-case-links">{Object.entries(cases).map(([path, item]) => <article key={path}><h3><Link to={`${path}/`}>{item.label}</Link></h3><p>{item.intro}</p></article>)}</div>;
+}
+
+export default function UseCasePage() {
+  const path = useLocation().pathname.replace(/\/$/, "");
+  const item = cases[path];
+  if (!item) return <><SiteHeader /><main id="main-content" className="sample-page page-width" tabIndex={-1}><header className="sample-intro"><h1>What are you trying to revise?</h1><p className="sample-lead">Start with a question your draft can answer. These worked examples show how to use Roundtable's AI reader perspectives, passage-level reactions, and editorial report to make a specific revision decision.</p></header><UseCaseLinks /><section className="sample-takeaway"><h2>See a longer reading</h2><p>Follow several passages through an editorial assessment and a before-and-after edit in our <Link to="/sample-reading/">annotated sample reading</Link>. Each example is an illustration, with the author's reasoning made explicit.</p><div className="hero-actions"><Link className="button button-primary" to="/signup">Try a reading with your draft</Link><Link to="/pricing/">See plans and credits</Link></div></section></main><SiteFooter /></>;
+  return <><SiteHeader /><main id="main-content" className="sample-page page-width" tabIndex={-1}>
+    <nav className="sample-breadcrumb" aria-label="Breadcrumb"><Link to="/">Roundtable</Link> / <Link to="/use-cases/">Use cases</Link> / {item.label}</nav>
+    <header className="sample-intro"><h1>{item.heading}</h1><p className="sample-lead">{item.intro}</p><p className="sample-disclosure"><strong>Illustrative worked example.</strong> The original fiction, reader reactions, and revision below were created for this guide with AI assistance. They are curated examples, not a recorded Roundtable run or customer results.</p><nav className="sample-contents" aria-label="On this page"><a href="#setup">Set up the reading</a><a href="#example">Compare reactions</a><a href="#revision">Consider a revision</a></nav></header>
+    <section id="setup" className="sample-assessment"><div><h2>Bring enough of the story</h2><p>{item.bring}</p></div><div className="sample-findings"><article><h3>Give your readers a focus</h3><p>{item.focus}</p></article><article><h3>In Roundtable</h3><p>Paste your draft or upload a TXT, DOCX, or PDF. Confirm the extracted text, genre, and audience, then choose your readers and edit their focus before starting. Compare their reactions beside your manuscript; use the editorial report to consider patterns across the reading.</p></article></div></section>
+    <section id="example" className="sample-draft" aria-labelledby="example-heading"><div className="sample-draft-heading"><h2 id="example-heading">One passage, two readings</h2></div><div className="sample-passage"><div className="sample-prose"><p>{item.passage}</p></div><aside className="sample-notes" aria-label="Illustrative reader reactions">{item.reactions.map(note => <article key={note.reader}><h3>{note.reader}</h3><p>{note.text}</p></article>)}</aside></div></section>
+    <section className="sample-assessment"><div><h2>Turn the disagreement into a question</h2></div><p>{item.assessment}</p></section>
+    <section id="revision" className="sample-revision"><h2>One possible revision</h2><div className="sample-comparison"><article><h3>Original</h3><blockquote>{item.passage}</blockquote></article><article><h3>Revised</h3><blockquote>{item.revision}</blockquote></article></div><div className="sample-revision-note"><h3>What the edit changes</h3><p>{item.tradeoff}</p><h3>What to check next</h3><p>{item.next}</p><p>{item.limit}</p></div></section>
+    <section className="sample-takeaway"><h2>Try this question with your draft</h2><p>Choose the feedback that helps you examine your intention. You decide what to keep, change, or leave unresolved.</p><div className="hero-actions"><Link to="/signup" className="button button-primary">Try a reading with your draft</Link><Link to="/pricing/">See plans and credits</Link></div><p className="sample-disclosure">By the Roundtable team.</p><nav className="sample-related" aria-label="Related examples">{Object.entries(cases).filter(([route]) => route !== path).map(([route, entry]) => <Link key={route} to={`${route}/`}>{entry.label}</Link>)}<Link to="/sample-reading/">Annotated sample reading</Link></nav></section>
+  </main><SiteFooter /></>;
+}

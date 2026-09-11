@@ -1,3 +1,5 @@
+import { useConfirmation } from "../components/ConfirmationProvider";
+import SiteHeader from "../components/SiteHeader";
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -24,7 +26,7 @@ import {
 } from "lucide-react";
 import axios from "axios";
 import { getApi } from "../apiConfig";
-import { forgetManuscriptAccess, manuscriptRequestConfig } from "../manuscriptAccess";
+import { manuscriptRequestConfig } from "../manuscriptAccess";
 
 const API = getApi();
 
@@ -75,11 +77,11 @@ function Section({ icon: Icon, title, children, delay = 0, testId, accent }) {
           className="w-8 h-8 flex items-center justify-center"
           style={{ borderRadius: "2px", background: accent ? `${accent}15` : "rgba(200,107,86,0.1)" }}
         >
-          <Icon className="w-4 h-4" strokeWidth={1.5} style={{ color: accent || "#C86B56" }} />
+          <Icon className="w-4 h-4" strokeWidth={1.5} style={{ color: accent || "#493449" }} />
         </div>
         <h2
           className="font-serif text-2xl text-ink-900"
-          style={{ fontFamily: "'Cormorant Garamond', serif" }}
+          style={{ fontFamily: "var(--display)" }}
         >
           {title}
         </h2>
@@ -92,16 +94,28 @@ function Section({ icon: Icon, title, children, delay = 0, testId, accent }) {
 }
 
 export default function ReportPage() {
+  const confirm = useConfirmation();
   const { manuscriptId } = useParams();
   const navigate = useNavigate();
   const [report, setReport] = useState(null);
   const [manuscript, setManuscript] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [generating, setGenerating] = useState(false);
   const [copyEditing, setCopyEditing] = useState(false);
   const [versions, setVersions] = useState([]);
   const [viewingVersion, setViewingVersion] = useState(null);
   const [budget, setBudget] = useState(null);
+
+  const waitForJob = async (jobId) => {
+    while (true) {
+      const response = await axios.get(`${API}/jobs/${jobId}`, manuscriptRequestConfig(manuscriptId));
+      const job = response.data;
+      if (job.status === "completed") return job.result || {};
+      if (job.status === "failed") throw new Error(job.error || "AI job failed after automatic retries");
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+  };
 
   useEffect(() => {
     loadReport();
@@ -109,9 +123,10 @@ export default function ReportPage() {
 
   const loadReport = async () => {
     setLoading(true);
+    setLoadError("");
     try {
       const [repRes, mRes, versionRes, budgetRes] = await Promise.all([
-        axios.get(`${API}/manuscripts/${manuscriptId}/editor-report`, manuscriptRequestConfig(manuscriptId)).catch(() => null),
+        axios.get(`${API}/manuscripts/${manuscriptId}/editor-report`, manuscriptRequestConfig(manuscriptId)).catch(error => { if (error.response?.status === 404) return null; throw error; }),
         axios.get(`${API}/manuscripts/${manuscriptId}`, manuscriptRequestConfig(manuscriptId)),
         axios.get(`${API}/manuscripts/${manuscriptId}/editor-report/versions`, manuscriptRequestConfig(manuscriptId)).catch(() => ({ data: [] })),
         axios.get(`${API}/manuscripts/${manuscriptId}/budget`, manuscriptRequestConfig(manuscriptId)).catch(() => ({ data: null })),
@@ -124,14 +139,31 @@ export default function ReportPage() {
         setReport(normalizeReport(repRes.data.report_json));
       } else if (repRes?.data?.report) {
         setReport(normalizeReport(repRes.data.report));
+      } else {
+        const jobs = await axios.get(
+          `${API}/manuscripts/${manuscriptId}/jobs?job_type=editor_report`,
+          manuscriptRequestConfig(manuscriptId),
+        ).catch(() => ({ data: [] }));
+        const active = (jobs.data || []).find((job) => job.status === "queued" || job.status === "running");
+        if (active) {
+          setGenerating(true);
+          waitForJob(active.id).then(async (result) => {
+            setReport(normalizeReport(result.report));
+            await refreshVersions();
+            await refreshBudget();
+            toast.success("Editor report generated");
+          }).catch((error) => toast.error(error.message)).finally(() => setGenerating(false));
+        }
       }
     } catch (err) {
       const status = err.response?.status;
       const detail = err.response?.data?.detail ?? err.response?.data?.message;
       const msg = typeof detail === "string" ? detail : null;
       if (status === 404) {
+        setLoadError("This manuscript could not be found.");
         toast.error(msg || "Manuscript not found");
       } else {
+        setLoadError("We couldn’t load your report. Please try again.");
         toast.error(msg || "Failed to load report");
       }
     } finally {
@@ -150,15 +182,20 @@ export default function ReportPage() {
     }
     setGenerating(true);
     try {
-      const res = await axios.post(`${API}/manuscripts/${manuscriptId}/editor-report${force ? "?force=true" : ""}`, {}, manuscriptRequestConfig(manuscriptId));
-      setReport(normalizeReport(res.data.report));
+      const key = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+      const res = await axios.post(
+        `${API}/manuscripts/${manuscriptId}/editor-report${force ? "?force=true" : ""}`,
+        {}, manuscriptRequestConfig(manuscriptId, { headers: { "Idempotency-Key": force ? key : `editor-report-${manuscriptId}-initial` } }),
+      );
+      const result = res.status === 202 ? await waitForJob(res.data.id) : res.data;
+      setReport(normalizeReport(result.report));
       setViewingVersion(null);
       await refreshVersions();
       await refreshBudget();
       toast.success("Editor report generated");
     } catch (err) {
       const detail = err.response?.data?.detail ?? err.response?.data?.message;
-      const msg = typeof detail === "string" ? detail : (Array.isArray(detail) ? detail.map((d) => d.msg ?? d).join(", ") : null);
+      const msg = typeof detail === "string" ? detail : (Array.isArray(detail) ? detail.map((d) => d.msg ?? d).join(", ") : err.message);
       toast.error(msg || "Failed to generate report. Make sure you've read at least one section.");
     } finally {
       setGenerating(false);
@@ -178,13 +215,13 @@ export default function ReportPage() {
   const confirmPaidOperation = async (operation, label) => {
     try {
       const res = await axios.get(`${API}/manuscripts/${manuscriptId}/cost-estimate?operation=${operation}`, manuscriptRequestConfig(manuscriptId));
-      const estimate = Number(res.data.estimated_cost_usd || 0);
-      const remaining = res.data.budget?.remaining_usd;
+      const estimate = Number(res.data.estimated_credits || 0);
+      const remaining = res.data.available_credits;
       if (!res.data.can_start) {
-        toast.error(`${label} is estimated at $${estimate.toFixed(3)}, above the $${Number(remaining || 0).toFixed(3)} remaining budget.`);
+        toast.error(`${label} needs about ${estimate.toFixed(2)} credits; you have ${Number(remaining || 0).toFixed(2)}. Add credits on the billing page.`);
         return false;
       }
-      return window.confirm(`${label}? This is estimated to use about $${estimate.toFixed(3)} of AI credit. Provider billing can vary.`);
+      return confirm({ title: `${label}?`, description: `Estimated usage: ${estimate.toFixed(2)} credits. The final amount depends on response length.`, action: "Continue" });
     } catch (err) {
       toast.error("Could not verify the cost estimate. Nothing was generated.");
       return false;
@@ -210,18 +247,20 @@ export default function ReportPage() {
     if (!approved) return;
     setCopyEditing(true);
     try {
+      const key = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
       const res = await axios.post(
         `${API}/manuscripts/${manuscriptId}/editor-report/copy-edit`,
         {},
-        manuscriptRequestConfig(manuscriptId)
+        manuscriptRequestConfig(manuscriptId, { headers: { "Idempotency-Key": `copy-edit-${manuscriptId}-${key}` } })
       );
-      setReport((current) => ({ ...current, copy_edit_appendix: res.data.copy_edit_appendix }));
+      const result = res.status === 202 ? await waitForJob(res.data.id) : res.data;
+      setReport((current) => ({ ...current, copy_edit_appendix: result.copy_edit_appendix }));
       setViewingVersion(null);
       await refreshVersions();
       await refreshBudget();
       toast.success("Copy-edit appendix generated");
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Copy edit failed");
+      toast.error(err.response?.data?.detail || err.message || "Copy edit failed");
     } finally {
       setCopyEditing(false);
     }
@@ -244,10 +283,9 @@ export default function ReportPage() {
   };
 
   const deleteWorkspace = async () => {
-    if (!window.confirm(`Permanently delete “${manuscript?.title || "this manuscript"}” and all reader data? This cannot be undone.`)) return;
+    if (!(await confirm({ title: "Delete this manuscript?", description: `This permanently deletes ${manuscript?.title || "this manuscript"} and all its reader notes and reports. This cannot be undone.`, action: "Delete manuscript", destructive: true }))) return;
     try {
       await axios.delete(`${API}/manuscripts/${manuscriptId}?confirm=true`, manuscriptRequestConfig(manuscriptId));
-      forgetManuscriptAccess(manuscriptId);
       toast.success("Manuscript deleted");
       navigate("/setup");
     } catch (err) {
@@ -257,50 +295,26 @@ export default function ReportPage() {
 
   const printReport = () => window.print();
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-paper flex items-center justify-center">
-        <Loader2 className="w-6 h-6 animate-spin text-clay" strokeWidth={1.5} />
-      </div>
-    );
+  if (loading || loadError) {
+    return <div><SiteHeader /><main id="main-content" tabIndex={-1} className="feedback-state">{loadError ? <div role="alert"><p>{loadError}</p><button className="button button-quiet" onClick={loadReport}>Try again</button></div> : <div role="status"><Loader2 className="animate-spin mb-3" size={22} />Opening your editorial report…</div>}</main></div>;
   }
 
   return (
-    <div className="min-h-screen bg-paper report-document" style={{ fontFamily: "'Manrope', sans-serif" }}>
-      {/* Header */}
-      <header className="border-b border-ink-900/8 bg-paper sticky top-0 z-10 no-print">
-        <div className="max-w-4xl mx-auto px-8 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button
-              data-testid="back-to-reading-btn"
-              onClick={() => navigate(`/read/${manuscriptId}`)}
-              className="flex items-center gap-2 text-sm text-ink-600 hover:text-ink-900 transition-colors"
-            >
-              <ArrowLeft className="w-4 h-4" strokeWidth={1.5} />
-              Back to reading
-            </button>
-            <div className="h-4 w-px bg-ink-900/10" />
-            <h1 className="font-serif text-lg text-ink-900" style={{ fontFamily: "'Cormorant Garamond', serif" }}>
-              Editor Report
-            </h1>
-          </div>
-          {manuscript && (
-            <p className="text-sm text-ink-400 hidden sm:block">{manuscript.title}</p>
-          )}
-        </div>
-      </header>
+    <div className="min-h-screen bg-paper report-document" style={{ fontFamily: "var(--body)" }}>
+      <SiteHeader />
+      <main id="main-content" tabIndex={-1} className="report-content max-w-4xl mx-auto px-8 py-12">
+        <button data-testid="back-to-reading-btn" onClick={() => navigate(`/read/${manuscriptId}`)} className="text-link inline-flex items-center gap-2 mb-7 no-print"><ArrowLeft size={14} />Back to reading</button>
 
-      <div className="max-w-4xl mx-auto px-8 py-12">
         {/* Title */}
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-12"
+          className="mb-12 report-title"
         >
           <p className="text-xs text-ink-400 uppercase tracking-widest mb-3">Roundtable Editorial Review</p>
           <h1
             className="font-serif text-5xl text-ink-900 mb-4"
-            style={{ fontFamily: "'Cormorant Garamond', serif" }}
+            style={{ fontFamily: "var(--display)" }}
           >
             {manuscript?.title || "Untitled Manuscript"}
           </h1>
@@ -310,8 +324,7 @@ export default function ReportPage() {
           </div>
           {budget && (
             <div className="mt-5 max-w-md border border-ink-900/10 bg-white px-4 py-3 text-xs text-ink-500 no-print" data-testid="report-cost-summary">
-              AI spend ${Number(budget.spent_usd || 0).toFixed(4)} of ${Number(budget.limit_usd || 0).toFixed(2)}
-              {budget.reserved_usd > 0 && ` · $${Number(budget.reserved_usd).toFixed(4)} currently reserved`}
+              {Number(budget.available_credits || 0).toFixed(2)} credits available
             </div>
           )}
           <div className="flex flex-wrap items-center gap-2 mt-5 no-print">
@@ -343,7 +356,7 @@ export default function ReportPage() {
         {!report ? (
           <div className="text-center py-20 border border-ink-900/8 bg-white" style={{ borderRadius: "2px" }}>
             <BookOpen className="w-8 h-8 text-ink-400 mx-auto mb-4" strokeWidth={1.5} />
-            <h3 className="font-serif text-xl text-ink-900 mb-2" style={{ fontFamily: "'Cormorant Garamond', serif" }}>
+            <h3 className="font-serif text-xl text-ink-900 mb-2" style={{ fontFamily: "var(--display)" }}>
               No report yet
             </h3>
             <p className="text-sm text-ink-400 mb-6 max-w-sm mx-auto">
@@ -387,7 +400,7 @@ export default function ReportPage() {
               title="Did it land?"
               delay={0.1}
               testId="did-it-land-section"
-              accent="#C86B56"
+              accent="#493449"
             >
               <DidItLandContent didItLand={report.did_it_land} />
             </Section>
@@ -398,7 +411,7 @@ export default function ReportPage() {
                 title="Engagement map"
                 delay={0.15}
                 testId="engagement-map-section"
-                accent="#8C8885"
+                accent="#777078"
               >
                 <EngagementMapContent items={report.engagement_map} />
               </Section>
@@ -410,7 +423,7 @@ export default function ReportPage() {
                 title="What readers disagree about"
                 delay={0.2}
                 testId="disagreements-section"
-                accent="#D4Af37"
+                accent="#6f6572"
               >
                 <DisagreementsContent items={report.disagreements} />
               </Section>
@@ -435,7 +448,7 @@ export default function ReportPage() {
                 title="Strongest moments"
                 delay={0.3}
                 testId="strongest-moments-section"
-                accent="#8da399"
+                accent="#493449"
               >
                 <StrongestMomentsContent items={report.strongest_moments} />
               </Section>
@@ -486,7 +499,7 @@ export default function ReportPage() {
             </div>
           </>
         )}
-      </div>
+      </main>
     </div>
   );
 }
@@ -528,8 +541,8 @@ function EditorV3Report({ report, manuscriptId, copyEditing, onCopyEdit }) {
     high: { width: "100%", color: "#6F8C7E", label: "High" },
     medium: { width: "70%", color: "#D4AF37", label: "Medium" },
     mixed: { width: "50%", color: "#A28B72", label: "Mixed" },
-    low: { width: "28%", color: "#C86B56", label: "Low" },
-    unknown: { width: "12%", color: "#8C8885", label: "Unknown" },
+    low: { width: "28%", color: "#493449", label: "Low" },
+    unknown: { width: "12%", color: "#777078", label: "Unknown" },
   };
 
   return <>
@@ -584,7 +597,7 @@ function EditorV3Report({ report, manuscriptId, copyEditing, onCopyEdit }) {
       <div key={index} className="pb-4 border-b border-ink-900/5 last:border-0"><div className="grid grid-cols-[5rem_1fr_4rem] gap-3 items-center"><a href={`/read/${manuscriptId}#section-${item.section}`} className="font-medium text-sm text-ink-700 hover:text-clay">Section {item.section}</a><div className="h-2.5 bg-ink-900/5 overflow-hidden" title={`${engagementStyles[item.engagement]?.label || "Mixed"} engagement`}><div className="h-full" style={{ width: (engagementStyles[item.engagement] || engagementStyles.mixed).width, backgroundColor: (engagementStyles[item.engagement] || engagementStyles.mixed).color }} /></div><span className="text-xs capitalize text-ink-500">{item.engagement}</span></div><p className="text-sm text-ink-600 mt-2">{item.diagnosis || "No specific pacing concern identified."}</p><EvidenceLinks items={item.evidence} manuscriptId={manuscriptId} /></div>
     ))}</div></Section>
 
-    <Section icon={ListChecks} title="Revision plan" delay={0.3} testId="revision-plan-section" accent="#C86B56"><div className="space-y-6">{(report.revision_plan || []).map((item, index) => (
+    <Section icon={ListChecks} title="Revision plan" delay={0.3} testId="revision-plan-section" accent="#493449"><div className="space-y-6">{(report.revision_plan || []).map((item, index) => (
       <div key={index} className="pb-6 border-b border-ink-900/5 last:border-0"><div className="flex items-center gap-3 mb-2"><span className={`text-xs px-2 py-1 ${priorityStyles[item.priority] || priorityStyles.important}`}>{item.priority}</span><p className="font-medium text-ink-800">{item.action}</p></div><p className="text-sm text-ink-600"><span className="font-medium">Why:</span> {item.reason}</p><p className="text-sm text-ink-600 mt-1"><span className="font-medium">Expected impact:</span> {item.expected_impact}</p><EvidenceLinks items={item.evidence} manuscriptId={manuscriptId} /></div>
     ))}</div></Section>
 
@@ -634,7 +647,7 @@ function DidItLandContent({ didItLand }) {
         <p
           key={i}
           className="text-base text-ink-600 leading-relaxed"
-          style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.05rem", lineHeight: "1.8" }}
+          style={{ fontFamily: "var(--display)", fontSize: "1.05rem", lineHeight: "1.8" }}
         >
           {para}
         </p>
@@ -662,7 +675,7 @@ function EngagementMapContent({ items }) {
             className="text-xs font-semibold px-2 py-0.5 flex-shrink-0 mt-0.5"
             style={{
               background: "rgba(140,136,133,0.12)",
-              color: "#5C5855",
+              color: "#6a645b",
               borderRadius: "2px",
             }}
           >
@@ -691,11 +704,11 @@ function DisagreementsContent({ items }) {
         >
           <div
             className="w-1 flex-shrink-0 mt-1.5"
-            style={{ background: "#D4Af37", borderRadius: "1px", minHeight: "32px" }}
+            style={{ background: "#6f6572", borderRadius: "1px", minHeight: "32px" }}
           />
           <p
             className="text-sm text-ink-600 leading-relaxed"
-            style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1rem", lineHeight: "1.7" }}
+            style={{ fontFamily: "var(--display)", fontSize: "1rem", lineHeight: "1.7" }}
           >
             {typeof item === "string" ? item : (
               <>
@@ -731,19 +744,19 @@ function OpenQuestionsContent({ items }) {
             className="flex items-start gap-3 p-3"
             style={{
               background: multiple ? "rgba(200, 107, 86, 0.06)" : "#FAFAF9",
-              borderLeft: multiple ? "2px solid #C86B56" : "2px solid rgba(45,42,38,0.08)",
+              borderLeft: multiple ? "2px solid #493449" : "2px solid rgba(45,42,38,0.08)",
               borderRadius: "0 2px 2px 0",
             }}
           >
             <HelpCircle
               className="w-3.5 h-3.5 flex-shrink-0 mt-0.5"
               strokeWidth={1.5}
-              style={{ color: multiple ? "#C86B56" : "#8C8885" }}
+              style={{ color: multiple ? "#493449" : "#777078" }}
             />
             <div className="flex-1 min-w-0">
               <p
                 className="text-sm text-ink-700 leading-relaxed"
-                style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1rem", fontStyle: "italic" }}
+                style={{ fontFamily: "var(--display)", fontSize: "1rem", fontStyle: "italic" }}
               >
                 {question}
               </p>
@@ -787,7 +800,7 @@ function StrongestMomentsContent({ items }) {
           </div>
           <p
             className="text-sm text-ink-700 leading-relaxed"
-            style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "1.05rem", lineHeight: "1.75" }}
+            style={{ fontFamily: "var(--display)", fontSize: "1.05rem", lineHeight: "1.75" }}
           >
             {item.comment || item.quote_or_summary}
           </p>

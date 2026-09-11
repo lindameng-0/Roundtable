@@ -1,37 +1,17 @@
+import ReaderAvatar from "./ReaderAvatar";
+import { readerPalette, readerColorStyle } from "../readerPalette";
 import React, { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronRight, Loader2, MessageSquare, HelpCircle, CheckCircle } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, HelpCircle, CheckCircle } from "lucide-react";
 import { StallBanner } from "./StallBanner";
 
-const READER_AVATAR_URLS = [
-  "https://images.unsplash.com/photo-1581883556531-e5f8027f557f?crop=entropy&cs=srgb&fm=jpg&q=85&w=80",
-  "https://images.unsplash.com/photo-1658909835269-e76abd3ffb5d?crop=entropy&cs=srgb&fm=jpg&q=85&w=80",
-  "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=80",
-  "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=80",
-  "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=80",
-];
 
-const READER_COLORS = ["#C86B56", "#5C5855", "#8da399", "#D4Af37", "#2D2A26"];
+
 
 // New comment type set
-const COMMENT_TYPE_COLORS = {
-  reaction:   { bg: "#EBF4FF", text: "#2563EB", label: "Reaction" },
-  confusion:  { bg: "#FFF5F5", text: "#DC2626", label: "Confusion" },
-  question:   { bg: "#F0FDF4", text: "#16A34A", label: "Question" },
-  craft:      { bg: "#F5F0FF", text: "#7C3AED", label: "Craft" },
-  callback:   { bg: "#FFF7ED", text: "#EA580C", label: "Callback" },
-  // legacy fallbacks
-  prediction: { bg: "#F5F0FF", text: "#7C3AED", label: "Prediction" },
-  critique:   { bg: "#FFF0F0", text: "#DC2626", label: "Critique" },
-  praise:     { bg: "#F0FFF4", text: "#16A34A", label: "Praise" },
-  theory:     { bg: "#FFF7ED", text: "#EA580C", label: "Theory" },
-  comparison: { bg: "#F0FDFA", text: "#0D9488", label: "Comparison" },
-};
-
-const PERSONALITY_COLORS = {
-  analytical: "#5C5855", emotional: "#C86B56", casual: "#8da399",
-  skeptical: "#D4Af37", genre_savvy: "#2D2A26",
-};
+const COMMENT_TYPE_COLORS = Object.fromEntries(
+  ["reaction", "confusion", "question", "craft", "callback", "prediction", "critique", "praise", "theory", "comparison"].map(type => [type, { bg: "var(--theme-wash)", text: "var(--theme)", label: type.charAt(0).toUpperCase() + type.slice(1) }])
+);
 
 // New types only (for filter bar)
 const CURRENT_TYPES = ["reaction", "confusion", "question", "craft", "callback"];
@@ -67,20 +47,15 @@ function ThinkingStrip({ thinkingReaders, personas }) {
       </div>
       <div className="divide-y divide-ink-900/5">
         {entries.map(([readerId, info]) => {
-          const readerColor = READER_COLORS[info.avatar_index ?? 0];
+          const readerColor = readerPalette(info.avatar_index).color;
           const displayName = (info.reader_name && String(info.reader_name).trim()) || `Reader ${(info.avatar_index ?? 0) + 1}`;
           return (
             <div key={readerId} className="flex items-center gap-2.5 px-3 py-2.5">
               <div className="w-6 h-6 overflow-hidden flex-shrink-0" style={{ borderRadius: "2px", border: `1.5px solid ${readerColor}` }}>
-                <img
-                  src={READER_AVATAR_URLS[(info.avatar_index ?? 0) % READER_AVATAR_URLS.length]}
-                  alt={displayName}
-                  className="w-full h-full object-cover"
-                  onError={(e) => { e.target.style.display = "none"; }}
-                />
+                <ReaderAvatar name={displayName} index={info.avatar_index} />
               </div>
               <div className="flex-1 min-w-0">
-                <span className="text-xs font-semibold text-ink-900">{displayName}</span>
+                <span className="text-xs font-semibold" style={{ color: readerPalette(info.avatar_index).ink || readerColor }}>{displayName}</span>
                 <span className="text-xs text-ink-400 ml-1.5">is reading section {info.section_number}...</span>
               </div>
               <div className="flex items-center gap-0.5 flex-shrink-0">
@@ -118,12 +93,12 @@ function SectionJournalEntry({ entry, onNavigate }) {
       {/* Primary: Reading Journal */}
       {reading_journal && (
         <p
-          className="text-sm text-ink-700 leading-relaxed mb-3"
+          className="reader-journal-text text-sm text-ink-700 leading-relaxed mb-3"
           style={{
-            fontFamily: "'Cormorant Garamond', serif",
+            fontFamily: "var(--reading-font)",
             fontSize: "1rem",
             lineHeight: "1.75",
-            fontStyle: "italic",
+            fontStyle: "normal",
           }}
         >
           <NavigableText text={reading_journal} onNavigate={onNavigate} />
@@ -149,11 +124,11 @@ function SectionJournalEntry({ entry, onNavigate }) {
               className="flex gap-2 px-2.5 py-2 text-xs text-ink-700 leading-relaxed"
               style={{
                 background: "rgba(200, 107, 86, 0.06)",
-                borderLeft: "2px solid #C86B56",
+                borderLeft: "2px solid #493449",
                 borderRadius: "0 2px 2px 0",
-                fontFamily: "'Cormorant Garamond', serif",
+                fontFamily: "var(--reading-font)",
                 fontSize: "0.9rem",
-                fontStyle: "italic",
+                fontStyle: "normal",
               }}
             >
               <HelpCircle className="w-3 h-3 flex-shrink-0 mt-0.5 text-clay" strokeWidth={1.5} />
@@ -196,19 +171,10 @@ function SectionJournalEntry({ entry, onNavigate }) {
   );
 }
 
-function ReaderPanel({ persona, readerStatus, reflections, totalComments, activeTypes, allComments, onNavigate }) {
-  const [expanded, setExpanded] = useState(false);
-  const [showMoments, setShowMoments] = useState(false);
-  const color = PERSONALITY_COLORS[persona?.personality] || "#5C5855";
-  const readerColor = READER_COLORS[persona?.avatar_index ?? 0];
+function ReaderPanel({ persona, readerStatus, reflections, totalComments, onNavigate, defaultExpanded = false }) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  const readerColor = readerPalette(persona?.avatar_index).color;
   const { currentSection, done } = readerStatus || {};
-
-  // Moments filtered to this reader and active types
-  const filteredMoments = useMemo(() => {
-    return allComments.filter(
-      (c) => c.readerId === persona.id && (activeTypes.size === 0 || activeTypes.has(c.comment?.type))
-    );
-  }, [allComments, persona.id, activeTypes]);
 
   // Sections with journals, sorted
   const sortedSections = useMemo(() => {
@@ -216,29 +182,25 @@ function ReaderPanel({ persona, readerStatus, reflections, totalComments, active
   }, [reflections]);
 
   const journalCount = sortedSections.length;
-  const hasContent = journalCount > 0 || filteredMoments.length > 0;
+  const hasContent = journalCount > 0;
 
   return (
     <div
       data-testid={`reader-panel-${getReaderDisplayName(persona).replace(/\s+/g, "-").toLowerCase()}`}
-      className="border border-ink-900/8 bg-white mb-3 overflow-hidden"
-      style={{ borderRadius: "2px" }}
+      className="reader-notebook"
+      style={readerColorStyle(persona.avatar_index)}
     >
       <button
         className="w-full flex items-center gap-3 p-4 text-left hover:bg-paper transition-colors"
+        aria-expanded={expanded}
         onClick={() => setExpanded((e) => !e)}
       >
-        <div className="w-8 h-8 overflow-hidden flex-shrink-0" style={{ borderRadius: "2px", border: `2px solid ${readerColor}` }}>
-          <img
-            src={READER_AVATAR_URLS[(persona.avatar_index ?? 0) % READER_AVATAR_URLS.length]}
-            alt={getReaderDisplayName(persona)}
-            className="w-full h-full object-cover"
-            onError={(e) => { e.target.style.display = "none"; }}
-          />
+        <div className="note-portrait" style={{ borderRadius: "2px", border: `2px solid ${readerColor}` }}>
+          <ReaderAvatar name={getReaderDisplayName(persona)} index={persona.avatar_index} />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-ink-900 truncate">{getReaderDisplayName(persona)}</p>
-          <p className="text-xs" style={{ color }}>
+          <p className="text-xs" style={{ color: "var(--muted-ink)" }}>
             {done
               ? `${journalCount} journal${journalCount !== 1 ? "s" : ""} · ${totalComments} comment${totalComments !== 1 ? "s" : ""}`
               : currentSection
@@ -253,7 +215,7 @@ function ReaderPanel({ persona, readerStatus, reflections, totalComments, active
 
       <AnimatePresence>
         {expanded && (
-          <motion.div initial={{ height: 0 }} animate={{ height: "auto" }} exit={{ height: 0 }} transition={{ duration: 0.22 }} className="overflow-hidden">
+          <motion.div initial={defaultExpanded ? false : { height: 0 }} animate={{ height: "auto" }} exit={{ height: 0 }} transition={{ duration: 0.22 }} className="overflow-hidden">
             <div className="px-4 pb-4 border-t border-ink-900/6">
               {/* Section journals */}
               {sortedSections.length > 0 && (
@@ -261,37 +223,6 @@ function ReaderPanel({ persona, readerStatus, reflections, totalComments, active
                   {sortedSections.map((entry, i) => (
                     <SectionJournalEntry key={`${entry.readerId}-${entry.section_number}-${i}`} entry={entry} onNavigate={onNavigate} />
                   ))}
-                </div>
-              )}
-
-              {/* Moments list (sparse, collapsible) */}
-              {filteredMoments.length > 0 && (
-                <div className="mt-3">
-                  <button
-                    onClick={() => setShowMoments((s) => !s)}
-                    className="flex items-center gap-1 text-xs text-ink-400 hover:text-clay transition-colors"
-                  >
-                    <ChevronRight className={`w-3 h-3 transition-transform ${showMoments ? "rotate-90" : ""}`} strokeWidth={1.5} />
-                    {showMoments ? "Hide" : "Show"} {filteredMoments.length} comment{filteredMoments.length !== 1 ? "s" : ""}
-                  </button>
-                  <AnimatePresence>
-                    {showMoments && (
-                      <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden mt-2 space-y-2">
-                        {filteredMoments.map((c, i) => {
-                          const typeStyle = COMMENT_TYPE_COLORS[c.comment?.type] || COMMENT_TYPE_COLORS.reaction;
-                          return (
-                            <div key={i} role="button" tabIndex={0} onClick={() => onNavigate?.(c.comment?.paragraph_id || `p-${String(c.comment?.line || 0).padStart(6, "0")}`, c.comment?.line)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onNavigate?.(c.comment?.paragraph_id || `p-${String(c.comment?.line || 0).padStart(6, "0")}`, c.comment?.line); }} className="block w-full text-left text-xs p-2 bg-paper hover:bg-clay/5 transition-colors cursor-pointer" style={{ borderRadius: "2px" }} title="Jump to this comment in the manuscript">
-                              <div className="flex items-center gap-1.5 mb-1">
-                                <span className="px-1.5 py-0.5 text-xs" style={{ background: typeStyle.bg, color: typeStyle.text, borderRadius: "2px" }}>{typeStyle.label}</span>
-                                <span className="text-ink-400">¶{c.comment?.line}</span>
-                              </div>
-                              <p className="text-ink-600 leading-relaxed"><NavigableText text={c.comment?.comment} onNavigate={onNavigate} /></p>
-                            </div>
-                          );
-                        })}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
                 </div>
               )}
 
@@ -341,7 +272,7 @@ function QuestionItem({ item, manuscriptId, onNavigate }) {
       <div className="flex gap-2 items-start">
         {resolved ? <CheckCircle className="w-3.5 h-3.5 text-sage mt-0.5 flex-shrink-0" /> : <HelpCircle className="w-3.5 h-3.5 text-clay mt-0.5 flex-shrink-0" />}
         <div className="flex-1">
-          <p className={`text-sm text-ink-700 leading-relaxed ${resolved ? "line-through decoration-ink-400/40" : ""}`} style={{ fontFamily: "'Cormorant Garamond', serif", fontStyle: "italic" }}>{item.question}</p>
+          <p className={`text-sm text-ink-700 leading-relaxed ${resolved ? "line-through decoration-ink-400/40" : ""}`} style={{ fontFamily: "var(--reading-font)", fontStyle: "italic" }}>{item.question}</p>
           <div className="flex flex-wrap gap-2 mt-1 text-xs text-ink-400"><span>{item.readerName} · raised §{item.raised_section}</span><span className={resolved ? "text-sage" : item.status === "open" ? "text-clay" : "text-amber-700"}>{statusLabel}</span></div>
         </div>
         {item.resolution && <ChevronRight className={`w-3 h-3 text-ink-400 transition-transform ${showResolution ? "rotate-90" : ""}`} />}
@@ -354,163 +285,44 @@ function QuestionItem({ item, manuscriptId, onNavigate }) {
   </div>;
 }
 
-function AggregatedQuestions({ reflections, personas, manuscriptId, onNavigate }) {
-  const [expanded, setExpanded] = useState(false);
-
-  const allQuestions = useMemo(() => buildQuestionLedger(reflections, personas), [reflections, personas]);
-  const openCount = allQuestions.filter((item) => item.status !== "resolved").length;
-  const resolvedCount = allQuestions.length - openCount;
-
-  if (allQuestions.length === 0) return null;
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: -6 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="mb-4 border border-clay/20 bg-white overflow-hidden"
-      style={{ borderRadius: "2px" }}
-    >
-      <button
-        className="w-full flex items-center justify-between px-3 py-2.5 text-left hover:bg-paper transition-colors"
-        onClick={() => setExpanded((e) => !e)}
-      >
-        <div className="flex items-center gap-2">
-          <HelpCircle className="w-3.5 h-3.5 text-clay" strokeWidth={1.5} />
-          <p className="text-xs text-clay uppercase tracking-widest font-medium">
-            {openCount} open question{openCount !== 1 ? "s" : ""}{resolvedCount ? ` · ${resolvedCount} resolved` : ""}
-          </p>
-        </div>
-        <ChevronDown className={`w-3 h-3 text-clay/60 transition-transform ${expanded ? "rotate-180" : ""}`} strokeWidth={1.5} />
-      </button>
-      <AnimatePresence>
-        {expanded && (
-          <motion.div
-            initial={{ height: 0 }}
-            animate={{ height: "auto" }}
-            exit={{ height: 0 }}
-            transition={{ duration: 0.2 }}
-            className="overflow-hidden"
-          >
-            <div className="px-3 pb-3 space-y-2 border-t border-clay/10">
-              {allQuestions.map((item) => <QuestionItem key={item.question_id} item={item} manuscriptId={manuscriptId} onNavigate={onNavigate} />)}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.div>
-  );
-}
-
-/**
- * The right sidebar: reader cards, type filters, thinking strip, stall banner.
- */
-export function ReaderSidebar({
-  manuscriptId,
-  onNavigate,
-  personas,
-  readerStatus,
-  reflections,
-  allComments,
-  thinkingReaders,
-  totalCommentCount,
-  activeTypes,
-  toggleType,
-  setActiveTypes,
-  isStalled,
-  readingDone,
-  onRetry,
-  onViewPartial,
-}) {
-  const readerReflections = (readerId) => reflections.filter((r) => r.readerId === readerId);
-
-  // Count total questions across all readers
-  const totalQuestions = useMemo(
-    () => reflections.reduce((sum, r) => sum + (r.questions_for_writer?.length || 0), 0),
-    [reflections]
-  );
-
-  return (
-    <div className="w-2/5 overflow-y-auto bg-paper-dark flex flex-col" data-testid="reactions-sidebar">
-      <div className="p-5 flex-1">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-xs text-ink-400 uppercase tracking-widest">Your Readers</h3>
-          {totalCommentCount > 0 && (
-            <span className="text-xs text-ink-400">
-              {totalCommentCount} comment{totalCommentCount !== 1 ? "s" : ""}
-            </span>
-          )}
-        </div>
-
-        {/* Moment type filter — only show if there are moments */}
-        {totalCommentCount > 0 && (
-          <div className="mb-4">
-            <p className="text-xs text-ink-400 mb-2">Filter comments</p>
-            <div className="flex flex-wrap gap-1.5">
-              {CURRENT_TYPES.map((type) => {
-                const typeStyle = COMMENT_TYPE_COLORS[type];
-                const isActive = activeTypes.has(type);
-                return (
-                  <button
-                    key={type}
-                    data-testid={`filter-type-${type}`}
-                    onClick={() => toggleType(type)}
-                    className="text-xs px-2 py-1 border transition-all duration-150"
-                    style={{
-                      borderRadius: "2px",
-                      background: isActive ? typeStyle.bg : "white",
-                      color: isActive ? typeStyle.text : "#8C8885",
-                      borderColor: isActive ? typeStyle.text + "40" : "rgba(45,42,38,0.1)",
-                    }}
-                  >
-                    {typeStyle.label}
-                  </button>
-                );
-              })}
-              {activeTypes.size > 0 && (
-                <button onClick={() => setActiveTypes(new Set())} className="text-xs px-2 py-1 text-ink-400 hover:text-clay transition-colors">
-                  Clear
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
-        <AnimatePresence>
-          {isStalled && !readingDone && <StallBanner onRetry={onRetry} onViewPartial={onViewPartial} />}
-        </AnimatePresence>
-
-        <AnimatePresence>
-          {thinkingReaders.size > 0 && <ThinkingStrip thinkingReaders={thinkingReaders} personas={personas} />}
-        </AnimatePresence>
-
-        {/* Aggregated questions panel */}
-        {totalQuestions > 0 && (
-          <AggregatedQuestions reflections={reflections} personas={personas} manuscriptId={manuscriptId} onNavigate={onNavigate} />
-        )}
-
-        {personas.map((persona) => {
-          const status = readerStatus[persona.id] || { currentSection: null, done: false, totalComments: 0 };
-          return (
-            <ReaderPanel
-              key={persona.id}
-              persona={persona}
-              readerStatus={status}
-              reflections={readerReflections(persona.id)}
-              totalComments={status.totalComments || 0}
-              activeTypes={activeTypes}
-              allComments={allComments}
-              onNavigate={onNavigate}
-            />
-          );
-        })}
-
-        {personas.length === 0 && (
-          <div className="text-center py-16">
-            <MessageSquare className="w-6 h-6 text-ink-400 mx-auto mb-3" strokeWidth={1.5} />
-            <p className="text-sm text-ink-400">Loading readers...</p>
-          </div>
-        )}
-      </div>
+export function ReaderSidebar({ manuscriptId, onNavigate, personas, readerStatus, reflections, allComments, thinkingReaders, totalCommentCount, activeTypes, toggleType, setActiveTypes, isStalled, readingDone, onRetry, onViewPartial }) {
+  const [view, setView] = useState("reflections");
+  const questions = useMemo(() => buildQuestionLedger(reflections, personas), [reflections, personas]);
+  const visibleNotes = useMemo(() => allComments.filter(entry => activeTypes.size === 0 || activeTypes.has(entry.comment?.type)).sort((a,b) => (a.comment?.line || 0) - (b.comment?.line || 0)), [allComments, activeTypes]);
+  return <div className="notebook-content" data-testid="reactions-sidebar">
+    <div className="notebook-views" role="group" aria-label="Notebook view">
+      <button aria-pressed={view === "reflections"} onClick={() => setView("reflections")}>Reflections</button>
+      <button aria-pressed={view === "notes"} onClick={() => setView("notes")}>Passage notes <span>{totalCommentCount}</span></button>
+      <button aria-pressed={view === "questions"} onClick={() => setView("questions")}>Questions <span>{questions.length}</span></button>
     </div>
-  );
+    {isStalled && !readingDone && <StallBanner onRetry={onRetry} onViewPartial={onViewPartial} />}
+    {thinkingReaders.size > 0 && <ThinkingStrip thinkingReaders={thinkingReaders} personas={personas} />}
+    {view === "reflections" && <div className="notebook-reflections">
+      <p className="notebook-guidance">Follow how each reader's impressions changed as they read.</p>
+      {personas.map((persona, index) => {
+        const status = readerStatus[persona.id] || {};
+        return <ReaderPanel key={persona.id} persona={persona} readerStatus={status} reflections={reflections.filter(entry => entry.readerId === persona.id)} totalComments={status.totalComments || 0} onNavigate={onNavigate} defaultExpanded={index === 0} />;
+      })}
+      {personas.length === 0 && <p className="notebook-empty">Your readers will appear here when they are ready.</p>}
+    </div>}
+    {view === "notes" && <div className="notebook-passages">
+      <div className="notebook-filters" role="group" aria-label="Filter passage notes">
+        <button aria-pressed={activeTypes.size === 0} onClick={() => setActiveTypes(new Set())}>All notes</button>
+        {CURRENT_TYPES.map(type => <button key={type} data-testid={`filter-type-${type}`} aria-pressed={activeTypes.has(type)} onClick={() => toggleType(type)}>{COMMENT_TYPE_COLORS[type].label}</button>)}
+      </div>
+      {visibleNotes.map((entry, index) => {
+        const persona = personas.find(reader => reader.id === entry.readerId);
+        return <button key={`${entry.readerId}-${index}`} className="notebook-passage" style={readerColorStyle(persona?.avatar_index)} onClick={() => onNavigate(entry.comment?.paragraph_id || `p-${String(entry.comment?.line || 0).padStart(6,"0")}`, entry.comment?.line)}>
+          <span className="notebook-passage-author"><span className="passage-note-avatar"><ReaderAvatar name={entry.readerName} index={persona?.avatar_index} /></span><span>{entry.readerName}</span><small>Paragraph {entry.comment?.line}</small></span>
+          <span className="notebook-passage-text">{entry.comment?.comment}</span><span className="notebook-passage-link">Read beside the passage <ChevronRight size={13} /></span>
+        </button>;
+      })}
+      {visibleNotes.length === 0 && <p className="notebook-empty">{activeTypes.size > 0 ? "No notes match this filter. Choose All notes to see the rest." : readingDone ? "Your readers left no passage notes. Explore their reflections instead." : "Passage notes will appear here as your readers continue."}</p>}
+    </div>}
+    {view === "questions" && <div className="notebook-questions">
+      <p className="notebook-guidance">Questions your readers raised, and what became clearer later.</p>
+      {questions.map(question => <QuestionItem key={question.question_id} item={question} manuscriptId={manuscriptId} onNavigate={onNavigate} />)}
+      {questions.length === 0 && <p className="notebook-empty">{readingDone ? "Your readers left no questions." : "Your readers' questions will appear here as they read."}</p>}
+    </div>}
+  </div>;
 }

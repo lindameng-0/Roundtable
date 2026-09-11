@@ -1,0 +1,26 @@
+/* Billing uses the same restrained type and ink as the reading room. */
+.billing-notice { margin-top:24px; padding:16px 20px; border-left:2px solid var(--plum); background:#eeeee8; font-size:13px; line-height:1.7; }
+.billing-wallet { display:flex; align-items:center; flex-wrap:wrap; gap:22px; padding:28px 0; margin-top:38px; border-block:1px solid var(--line); }
+.billing-wallet>div:first-child { flex:1; }
+.billing-wallet h2 { font-family:var(--display); font-size:29px; margin:8px 0; }
+.billing-wallet p { font-size:13px; color:var(--muted-ink); line-height:1.7; }
+.billing-wallet-actions { display:flex; flex-wrap:wrap; gap:12px; }
+.billing-allowance-details { flex-basis:100%; }
+.billing-allowance-details summary,.billing-terms summary { cursor:pointer; font-size:13px; color:var(--plum); padding-block:8px; }
+.billing-allowance-details .billing-balance { font-family:var(--display); font-size:28px; color:var(--ink); margin-top:12px; }
+.billing-offers { margin-top:60px; }
+.billing-section-heading h2,.billing-how-it-works h2 { font-family:var(--display); font-size:35px; line-height:1.2; }
+.billing-section-heading>p { max-width:620px; color:var(--muted-ink); line-height:1.8; font-size:14px; margin-top:12px; }
+.reading-pack-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:32px; margin-top:30px; }
+.reading-pack { padding:24px 0; border-block:1px solid var(--line); display:flex; flex-direction:column; align-items:flex-start; }
+.reading-pack h3,.billing-page .plan-name h3 { font-family:var(--display); font-size:28px; }
+.pack-purpose { font-size:14px; line-height:1.8; color:var(--muted-ink); margin:12px 0 22px; min-height:50px; }
+.pack-price { font-family:var(--display); font-size:43px; }
+.pack-frequency,.pack-allowance { font-size:12px; color:var(--muted-ink); }
+.pack-allowance { margin:10px 0 24px; }
+.reading-pack .button { margin-top:auto; }
+.billing-page .plan-grid { margin-top:30px; }
+.billing-how-it-works { margin-top:60px; max-width:750px; }
+.billing-how-it-works p,.billing-terms p { font-size:14px; line-height:1.85; color:var(--muted-ink); margin:18px 0; }
+.billing-terms { border-top:1px solid var(--line); padding-top:14px; margin-top:30px; }
+@media(max-width:760px) { .reading-pack-grid { grid-template-columns:1fr; gap:18px; } .reading-pack { padding-block:22px; } .pack-purpose { min-height:0; } .billing-offers { margin-top:42px; } .billing-section-heading h2 { font-size:30px; } .billing-wallet-actions .button { font-size:12px; } }

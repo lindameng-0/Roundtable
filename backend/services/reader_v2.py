@@ -7,6 +7,7 @@ import config as _cfg
 from config import db
 from services.llm_gateway import structured_completion
 from services.cost_control import CostLimitExceeded
+from services.credits import InsufficientCredits
 from services.model_routing import fallback_routes_for_reader, route_for_reader, usage_record
 from services.reader_contract import empty_state, merge_state, normalize_state, validate_reader_output
 from services.reader_memory import count_tokens
@@ -93,7 +94,7 @@ async def get_reader_reaction_v2(reader: Dict, section: Dict, genre: str, manusc
                 raw, usage = completion.data, completion.usage
                 break
             except Exception as exc:
-                if isinstance(exc, CostLimitExceeded):
+                if isinstance(exc, (CostLimitExceeded, InsufficientCredits)):
                     raise
                 last_error = exc
                 logger.warning(

@@ -140,3 +140,10 @@ frontend/node_modules/.cache/default-development/11.pack
 # Environment files
 *.env
 *.env.*
+
+# Local browser review artifacts
+.playwright-cli/
+output/playwright/
+
+# Workspace-only development dependencies
+.tmp/

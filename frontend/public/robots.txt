@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /read/
+Disallow: /report/
+Disallow: /owner/
+Disallow: /connections
+Disallow: /auth/
+Disallow: /reset-password
+Disallow: /verify-email
+
+Sitemap: https://roundtable.works/sitemap.xml

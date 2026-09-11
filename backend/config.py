@@ -11,6 +11,10 @@ load_dotenv(ROOT_DIR / '.env')
 SUPABASE_URL = os.environ.get('SUPABASE_URL', '').strip()
 SUPABASE_SERVICE_ROLE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY', '').strip()
 ENVIRONMENT = os.environ.get('ENVIRONMENT', 'development').strip().lower()
+REQUIRE_AUTH = os.environ.get(
+    'REQUIRE_AUTH',
+    'true' if ENVIRONMENT == 'production' else 'false',
+).strip().lower() in {'1', 'true', 'yes', 'on'}
 DATABASE_BACKEND = os.environ.get(
     'DATABASE_BACKEND',
     'supabase' if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY else 'memory',
@@ -89,6 +93,15 @@ READER_MAX_CONCURRENCY = max(1, int(os.environ.get('READER_MAX_CONCURRENCY', '2'
 READER_START_STAGGER_SECONDS = max(0.0, float(os.environ.get('READER_START_STAGGER_SECONDS', '2')))
 MAX_WORKFLOW_COST_USD = max(0.0, float(os.environ.get('MAX_WORKFLOW_COST_USD', '25')))
 
+# Integer milli-credits avoid rounding drift across individual model calls.
+CREDITS_ENABLED = os.environ.get('CREDITS_ENABLED', 'true').lower() == 'true'
+STARTER_CREDITS = max(0, int(os.environ.get('STARTER_CREDITS', '50')))
+CREDITS_PER_USD = max(1, int(os.environ.get('CREDITS_PER_USD', '100')))
+if ENVIRONMENT == 'production' and not CREDITS_ENABLED:
+    raise RuntimeError('Credit enforcement is required in production')
+if CREDITS_ENABLED and READER_PIPELINE_VERSION != 'v2':
+    raise RuntimeError('Credit enforcement requires READER_PIPELINE_VERSION=v2')
+
 # ── Google OAuth (own credentials) ────────────────────────────────────────────
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
 GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '')
@@ -102,6 +115,42 @@ FRONTEND_URL = os.environ.get(
     'FRONTEND_URL',
     os.environ.get('APP_URL', 'http://localhost:3000'),
 )
+SESSION_COOKIE_SECURE = os.environ.get(
+    'SESSION_COOKIE_SECURE', 'true' if ENVIRONMENT == 'production' else 'false'
+).strip().lower() in {'1', 'true', 'yes', 'on'}
+SESSION_COOKIE_SAMESITE = os.environ.get(
+    'SESSION_COOKIE_SAMESITE', 'none' if ENVIRONMENT == 'production' else 'lax'
+).strip().lower()
+if SESSION_COOKIE_SAMESITE not in {'lax', 'strict', 'none'}:
+    raise RuntimeError("SESSION_COOKIE_SAMESITE must be 'lax', 'strict', or 'none'")
+
+# Transactional email for email/password account verification. Resend is used
+# through its HTTPS API so no additional runtime dependency is required.
+RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '').strip()
+AUTH_EMAIL_FROM = os.environ.get('AUTH_EMAIL_FROM', 'Roundtable <accounts@roundtable.works>').strip()
+EMAIL_VERIFICATION_TTL_MINUTES = max(
+    15,
+    int(os.environ.get('EMAIL_VERIFICATION_TTL_MINUTES', '60')),
+)
+PASSWORD_RESET_TTL_MINUTES = max(10, int(os.environ.get('PASSWORD_RESET_TTL_MINUTES', '30')))
+AUTH_SIGNUP_RATE_PER_HOUR = max(1, int(os.environ.get('AUTH_SIGNUP_RATE_PER_HOUR', '5')))
+AUTH_LOGIN_RATE_PER_15_MINUTES = max(1, int(os.environ.get('AUTH_LOGIN_RATE_PER_15_MINUTES', '10')))
+AUTH_EMAIL_RATE_PER_HOUR = max(1, int(os.environ.get('AUTH_EMAIL_RATE_PER_HOUR', '5')))
+AUTH_TOKEN_RATE_PER_HOUR = max(1, int(os.environ.get('AUTH_TOKEN_RATE_PER_HOUR', '20')))
+MANUSCRIPT_CREATE_RATE_PER_HOUR = max(1, int(os.environ.get('MANUSCRIPT_CREATE_RATE_PER_HOUR', '10')))
+MANUSCRIPT_CREATE_IP_RATE_PER_HOUR = max(1, int(os.environ.get('MANUSCRIPT_CREATE_IP_RATE_PER_HOUR', '30')))
+AI_ACCOUNT_RATE_PER_HOUR = max(1, int(os.environ.get('AI_ACCOUNT_RATE_PER_HOUR', '30')))
+AI_IP_RATE_PER_HOUR = max(1, int(os.environ.get('AI_IP_RATE_PER_HOUR', '60')))
+MAX_UPLOAD_MB = max(1, min(100, int(os.environ.get('MAX_UPLOAD_MB', '25'))))
+AI_JOB_GLOBAL_CONCURRENCY = max(1, int(os.environ.get('AI_JOB_GLOBAL_CONCURRENCY', '4')))
+AI_JOB_USER_CONCURRENCY = max(1, int(os.environ.get('AI_JOB_USER_CONCURRENCY', '1')))
+AI_JOB_MAX_ATTEMPTS = max(1, min(10, int(os.environ.get('AI_JOB_MAX_ATTEMPTS', '3'))))
+AI_JOB_LEASE_SECONDS = max(60, int(os.environ.get('AI_JOB_LEASE_SECONDS', '600')))
+AI_JOB_POLL_SECONDS = max(0.25, float(os.environ.get('AI_JOB_POLL_SECONDS', '2')))
+AI_JOB_WORKER_SLOTS = max(1, int(os.environ.get('AI_JOB_WORKER_SLOTS', '4')))
+AI_JOBS_ENABLED = os.environ.get(
+    'AI_JOBS_ENABLED', 'false' if ENVIRONMENT == 'production' else 'true'
+).strip().lower() in {'1', 'true', 'yes', 'on'}
 
 # Admin users bypass usage limits
 ADMIN_EMAILS = [
