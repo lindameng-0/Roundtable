@@ -33,6 +33,7 @@ const BillingPage = require("../src/pages/BillingPage").default;
 const PolicyPage = require("../src/pages/PolicyPage").default;
 const { pages } = require("../src/searchContent.json");
 const { searchSchema } = require("../src/searchSchema");
+const { publicPageUrl } = require("../src/publicPageUrl");
 const build = path.join(root, "build");
 const manifest = JSON.parse(fs.readFileSync(path.join(build, "asset-manifest.json"), "utf8"));
 const extraStyles = Object.values(manifest.files).filter(file => file.endsWith(".css") && file !== manifest.files["main.css"])
@@ -50,7 +51,7 @@ for (const [route, page] of Object.entries(pages)) {
     React.createElement(MemoryRouter, { initialEntries: [route] },
       React.createElement(ConfirmationProvider, null, React.createElement(Component, { kind: route.slice(1) })))));
   if (!body.includes("<h1") || body.length < 1000) throw new Error(`Missing public content: ${route}`);
-  const url = `https://roundtable.works${route}`;
+  const url = publicPageUrl(route);
   const head = `<title>${escape(page.title)}</title><meta name="description" content="${escape(page.description)}"><meta name="robots" content="index, follow, max-image-preview:large"><link rel="canonical" href="${url}"><meta property="og:title" content="${escape(page.title)}"><meta property="og:description" content="${escape(page.description)}"><meta property="og:url" content="${url}"><meta property="og:type" content="website"><meta property="og:site_name" content="Roundtable"><meta property="og:image" content="${socialImage}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="${socialImageAlt}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${escape(page.title)}"><meta name="twitter:description" content="${escape(page.description)}"><meta name="twitter:image" content="${socialImage}"><meta name="twitter:image:alt" content="${socialImageAlt}"><script id="search-structured-data" type="application/ld+json">${JSON.stringify(searchSchema(route)).replace(/</g, "\\u003c")}</script>`;
   const html = clean.replace("</head>", `${head}${route === "/pricing" ? extraStyles : ""}</head>`).replace(/<div id="root"><\/div>/, `<div id="root">${body}</div>`);
   const directory = path.join(build, route.slice(1));
@@ -60,4 +61,4 @@ for (const [route, page] of Object.entries(pages)) {
 }
 // SPA fallback is deliberately unindexed and never copies home-page metadata.
 fs.writeFileSync(path.join(build, "404.html"), clean.replace("</head>", '<title>Roundtable workspace</title><meta name="robots" content="noindex, nofollow"></head>'));
-fs.writeFileSync(path.join(build, "sitemap.xml"), `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${Object.entries(pages).map(([route, page]) => `<url><loc>https://roundtable.works${route}</loc><lastmod>${page.lastModified}</lastmod></url>`).join("")}</urlset>`);
+fs.writeFileSync(path.join(build, "sitemap.xml"), `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${Object.entries(pages).map(([route, page]) => `<url><loc>${publicPageUrl(route)}</loc><lastmod>${page.lastModified}</lastmod></url>`).join("")}</urlset>`);

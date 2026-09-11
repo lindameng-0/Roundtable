@@ -3,6 +3,7 @@ import { useLocation } from "react-router-dom";
 import { searchSchema } from "../searchSchema";
 import content from "../searchContent.json";
 import { trackPublicEvent } from "../siteAnalytics";
+import { publicPageUrl } from "../publicPageUrl";
 
 export default function SearchExperience() {
   const { pathname } = useLocation();
@@ -21,9 +22,9 @@ export default function SearchExperience() {
     setMeta("robots", page ? "index, follow, max-image-preview:large" : "noindex, nofollow");
     let canonical = document.head.querySelector('link[rel="canonical"]');
     if (!canonical) { canonical = document.createElement("link"); canonical.rel = "canonical"; document.head.appendChild(canonical); }
-    canonical.href = `https://roundtable.works${page ? path : "/"}`;
+    canonical.href = publicPageUrl(page ? path : "/");
     if (!page) canonical.remove();
-    for (const [key, value] of Object.entries({ title: document.title, description: page?.description || "Private workspace", url: page ? `https://roundtable.works${path}` : "", type: "website", site_name: "Roundtable" })) setMeta(`og:${key}`, value, true);
+    for (const [key, value] of Object.entries({ title: document.title, description: page?.description || "Private workspace", url: page ? publicPageUrl(path) : "", type: "website", site_name: "Roundtable" })) setMeta(`og:${key}`, value, true);
     setMeta("og:image", page ? socialImage : "", true);
     setMeta("og:image:width", page ? "1200" : "", true);
     setMeta("og:image:height", page ? "630" : "", true);

@@ -114,7 +114,7 @@ export default function LoginPage({ initialMode = "signin" }) {
                 <button type="button" onClick={() => switchMode("signup")} className={`pb-3 text-sm font-semibold ${mode === "signup" ? "border-b-2 border-[#493449] text-ink-900" : "text-ink-400"}`}>Create account</button>
               </div>
 
-              <p className="purchase-policy-note mb-5">By creating an account, including through Google, you agree to the <Link to="/terms">Terms of service</Link>. Read our <Link to="/privacy">Privacy policy</Link> to understand how your writing and account information are handled.</p>
+              <p className="purchase-policy-note mb-5">By creating an account, including through Google, you agree to the <Link to="/terms/">Terms of service</Link>. Read our <Link to="/privacy/">Privacy policy</Link> to understand how your writing and account information are handled.</p>
               <form onSubmit={submit} className="space-y-4">
                 {mode === "signup" && <Field label="Name"><input id="auth-name" value={name} onChange={(event) => setName(event.target.value)} required minLength={2} maxLength={80} autoComplete="name" className="auth-input" placeholder="Your name" /></Field>}
                 <Field label="Email"><input id="auth-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required autoComplete="email" className="auth-input" placeholder="you@example.com" /></Field>

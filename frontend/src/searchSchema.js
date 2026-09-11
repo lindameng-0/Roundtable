@@ -1,5 +1,6 @@
 import content from "./searchContent.json";
 import cases from "./useCases.json";
+import { publicPageUrl } from "./publicPageUrl";
 
 const origin = "https://roundtable.works";
 const organizationId = `${origin}/#organization`;
@@ -10,15 +11,15 @@ function breadcrumb(path, page) {
     "@type": "BreadcrumbList",
     itemListElement: [
       { "@type": "ListItem", position: 1, name: "Roundtable", item: `${origin}/` },
-      { "@type": "ListItem", position: 2, name: "Writing use cases", item: `${origin}/use-cases` },
-      { "@type": "ListItem", position: 3, name: cases[path].label, item: `${origin}${path}` },
+      { "@type": "ListItem", position: 2, name: "Writing use cases", item: publicPageUrl("/use-cases") },
+      { "@type": "ListItem", position: 3, name: cases[path].label, item: publicPageUrl(path) },
     ],
   };
   if (content.guides[path] || ["/sample-reading", "/connect-assistant"].includes(path)) return {
     "@type": "BreadcrumbList",
     itemListElement: [
       { "@type": "ListItem", position: 1, name: "Roundtable", item: `${origin}/` },
-      { "@type": "ListItem", position: 2, name: page.title.split(" | ")[0], item: `${origin}${path}` },
+      { "@type": "ListItem", position: 2, name: page.title.split(" | ")[0], item: publicPageUrl(path) },
     ],
   };
   return null;
@@ -26,7 +27,7 @@ function breadcrumb(path, page) {
 
 export function searchSchema(path) {
   const page = content.pages[path];
-  const pageUrl = `${origin}${path}`;
+  const pageUrl = publicPageUrl(path);
   const webPage = {
     "@type": "WebPage",
     "@id": `${pageUrl}#webpage`,

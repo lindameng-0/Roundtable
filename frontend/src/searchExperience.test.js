@@ -1,6 +1,15 @@
 import { referralSource, trackPublicEvent } from "./siteAnalytics";
 import { searchSchema } from "./searchSchema";
 import content from "./searchContent.json";
+import { publicPageUrl } from "./publicPageUrl";
+import React, { act } from "react";
+import { createRoot } from "react-dom/client";
+import SearchExperience from "./components/SearchExperience";
+
+let mockPathname = "/";
+// CRA's Jest resolver predates this package's export map; only the location
+// hook is needed here to exercise real React effects during route changes.
+jest.mock("react-router-dom", () => ({ useLocation: () => ({ pathname: mockPathname }) }), { virtual: true });
 
 test("referral categories use actual hosts and distinguish AI services", () => {
   expect(referralSource("https://chatgpt.com/c/private")).toBe("chatgpt");
@@ -64,7 +73,44 @@ test("worked examples have their full visible breadcrumb hierarchy", () => {
   const crumbs = graph.find(node => node["@type"] === "BreadcrumbList");
   expect(crumbs.itemListElement.map(item => item.item)).toEqual([
     "https://roundtable.works/",
-    "https://roundtable.works/use-cases",
-    "https://roundtable.works/use-cases/pacing-feedback",
+    "https://roundtable.works/use-cases/",
+    "https://roundtable.works/use-cases/pacing-feedback/",
   ]);
+});
+
+test("canonical URLs match Pages directory responses and exclude tracking parameters", () => {
+  expect(publicPageUrl("/")).toBe("https://roundtable.works/");
+  expect(publicPageUrl("/beta-readers")).toBe("https://roundtable.works/beta-readers/");
+  expect(publicPageUrl("/beta-readers/?utm_source=example#questions")).toBe("https://roundtable.works/beta-readers/");
+  const page = searchSchema("/beta-readers")["@graph"].find(node => node["@type"] === "WebPage");
+  expect(page.url).toBe("https://roundtable.works/beta-readers/");
+  expect(page["@id"]).toBe("https://roundtable.works/beta-readers/#webpage");
+});
+
+test("client route changes keep public metadata canonical and remove it in the workspace", () => {
+  global.IS_REACT_ACT_ENVIRONMENT = true;
+  jest.useFakeTimers();
+  const container = document.createElement("div");
+  const root = createRoot(container);
+  try {
+    for (const pathname of ["/beta-readers/", "/use-cases/pacing-feedback/"]) {
+      mockPathname = pathname;
+      act(() => root.render(<SearchExperience />));
+      const canonical = document.head.querySelector('link[rel="canonical"]');
+      expect(canonical.href).toBe(`https://roundtable.works${pathname}`);
+      expect(document.head.querySelector('meta[property="og:url"]').content).toBe(canonical.href);
+      const schema = JSON.parse(document.getElementById("search-structured-data").textContent);
+      expect(schema["@graph"].find(node => node["@type"] === "WebPage").url).toBe(canonical.href);
+      expect(document.title).toBe(content.pages[pathname.slice(0, -1)].title);
+    }
+    mockPathname = "/read/private-manuscript";
+    act(() => root.render(<SearchExperience />));
+    expect(document.head.querySelector('link[rel="canonical"]')).toBeNull();
+    expect(document.getElementById("search-structured-data")).toBeNull();
+    expect(document.head.querySelector('meta[name="robots"]').content).toBe("noindex, nofollow");
+  } finally {
+    act(() => root.unmount());
+    jest.useRealTimers();
+    delete global.IS_REACT_ACT_ENVIRONMENT;
+  }
 });

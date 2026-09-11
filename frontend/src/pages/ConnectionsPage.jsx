@@ -61,7 +61,7 @@ export default function ConnectionsPage() {
   return <><SiteHeader /><main id="main-content" className="connections-page page-width" tabIndex={-1}>
     <p className="small-note">Your account</p><h1>Connect an assistant</h1>
     <p className="connections-intro">Let a compatible assistant work with your Roundtable manuscripts through MCP. Give each connection its own key so you can revoke it independently.</p>
-    <p className="connection-help">Use an assistant that supports <strong>Streamable HTTP with a custom Authorization header</strong>. Connections that require OAuth sign-in are not supported in this release. <Link to="/connect-assistant">See what a connection can do</Link>.</p>
+    <p className="connection-help">Use an assistant that supports <strong>Streamable HTTP with a custom Authorization header</strong>. Connections that require OAuth sign-in are not supported in this release. <Link to="/connect-assistant/">See what a connection can do</Link>.</p>
     {!user?.email_verified ? <p role="status">Verify your account email before creating a connection.</p> : <>
       {error && <div className="connection-message connection-error" role="alert">{error} <button className="text-link" onClick={() => { setError(""); load(); }} disabled={loading || !!busy}>Refresh connections</button></div>}
       {notice && <p className="connection-message" role="status">{notice}</p>}
