@@ -39,3 +39,32 @@ test("beta reader guide has distinct search intent and structured context", () =
   expect(webPage.about).toMatchObject({ "@type": "DefinedTerm", name: "Beta reader" });
   expect(graph.some(node => node["@type"] === "BreadcrumbList")).toBe(true);
 });
+
+test("public search metadata stays concise and includes real freshness dates", () => {
+  for (const page of Object.values(content.pages)) {
+    expect(page.title.length).toBeLessThanOrEqual(60);
+    expect(page.description.length).toBeLessThanOrEqual(160);
+    expect(page.lastModified).toMatch(/^2026-\d{2}-\d{2}$/);
+  }
+});
+
+test("homepage describes the real service without incomplete review markup", () => {
+  const graph = searchSchema("/")["@graph"];
+  const service = graph.find(node => node["@type"] === "Service");
+  expect(service).toMatchObject({
+    name: "Roundtable AI beta reader feedback",
+    provider: { "@id": "https://roundtable.works/#organization" },
+    offers: { price: 0, priceCurrency: "USD" },
+  });
+  expect(graph.some(node => node["@type"] === "SoftwareApplication")).toBe(false);
+});
+
+test("worked examples have their full visible breadcrumb hierarchy", () => {
+  const graph = searchSchema("/use-cases/pacing-feedback")["@graph"];
+  const crumbs = graph.find(node => node["@type"] === "BreadcrumbList");
+  expect(crumbs.itemListElement.map(item => item.item)).toEqual([
+    "https://roundtable.works/",
+    "https://roundtable.works/use-cases",
+    "https://roundtable.works/use-cases/pacing-feedback",
+  ]);
+});

@@ -9,6 +9,7 @@ export default function SearchExperience() {
   useEffect(() => {
     const path = pathname.replace(/\/$/, "") || "/";
     const page = content.pages[path];
+    const socialImage = "https://roundtable.works/roundtable-social.jpg";
     const setMeta = (key, value, property = false) => {
       const attr = property ? "property" : "name";
       let node = document.head.querySelector(`meta[${attr}="${key}"]`);
@@ -23,9 +24,15 @@ export default function SearchExperience() {
     canonical.href = `https://roundtable.works${page ? path : "/"}`;
     if (!page) canonical.remove();
     for (const [key, value] of Object.entries({ title: document.title, description: page?.description || "Private workspace", url: page ? `https://roundtable.works${path}` : "", type: "website", site_name: "Roundtable" })) setMeta(`og:${key}`, value, true);
-    setMeta("twitter:card", "summary");
+    setMeta("og:image", page ? socialImage : "", true);
+    setMeta("og:image:width", page ? "1200" : "", true);
+    setMeta("og:image:height", page ? "630" : "", true);
+    setMeta("og:image:alt", page ? "An open manuscript at a round table, surrounded by five reader perspectives" : "", true);
+    setMeta("twitter:card", "summary_large_image");
     setMeta("twitter:title", document.title);
     setMeta("twitter:description", page?.description || "Private workspace");
+    setMeta("twitter:image", page ? socialImage : "");
+    setMeta("twitter:image:alt", page ? "An open manuscript at a round table, surrounded by five reader perspectives" : "");
     document.getElementById("search-structured-data")?.remove();
     if (page) {
       const script = document.createElement("script"); script.id = "search-structured-data"; script.type = "application/ld+json";

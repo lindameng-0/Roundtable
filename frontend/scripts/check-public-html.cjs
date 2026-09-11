@@ -7,6 +7,7 @@ const cases = require("../src/useCases.json");
 const build = path.resolve(__dirname, "../build");
 const origin = "https://roundtable.works";
 const sitemap = fs.readFileSync(path.join(build, "sitemap.xml"), "utf8");
+const socialImage = path.join(build, "roundtable-social.jpg");
 const decode = value => value.replace(/&amp;/g, "&").replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">");
 const htmlByRoute = {};
 for (const [route, page] of Object.entries(pages)) {
@@ -18,6 +19,11 @@ for (const [route, page] of Object.entries(pages)) {
   assert.ok(html.includes(`rel="canonical" href="${origin}${route}"`), `${route}: canonical URL`);
   assert.ok(html.includes('name="robots" content="index, follow'), `${route}: indexable`);
   assert.ok(sitemap.includes(`<loc>${origin}${route}</loc>`), `${route}: sitemap`);
+  assert.ok(sitemap.includes(`<lastmod>${page.lastModified}</lastmod>`), `${route}: accurate sitemap freshness`);
+  assert.ok(html.includes(`property="og:image" content="${origin}/roundtable-social.jpg"`), `${route}: social image`);
+  assert.ok(html.includes('property="og:image:width" content="1200"'), `${route}: social image width`);
+  assert.ok(html.includes('property="og:image:height" content="630"'), `${route}: social image height`);
+  assert.ok(html.includes('name="twitter:card" content="summary_large_image"'), `${route}: large social card`);
   const schema = JSON.parse(html.match(/<script id="search-structured-data" type="application\/ld\+json">(.*?)<\/script>/s)[1]);
   assert.ok(schema["@graph"].some(item => item.url === origin + route), `${route}: structured URL`);
   if (cases[route]) {
@@ -27,6 +33,7 @@ for (const [route, page] of Object.entries(pages)) {
     assert.ok(html.includes("not a recorded Roundtable run"), `${route}: example disclosure`);
   }
 }
+assert.ok(fs.statSync(socialImage).size > 10000, "Social image is included in the build");
 const discovered = new Set(["/"]);
 for (const route of discovered) {
   for (const [, href] of htmlByRoute[route].matchAll(/href="([^"#?]+)"/g)) {

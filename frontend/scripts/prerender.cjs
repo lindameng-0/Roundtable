@@ -39,6 +39,8 @@ const extraStyles = Object.values(manifest.files).filter(file => file.endsWith("
   .map(file => `<link rel="stylesheet" href="${file}">`).join("");
 const template = fs.readFileSync(path.join(build, "index.html"), "utf8");
 const escape = value => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+const socialImage = "https://roundtable.works/roundtable-social.jpg";
+const socialImageAlt = "An open manuscript at a round table, surrounded by five reader perspectives";
 const clean = template.replace(/<title>[\s\S]*?<\/title>/g, "")
   .replace(/<meta\s+[^>]*(?:name=["'](?:description|robots|twitter:[^"']+)["']|property=["']og:[^"']+["'])[^>]*>/g, "")
   .replace(/<link\s+[^>]*rel=["']canonical["'][^>]*>/g, "");
@@ -49,7 +51,7 @@ for (const [route, page] of Object.entries(pages)) {
       React.createElement(ConfirmationProvider, null, React.createElement(Component, { kind: route.slice(1) })))));
   if (!body.includes("<h1") || body.length < 1000) throw new Error(`Missing public content: ${route}`);
   const url = `https://roundtable.works${route}`;
-  const head = `<title>${escape(page.title)}</title><meta name="description" content="${escape(page.description)}"><meta name="robots" content="index, follow, max-image-preview:large"><link rel="canonical" href="${url}"><meta property="og:title" content="${escape(page.title)}"><meta property="og:description" content="${escape(page.description)}"><meta property="og:url" content="${url}"><meta property="og:type" content="website"><meta property="og:site_name" content="Roundtable"><meta name="twitter:card" content="summary"><meta name="twitter:title" content="${escape(page.title)}"><meta name="twitter:description" content="${escape(page.description)}"><script id="search-structured-data" type="application/ld+json">${JSON.stringify(searchSchema(route)).replace(/</g, "\\u003c")}</script>`;
+  const head = `<title>${escape(page.title)}</title><meta name="description" content="${escape(page.description)}"><meta name="robots" content="index, follow, max-image-preview:large"><link rel="canonical" href="${url}"><meta property="og:title" content="${escape(page.title)}"><meta property="og:description" content="${escape(page.description)}"><meta property="og:url" content="${url}"><meta property="og:type" content="website"><meta property="og:site_name" content="Roundtable"><meta property="og:image" content="${socialImage}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="${socialImageAlt}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${escape(page.title)}"><meta name="twitter:description" content="${escape(page.description)}"><meta name="twitter:image" content="${socialImage}"><meta name="twitter:image:alt" content="${socialImageAlt}"><script id="search-structured-data" type="application/ld+json">${JSON.stringify(searchSchema(route)).replace(/</g, "\\u003c")}</script>`;
   const html = clean.replace("</head>", `${head}${route === "/pricing" ? extraStyles : ""}</head>`).replace(/<div id="root"><\/div>/, `<div id="root">${body}</div>`);
   const directory = path.join(build, route.slice(1));
   fs.mkdirSync(directory, { recursive: true });
@@ -58,4 +60,4 @@ for (const [route, page] of Object.entries(pages)) {
 }
 // SPA fallback is deliberately unindexed and never copies home-page metadata.
 fs.writeFileSync(path.join(build, "404.html"), clean.replace("</head>", '<title>Roundtable workspace</title><meta name="robots" content="noindex, nofollow"></head>'));
-fs.writeFileSync(path.join(build, "sitemap.xml"), `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${Object.keys(pages).map(route => `<url><loc>https://roundtable.works${route}</loc></url>`).join("")}</urlset>`);
+fs.writeFileSync(path.join(build, "sitemap.xml"), `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${Object.entries(pages).map(([route, page]) => `<url><loc>https://roundtable.works${route}</loc><lastmod>${page.lastModified}</lastmod></url>`).join("")}</urlset>`);

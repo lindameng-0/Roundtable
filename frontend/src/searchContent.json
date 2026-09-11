@@ -2,59 +2,73 @@
   "pages": {
     "/": {
       "title": "Beta Reader Feedback for Fiction Writers | Roundtable",
-      "description": "Explore your fiction with a private panel of AI beta readers. Get passage-level feedback on character, pacing, clarity, and plot before your next revision."
+      "description": "Explore your fiction with a private panel of AI beta readers. Get passage-level feedback on character, pacing, clarity, and plot before your next revision.",
+      "lastModified": "2026-09-11"
     },
     "/beta-readers": {
       "title": "Beta Readers for Fiction Writers: A Guide | Roundtable",
-      "description": "Learn what beta readers do, when to use them, what questions to ask, and how human and AI beta reader feedback can support a fiction revision."
+      "description": "Learn what beta readers do, when to use them, what questions to ask, and how human and AI beta reader feedback can support a fiction revision.",
+      "lastModified": "2026-09-11"
     },
     "/pricing": {
       "title": "Roundtable Pricing | AI Reading Plans & Credits",
-      "description": "Explore Roundtable's free starter credits, credit packs, and monthly plans for AI manuscript feedback. See how reading credits work before you start."
+      "description": "Explore Roundtable's free starter credits, credit packs, and monthly plans for AI manuscript feedback. See how reading credits work before you start.",
+      "lastModified": "2026-09-11"
     },
     "/ai-beta-reader": {
       "title": "AI Beta Reader for Your Fiction Draft | Roundtable",
-      "description": "Learn how an AI beta reader responds to character, pacing, and plot. Compare distinct perspectives on your draft with Roundtable's AI reading panel."
+      "description": "Learn how an AI beta reader responds to character, pacing, and plot. Compare distinct perspectives on your draft with Roundtable's AI reading panel.",
+      "lastModified": "2026-09-11"
     },
     "/manuscript-feedback": {
       "title": "Manuscript Feedback for Your Next Revision | Roundtable",
-      "description": "Turn manuscript feedback into a revision plan. Explore passage-level reader reactions and an editorial report with Roundtable's AI readers."
+      "description": "Turn manuscript feedback into a revision plan. Explore passage-level reader reactions and an editorial report with Roundtable's AI readers.",
+      "lastModified": "2026-09-11"
     },
     "/terms": {
       "title": "Terms of Service | Roundtable",
-      "description": "Read Roundtable's terms for AI manuscript feedback, accounts, credits, subscriptions, and use of the service."
+      "description": "Read Roundtable's terms for AI manuscript feedback, accounts, credits, subscriptions, and use of the service.",
+      "lastModified": "2026-09-08"
     },
     "/privacy": {
       "title": "Privacy Policy | Roundtable",
-      "description": "How Roundtable handles account information, manuscripts, AI processing, anonymous site analytics, and your privacy choices."
+      "description": "How Roundtable handles account information, manuscripts, AI processing, anonymous site analytics, and your privacy choices.",
+      "lastModified": "2026-09-08"
     },
     "/refunds": {
       "title": "Refund Policy | Roundtable",
-      "description": "Read Roundtable's refund and cancellation policy for credit packs and subscriptions, and learn how to request help."
+      "description": "Read Roundtable's refund and cancellation policy for credit packs and subscriptions, and learn how to request help.",
+      "lastModified": "2026-09-08"
     },
     "/sample-reading": {
-      "title": "Sample Manuscript Feedback: An Annotated Fiction Opening | Roundtable",
-      "description": "Explore a fiction opening alongside illustrative reader reactions, an editorial assessment, and a before-and-after revision. See how to turn feedback into choices."
+      "title": "Sample Manuscript Feedback: A Fiction Opening | Roundtable",
+      "description": "Explore a fiction opening with reader reactions, an editorial assessment, and a before-and-after revision. See how feedback becomes revision choices.",
+      "lastModified": "2026-09-08"
     },
     "/connect-assistant": {
-      "title": "Connect Your AI Assistant to Roundtable | MCP Manuscript Feedback",
-      "description": "Use a compatible MCP assistant to retrieve Roundtable manuscript feedback or arrange readings with account credits. Create scoped, expiring, revocable connection keys."
+      "title": "Connect Your AI Assistant | Roundtable MCP Feedback",
+      "description": "Connect a compatible MCP assistant to retrieve Roundtable manuscript feedback or arrange readings. Create scoped, expiring, revocable connection keys.",
+      "lastModified": "2026-09-08"
     },
     "/use-cases": {
       "title": "Writing Use Cases: Worked Manuscript Revisions | Roundtable",
-      "description": "Explore opening chapters, scene pacing, and character motivation through sample passages, contrasting AI reader reactions, and explained revision choices."
+      "description": "Explore opening chapters, scene pacing, and character motivation through sample passages, contrasting AI reader reactions, and explained revision choices.",
+      "lastModified": "2026-09-10"
     },
     "/use-cases/opening-chapter-feedback": {
       "title": "Opening Chapter Feedback: Hook and Clarity | Roundtable",
-      "description": "See how contrasting AI reader reactions can help you revise a fiction opening. Follow a sample passage from mystery and confusion to a deliberate revision."
+      "description": "See how contrasting AI reader reactions can help you revise a fiction opening. Follow a sample passage from mystery and confusion to a deliberate revision.",
+      "lastModified": "2026-09-10"
     },
     "/use-cases/pacing-feedback": {
-      "title": "Fiction Pacing Feedback: Tension and Scene Momentum | Roundtable",
-      "description": "Explore a worked pacing example with a scene excerpt, contrasting reader reactions, and a revision that keeps atmosphere while restoring urgency."
+      "title": "Fiction Pacing Feedback: Scene Momentum | Roundtable",
+      "description": "Explore a worked pacing example with a scene excerpt, contrasting reader reactions, and a revision that keeps atmosphere while restoring urgency.",
+      "lastModified": "2026-09-10"
     },
     "/use-cases/character-motivation": {
-      "title": "Character Motivation Feedback: Make a Choice Believable | Roundtable",
-      "description": "Follow a fictional character's surprising choice through two reader perspectives. See how Roundtable can help you test motivation without explaining away ambiguity."
+      "title": "Character Motivation Feedback for Fiction | Roundtable",
+      "description": "Follow a character's surprising choice through two reader perspectives. See how Roundtable can test motivation without explaining away useful ambiguity.",
+      "lastModified": "2026-09-10"
     }
   },
   "faq": [
