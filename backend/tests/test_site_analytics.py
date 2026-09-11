@@ -60,7 +60,7 @@ def test_collection_and_exact_summary():
     with TestClient(app) as client:
         headers = {"origin": "https://roundtable.works"}
         for _ in range(3):
-            assert client.post("/api/analytics/events", headers=headers, json={"path": "/", "source": "chatgpt"}).status_code == 204
+            assert client.post("/api/analytics/events", headers=headers, json={"path": "/beta-readers", "source": "chatgpt"}).status_code == 204
         client.post("/api/analytics/events", headers=headers, json={"path": "/", "event": "signup_click"})
         session(client)
         result = client.get("/api/analytics/summary?days=7").json()

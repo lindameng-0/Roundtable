@@ -91,6 +91,7 @@ function App() {
             <Route path="/connections" element={<ProtectedRoute><ConnectionsPage /></ProtectedRoute>} />
             <Route path="/connect-assistant" element={<ConnectAssistantPage />} />
             <Route path="/sample-reading" element={<SampleReadingPage />} />
+            <Route path="/beta-readers" element={<GuidePage />} />
             <Route path="/ai-beta-reader" element={<GuidePage />} />
             <Route path="/manuscript-feedback" element={<GuidePage />} />
             <Route path="/owner/analytics" element={<ProtectedRoute><OwnerAnalyticsPage /></ProtectedRoute>} />

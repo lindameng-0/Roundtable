@@ -1,8 +1,12 @@
 {
   "pages": {
     "/": {
-      "title": "AI Beta Readers & Manuscript Feedback | Roundtable",
-      "description": "Get manuscript feedback from up to five distinct AI beta readers. Explore passage-level reactions, compare perspectives, and plan your next revision with Roundtable."
+      "title": "Beta Reader Feedback for Fiction Writers | Roundtable",
+      "description": "Explore your fiction with a private panel of AI beta readers. Get passage-level feedback on character, pacing, clarity, and plot before your next revision."
+    },
+    "/beta-readers": {
+      "title": "Beta Readers for Fiction Writers: A Guide | Roundtable",
+      "description": "Learn what beta readers do, when to use them, what questions to ask, and how human and AI beta reader feedback can support a fiction revision."
     },
     "/pricing": {
       "title": "Roundtable Pricing | AI Reading Plans & Credits",
@@ -88,6 +92,36 @@
     }
   ],
   "guides": {
+    "/beta-readers": {
+      "heading": "Beta readers help you see the story your audience receives.",
+      "intro": "A beta reader reads a draft from the audience's point of view and tells you where the story engages, confuses, surprises, or loses them. Writers usually seek beta feedback after completing a workable draft but before final proofreading or publication.",
+      "sections": [
+        {
+          "heading": "What does a beta reader do?",
+          "text": "A beta reader responds to the reading experience rather than correcting every sentence. Useful feedback may identify where attention drops, a character's decision feels unconvincing, a reveal lacks setup, or important context arrives too late. Beta readers do not replace copyeditors, proofreaders, sensitivity readers, or professional editors; each role answers different questions."
+        },
+        {
+          "heading": "When should you ask for beta reader feedback?",
+          "text": "Share a draft when its beginning, middle, and ending are present and you are ready to reconsider substantial choices. If you already know that scenes are missing or the ending will change, revise those issues first. Beta feedback is most useful when readers can experience the intended story and you still have room to act on what they notice."
+        },
+        {
+          "heading": "What should you ask beta readers?",
+          "text": "Ask a small set of questions tied to the experience you want to create: Where did you want to keep reading? Where were you confused? Which character choices felt earned or unearned? When did the pace feel rushed or slow? What did you expect would happen next? Open questions usually reveal more than asking whether the book was good."
+        },
+        {
+          "heading": "Human and AI beta readers offer different perspectives",
+          "text": "Human beta readers bring lived experience, taste, genre knowledge, and genuine emotional response. AI beta readers can provide fast, repeatable reactions focused on particular craft questions, but they can misunderstand context, invent problems, or share the same model bias. AI feedback works best as an exploratory step before or alongside feedback from people, not as evidence of how a real audience will respond."
+        },
+        {
+          "heading": "How do you use conflicting feedback?",
+          "text": "Treat feedback as evidence about a reader's experience, not an instruction to make every suggested change. Return to the passage behind each reaction, look for patterns, and compare them with your intended audience and purpose. When readers disagree, decide which response is closer to the experience you want the story to create."
+        },
+        {
+          "heading": "How Roundtable supports the beta reading process",
+          "text": "Roundtable gives fiction writers a private panel of distinct AI beta readers. Their passage-level reactions and combined editorial report can help you identify questions for revision before sharing a draft with human beta readers. You remain the author: compare the perspectives, test the reasoning, and keep only what serves your story."
+        }
+      ]
+    },
     "/ai-beta-reader": {
       "heading": "An AI beta reader, with more than one point of view.",
       "intro": "An AI beta reader gives you a simulated reader response to a draft: where attention holds, what feels unclear, and which characters connect. Roundtable lets you compare a panel of distinct AI perspectives before deciding what to revise.",

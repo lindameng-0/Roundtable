@@ -29,3 +29,13 @@ test("FAQ structured data matches the visible shared answers", () => {
   expect(faq.mainEntity.map(item => item.acceptedAnswer.text)).toEqual(content.faq.map(item => item.answer));
   expect(searchSchema("/pricing")["@graph"].some(node => node["@type"] === "FAQPage")).toBe(false);
 });
+
+test("beta reader guide has distinct search intent and structured context", () => {
+  const page = content.pages["/beta-readers"];
+  const graph = searchSchema("/beta-readers")["@graph"];
+  const webPage = graph.find(node => node["@type"] === "WebPage");
+  expect(page.title).toMatch(/^Beta Readers for Fiction Writers/);
+  expect(content.guides["/beta-readers"].intro).toMatch(/^A beta reader reads a draft/);
+  expect(webPage.about).toMatchObject({ "@type": "DefinedTerm", name: "Beta reader" });
+  expect(graph.some(node => node["@type"] === "BreadcrumbList")).toBe(true);
+});
