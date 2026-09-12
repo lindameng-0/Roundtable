@@ -9,4 +9,4 @@ Disallow: /auth/
 Disallow: /reset-password
 Disallow: /verify-email
 
-Sitemap: https://roundtable.works/sitemap.xml
+Sitemap: https://readerfold.com/sitemap.xml
