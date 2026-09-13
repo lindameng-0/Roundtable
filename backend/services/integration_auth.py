@@ -26,7 +26,7 @@ class IntegrationRequest(Request):
 async def authenticate_key(request: Request):
     scheme, _, token = request.headers.get("authorization", "").partition(" ")
     if scheme.lower() != "bearer" or not token.startswith("rt_mcp_") or len(token) > 200:
-        raise HTTPException(401, "A Roundtable integration key is required")
+        raise HTTPException(401, "A Readerfold integration key is required")
     key = await db.integration_keys.find_one({"token_hash": hash_opaque_token(token)})
     if not key:
         raise HTTPException(401, "Integration key is invalid or revoked")

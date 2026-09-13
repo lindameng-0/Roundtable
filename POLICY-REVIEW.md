@@ -13,7 +13,7 @@ All four are linked from the shared footer. Signup and pricing also link the rel
 
 ## Finish before publication
 
-1. **Public inbox confirmed:** the owner supplied `roundtablesupport@gmail.com`, now configured as `SUPPORT_EMAIL` in `frontend/src/components/PolicyContact.jsx`.
+1. **Public inbox confirmed:** the owner supplied `readerfold@gmail.com`, now configured as `SUPPORT_EMAIL` in `frontend/src/components/PolicyContact.jsx`.
 2. **Business location:** confirm country/state and applicable business contact-address disclosure requirements. The draft deliberately does not invent an address or impose an arbitrary court/jurisdiction. Add appropriate location and contact details after confirmation.
 3. **Operational privacy facts:** confirm the production hosting/database providers and regions, active AI models, paid/free provider tiers, retention settings, training permissions, any analytics not present in source, provider contracts, and international transfer safeguards. The source supports Google/OpenAI/Anthropic routing, Google sign-in, and Resend email, but does not establish the deployed account settings. Replace conditional provider language with the confirmed production details. The transfer wording describes required safeguards; it is not evidence that contracts are already in place.
 4. **Retention and requests:** confirm actual backup/log retention and a process for account deletion, data access/export, and requests within statutory deadlines. The draft uses purpose-based retention criteria rather than making up automatic deletion periods. Manuscript deletion exists; account deletion requests require operator handling.

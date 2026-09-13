@@ -1,8 +1,7 @@
 import content from "./searchContent.json";
 import cases from "./useCases.json";
-import { publicPageUrl } from "./publicPageUrl";
+import { publicPageUrl, siteOrigin as origin } from "./publicPageUrl";
 
-const origin = "https://roundtable.works";
 const organizationId = `${origin}/#organization`;
 const websiteId = `${origin}/#website`;
 
@@ -10,7 +9,7 @@ function breadcrumb(path, page) {
   if (cases[path]) return {
     "@type": "BreadcrumbList",
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Roundtable", item: `${origin}/` },
+      { "@type": "ListItem", position: 1, name: "Readerfold", item: `${origin}/` },
       { "@type": "ListItem", position: 2, name: "Writing use cases", item: publicPageUrl("/use-cases") },
       { "@type": "ListItem", position: 3, name: cases[path].label, item: publicPageUrl(path) },
     ],
@@ -18,7 +17,7 @@ function breadcrumb(path, page) {
   if (content.guides[path] || ["/sample-reading", "/connect-assistant"].includes(path)) return {
     "@type": "BreadcrumbList",
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Roundtable", item: `${origin}/` },
+      { "@type": "ListItem", position: 1, name: "Readerfold", item: `${origin}/` },
       { "@type": "ListItem", position: 2, name: page.title.split(" | ")[0], item: publicPageUrl(path) },
     ],
   };
@@ -50,14 +49,14 @@ export function searchSchema(path) {
     {
       "@type": "Organization",
       "@id": organizationId,
-      name: "Roundtable",
+      name: "Readerfold",
       url: `${origin}/`,
       logo: { "@type": "ImageObject", url: `${origin}/favicon.svg`, width: 100, height: 100 },
-      email: "roundtablesupport@gmail.com",
+      email: "readerfold@gmail.com",
       founder: { "@type": "Person", name: "Linda Meng" },
-      contactPoint: { "@type": "ContactPoint", email: "roundtablesupport@gmail.com", contactType: "customer support" },
+      contactPoint: { "@type": "ContactPoint", email: "readerfold@gmail.com", contactType: "customer support" },
     },
-    { "@type": "WebSite", "@id": websiteId, name: "Roundtable", url: `${origin}/`, inLanguage: "en-US", publisher: { "@id": organizationId } },
+    { "@type": "WebSite", "@id": websiteId, name: "Readerfold", url: `${origin}/`, inLanguage: "en-US", publisher: { "@id": organizationId } },
     webPage,
   ];
   const breadcrumbList = breadcrumb(path, page);
@@ -68,7 +67,7 @@ export function searchSchema(path) {
     graph.push({
       "@type": "Service",
       "@id": serviceId,
-      name: "Roundtable AI beta reader feedback",
+      name: "Readerfold AI beta reader feedback",
       serviceType: "AI-assisted manuscript feedback for fiction writers",
       url: `${origin}/`,
       description: content.faq[0].answer,

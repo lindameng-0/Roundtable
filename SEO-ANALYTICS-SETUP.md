@@ -10,7 +10,7 @@ Published September 8, 2026. Source commit `a8dad62` deployed successfully to th
 4. Keep directory indexes for every public page. These contain rendered HTML with working content and metadata before JavaScript runs. As of September 11, canonical URLs, sitemap entries, structured data, and public links use trailing slashes to match GitHub Pages' final HTTP 200 URLs. The existing slashless URLs continue to redirect. Keep query strings out of canonicals.
 5. Sign in with the verified owner account and open `/owner/analytics`, or use **Analytics** in the navigation. Check that anonymous and other-account requests to `/api/analytics/summary` return 401/403. Production cookie requests require an allowed `Origin`; set `CORS_ORIGINS` to the exact frontend origin as usual.
 
-The owner confirmed `roundtablesupport@gmail.com` as the public support inbox. It is configured in `frontend/src/components/PolicyContact.jsx`; the private analytics owner account remains `itsyuko0o1@gmail.com`.
+The owner confirmed `readerfold@gmail.com` as the public support inbox. It is configured in `frontend/src/components/PolicyContact.jsx`; the private analytics owner account remains `itsyuko0o1@gmail.com`.
 
 ## Search-console setup (requires your domain account)
 

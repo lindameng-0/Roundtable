@@ -142,7 +142,7 @@ def _require_affordable(estimate: Dict) -> None:
 @api_router.get("/")
 async def root():
     return {
-        "message": "Roundtable API",
+        "message": "Readerfold API",
         "database_backend": _cfg.DATABASE_BACKEND,
         "llm_backend": _cfg.LLM_BACKEND,
     }

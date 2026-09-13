@@ -126,7 +126,7 @@ export default function BillingPage() {
 
   return <div className="billing-page"><SiteHeader /><main id="main-content" className="page-width billing-content pb-20" tabIndex={-1}>
     <div className="billing-intro"><div><p className="small-note">A fresh perspective, at your pace</p><h1>Room for your<br />next revision.</h1></div><p>Buy a reading pack when your draft is ready, or choose a monthly allowance for a regular writing practice. Every option includes the same reader perspectives and editorial tools.</p></div>
-    <p className="purchase-policy-note">Roundtable is AI manuscript feedback software: reader reactions beside your writing, follow-up perspectives, and editorial reports. All prices below are in USD. Applicable taxes and the final total appear at checkout.</p>
+    <p className="purchase-policy-note">Readerfold is AI manuscript feedback software: reader reactions beside your writing, follow-up perspectives, and editorial reports. All prices below are in USD. Applicable taxes and the final total appear at checkout.</p>
     <p className="purchase-policy-note">Monthly plans renew automatically until cancelled. One-time packs do not renew. Purchases are subject to our <Link to="/terms/">Terms of service</Link> and <Link to="/refunds/">Refund policy</Link>; see our <Link to="/privacy/">Privacy policy</Link> for how we handle your information.</p>
     {error && <div role="alert" className="billing-notice">{error}<button onClick={refresh} className="ml-4 underline">Retry</button></div>}
     {location.search.includes("checkout=success") && <p role="status" className="billing-notice">Your allowance updates after Paddle confirms payment. This can take a moment; refresh below to check.</p>}

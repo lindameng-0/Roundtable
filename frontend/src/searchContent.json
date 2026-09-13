@@ -1,84 +1,88 @@
 {
   "pages": {
     "/": {
-      "title": "Beta Reader Feedback for Fiction Writers | Roundtable",
-      "description": "Explore your fiction with a private panel of AI beta readers. Get passage-level feedback on character, pacing, clarity, and plot before your next revision.",
-      "lastModified": "2026-09-11"
+      "title": "AI Beta Readers with Distinct Perspectives | Readerfold",
+      "description": "Meet AI beta readers with distinct tastes and voices. Explore simulated reader reactions to your fiction and compare perspectives on the same passage.",
+      "lastModified": "2026-09-12"
     },
     "/beta-readers": {
-      "title": "Beta Readers for Fiction Writers: A Guide | Roundtable",
+      "title": "Beta Readers for Fiction Writers: A Guide | Readerfold",
       "description": "Learn what beta readers do, when to use them, what questions to ask, and how human and AI beta reader feedback can support a fiction revision.",
-      "lastModified": "2026-09-11"
+      "lastModified": "2026-09-12"
     },
     "/pricing": {
-      "title": "Roundtable Pricing | AI Reading Plans & Credits",
-      "description": "Explore Roundtable's free starter credits, credit packs, and monthly plans for AI manuscript feedback. See how reading credits work before you start.",
-      "lastModified": "2026-09-11"
+      "title": "Readerfold Pricing | AI Reading Plans & Credits",
+      "description": "Explore Readerfold's free starter credits, credit packs, and monthly plans for AI manuscript feedback. See how reading credits work before you start.",
+      "lastModified": "2026-09-12"
     },
     "/ai-beta-reader": {
-      "title": "AI Beta Reader for Your Fiction Draft | Roundtable",
-      "description": "Learn how an AI beta reader responds to character, pacing, and plot. Compare distinct perspectives on your draft with Roundtable's AI reading panel.",
-      "lastModified": "2026-09-11"
+      "title": "AI Beta Readers: Different Voices & Reactions | Readerfold",
+      "description": "Explore AI beta readers designed to respond like people reading fiction, each with distinct tastes and a voice. Compare reactions as your story unfolds.",
+      "lastModified": "2026-09-12"
     },
     "/manuscript-feedback": {
-      "title": "Manuscript Feedback for Your Next Revision | Roundtable",
-      "description": "Turn manuscript feedback into a revision plan. Explore passage-level reader reactions and an editorial report with Roundtable's AI readers.",
-      "lastModified": "2026-09-11"
+      "title": "Manuscript Feedback from Different AI Readers | Readerfold",
+      "description": "See where different AI readers connect, get curious, or question your fiction. Compare their passage-linked reactions to decide what to revise.",
+      "lastModified": "2026-09-12"
     },
     "/terms": {
-      "title": "Terms of Service | Roundtable",
-      "description": "Read Roundtable's terms for AI manuscript feedback, accounts, credits, subscriptions, and use of the service.",
-      "lastModified": "2026-09-08"
+      "title": "Terms of Service | Readerfold",
+      "description": "Read Readerfold's terms for AI manuscript feedback, accounts, credits, subscriptions, and use of the service.",
+      "lastModified": "2026-09-12"
     },
     "/privacy": {
-      "title": "Privacy Policy | Roundtable",
-      "description": "How Roundtable handles account information, manuscripts, AI processing, anonymous site analytics, and your privacy choices.",
-      "lastModified": "2026-09-08"
+      "title": "Privacy Policy | Readerfold",
+      "description": "How Readerfold handles account information, manuscripts, AI processing, anonymous site analytics, and your privacy choices.",
+      "lastModified": "2026-09-12"
     },
     "/refunds": {
-      "title": "Refund Policy | Roundtable",
-      "description": "Read Roundtable's refund and cancellation policy for credit packs and subscriptions, and learn how to request help.",
-      "lastModified": "2026-09-08"
+      "title": "Refund Policy | Readerfold",
+      "description": "Read Readerfold's refund and cancellation policy for credit packs and subscriptions, and learn how to request help.",
+      "lastModified": "2026-09-12"
     },
     "/sample-reading": {
-      "title": "Sample Manuscript Feedback: A Fiction Opening | Roundtable",
-      "description": "Explore a fiction opening with reader reactions, an editorial assessment, and a before-and-after revision. See how feedback becomes revision choices.",
-      "lastModified": "2026-09-08"
+      "title": "One Passage, Different AI Reader Reactions | Readerfold",
+      "description": "See contrasting reader perspectives on one fiction opening. Explore an illustrative AI beta reading, from personal reactions to a possible revision.",
+      "lastModified": "2026-09-12"
     },
     "/connect-assistant": {
-      "title": "Connect Your AI Assistant | Roundtable MCP Feedback",
-      "description": "Connect a compatible MCP assistant to retrieve Roundtable manuscript feedback or arrange readings. Create scoped, expiring, revocable connection keys.",
-      "lastModified": "2026-09-08"
+      "title": "Connect Your AI Assistant | Readerfold MCP Feedback",
+      "description": "Connect a compatible MCP assistant to retrieve Readerfold manuscript feedback or arrange readings. Create scoped, expiring, revocable connection keys.",
+      "lastModified": "2026-09-12"
     },
     "/use-cases": {
-      "title": "Writing Use Cases: Worked Manuscript Revisions | Roundtable",
+      "title": "Writing Use Cases: Worked Manuscript Revisions | Readerfold",
       "description": "Explore opening chapters, scene pacing, and character motivation through sample passages, contrasting AI reader reactions, and explained revision choices.",
-      "lastModified": "2026-09-10"
+      "lastModified": "2026-09-12"
     },
     "/use-cases/opening-chapter-feedback": {
-      "title": "Opening Chapter Feedback: Hook and Clarity | Roundtable",
+      "title": "Opening Chapter Feedback: Hook and Clarity | Readerfold",
       "description": "See how contrasting AI reader reactions can help you revise a fiction opening. Follow a sample passage from mystery and confusion to a deliberate revision.",
-      "lastModified": "2026-09-10"
+      "lastModified": "2026-09-12"
     },
     "/use-cases/pacing-feedback": {
-      "title": "Fiction Pacing Feedback: Scene Momentum | Roundtable",
+      "title": "Fiction Pacing Feedback: Scene Momentum | Readerfold",
       "description": "Explore a worked pacing example with a scene excerpt, contrasting reader reactions, and a revision that keeps atmosphere while restoring urgency.",
-      "lastModified": "2026-09-10"
+      "lastModified": "2026-09-12"
     },
     "/use-cases/character-motivation": {
-      "title": "Character Motivation Feedback for Fiction | Roundtable",
-      "description": "Follow a character's surprising choice through two reader perspectives. See how Roundtable can test motivation without explaining away useful ambiguity.",
-      "lastModified": "2026-09-10"
+      "title": "Character Motivation Feedback for Fiction | Readerfold",
+      "description": "Follow a character's surprising choice through two reader perspectives. See how Readerfold can test motivation without explaining away useful ambiguity.",
+      "lastModified": "2026-09-12"
     }
   },
   "faq": [
     {
-      "question": "What is Roundtable?",
-      "answer": "Roundtable is an AI manuscript feedback tool for writers. It brings together up to five AI readers with different perspectives, connects their reactions to passages in your draft, and brings observations together in an editorial report."
+      "question": "What is Readerfold?",
+      "answer": "Readerfold is a panel of AI beta readers for fiction writers, designed to simulate how different people might experience a story. Up to five readers bring distinct tastes, voices, and perspectives. Follow their reactions beside the passages that prompted them, compare where they connect or disagree, and use the editorial report to consider your next revision."
     },
     {
       "question": "How does an AI beta reader work?",
-      "answer": "An AI beta reader uses a language model to respond to your writing from a chosen perspective. In Roundtable, you can give readers different tastes and focus areas, such as character connection, pacing, or plot logic, then compare what they notice."
+      "answer": "An AI beta reader uses a language model to simulate a reader’s experience of a story. In Readerfold, each reader has generated tastes, reading habits, and a voice. You can choose a focus for each reader, such as character connection or plot logic, and compare their curiosity, expectations, confusion, and interpretations as they read."
+    },
+    {
+      "question": "What makes Readerfold’s reading experience distinctive?",
+      "answer": "Readerfold centers the individual reader’s reaction: what draws them in, how they interpret a character, and where they hesitate or change their expectations. Different AI readers respond to the same manuscript in their own voices, so you can compare perspectives before reviewing the combined editorial report. Their reactions are simulations, not feedback from real people or a prediction of audience response."
     },
     {
       "question": "Can AI feedback replace human beta readers or an editor?",
@@ -89,20 +93,20 @@
       "answer": "You can paste your writing or upload a TXT, DOCX, or PDF file. Confirm the extracted text, genre, and intended audience before starting a reading."
     },
     {
-      "question": "Can I try Roundtable for free?",
-      "answer": "You can create an account and try Roundtable with free starter credits without a payment card. Credit use varies with manuscript length, reader setup, panel size, and additional reports. The Pricing page explains the current allowances and paid options."
+      "question": "Can I try Readerfold for free?",
+      "answer": "You can create an account and try Readerfold with free starter credits without a payment card. Credit use varies with manuscript length, reader setup, panel size, and additional reports. The Pricing page explains the current allowances and paid options."
     },
     {
       "question": "Will my manuscript be used to train AI?",
-      "answer": "Roundtable does not use your manuscript to train AI models, and we have opted out of training with our AI providers. We send relevant manuscript text to those providers to generate analysis and feedback. Training opt-outs do not mean zero retention; the Privacy policy explains provider processing and storage."
+      "answer": "Readerfold does not use your manuscript to train AI models, and we have opted out of training with our AI providers. We send relevant manuscript text to those providers to generate analysis and feedback. Training opt-outs do not mean zero retention; the Privacy policy explains provider processing and storage."
     },
     {
       "question": "Will my manuscript be published or shared publicly?",
-      "answer": "No. Uploading to Roundtable does not publish your manuscript or make your feedback public. You keep your rights to your writing, and we do not acquire publishing rights or permission to use it in public marketing. Relevant content is processed by the service providers described in our Privacy policy."
+      "answer": "No. Uploading to Readerfold does not publish your manuscript or make your feedback public. You keep your rights to your writing, and we do not acquire publishing rights or permission to use it in public marketing. Relevant content is processed by the service providers described in our Privacy policy."
     },
     {
       "question": "Do you store my manuscript, and can I delete it?",
-      "answer": "Yes. Roundtable saves your manuscript and feedback in your account so you can return to them. You can delete a manuscript or contact support to request deletion. Active readings must finish before manuscript deletion. Deletion may not immediately remove backup copies, and external providers follow their own retention arrangements. See the Privacy policy for details and account deletion requests."
+      "answer": "Yes. Readerfold saves your manuscript and feedback in your account so you can return to them. You can delete a manuscript or contact support to request deletion. Active readings must finish before manuscript deletion. Deletion may not immediately remove backup copies, and external providers follow their own retention arrangements. See the Privacy policy for details and account deletion requests."
     }
   ],
   "guides": {
@@ -119,6 +123,10 @@
           "text": "Share a draft when its beginning, middle, and ending are present and you are ready to reconsider substantial choices. If you already know that scenes are missing or the ending will change, revise those issues first. Beta feedback is most useful when readers can experience the intended story and you still have room to act on what they notice."
         },
         {
+          "heading": "How do you find beta readers for free?",
+          "text": "Look for readers who already enjoy your genre through critique swaps, writing groups, library writing circles, or communities that allow beta requests. Introduce the genre, word count, draft stage, content notes, and feedback you want. Agree on scope and timing before sending a file; a short sample can help both sides check the fit. If you offer a swap, be clear about the time you can give in return. Community rules differ, so check them before posting or sharing AI-generated material."
+        },
+        {
           "heading": "What should you ask beta readers?",
           "text": "Ask a small set of questions tied to the experience you want to create: Where did you want to keep reading? Where were you confused? Which character choices felt earned or unearned? When did the pace feel rushed or slow? What did you expect would happen next? Open questions usually reveal more than asking whether the book was good."
         },
@@ -131,22 +139,30 @@
           "text": "Treat feedback as evidence about a reader's experience, not an instruction to make every suggested change. Return to the passage behind each reaction, look for patterns, and compare them with your intended audience and purpose. When readers disagree, decide which response is closer to the experience you want the story to create."
         },
         {
-          "heading": "How Roundtable supports the beta reading process",
-          "text": "Roundtable gives fiction writers a private panel of distinct AI beta readers. Their passage-level reactions and combined editorial report can help you identify questions for revision before sharing a draft with human beta readers. You remain the author: compare the perspectives, test the reasoning, and keep only what serves your story."
+          "heading": "How Readerfold supports the beta reading process",
+          "text": "Readerfold gives fiction writers a private panel of AI beta readers designed to respond like people experiencing a story. Each brings distinct tastes and a voice. Compare what draws them in, how they interpret a character, and where they become uncertain, with reactions tied to your passages. Their responses can help you form revision questions before sharing the draft with human readers."
         }
       ]
     },
     "/ai-beta-reader": {
-      "heading": "An AI beta reader, with more than one point of view.",
-      "intro": "An AI beta reader gives you a simulated reader response to a draft: where attention holds, what feels unclear, and which characters connect. Roundtable lets you compare a panel of distinct AI perspectives before deciding what to revise.",
+      "heading": "AI readers with their own tastes, voices, and reactions.",
+      "intro": "Readerfold is designed to simulate the experience of different people reading your fiction. Each AI beta reader brings distinct tastes, reading habits, and a voice. Follow what catches their attention, how they interpret a character, and where their expectations change, then compare their perspectives on the same passage.",
       "sections": [
+        {
+          "heading": "What does a simulated reader reaction look like?",
+          "text": "A reader might say, “I want her to open the letter, but I am worried about what she will find.” Another might wonder why she has kept it sealed. These illustrative reactions describe curiosity and interpretation as the story unfolds. Readerfold connects reactions to the manuscript so you can examine the moment that prompted each response."
+        },
+        {
+          "heading": "Why give AI beta readers different perspectives?",
+          "text": "The same detail can reassure one reader and make another suspicious. Distinct tastes and reading priorities give you different ways to explore a scene: one reader follows the emotional relationship, another anticipates the next reveal, and another questions a character’s reasoning. They may agree or disagree; neither outcome proves how a real audience will respond."
+        },
         {
           "heading": "Ask a specific reading question",
           "text": "Instead of asking whether your story is good, choose a question the draft can answer. Does the opening establish a reason to keep reading? Is the protagonist's choice understandable? Does a reveal arrive before the reader has enough context? Give different readers different priorities."
         },
         {
           "heading": "Read the passage behind the reaction",
-          "text": "A broad judgment is difficult to act on. Roundtable places reader reactions beside the manuscript so you can return to the words that prompted them. Compare an emotional reader's connection with an analytical reader's questions about structure and a skeptical reader's doubts about logic."
+          "text": "A broad judgment is difficult to act on. Readerfold places reader reactions beside the manuscript so you can return to the words that prompted them. Compare an emotional reader's connection with an analytical reader's questions about structure and a skeptical reader's doubts about logic."
         },
         {
           "heading": "Use disagreement as a revision question",
@@ -160,7 +176,7 @@
     },
     "/manuscript-feedback": {
       "heading": "Make manuscript feedback useful to your next revision.",
-      "intro": "Useful manuscript feedback connects an observation to a passage and gives you a question to test. Roundtable combines passage-level AI reader reactions with an editorial report, helping you move from scattered impressions to a considered revision plan.",
+      "intro": "See how the same passage lands with different simulated readers. Readerfold’s AI beta readers bring distinct tastes and voices to your fiction, expressing curiosity, connection, and doubts beside your words. Compare their reactions first, then use the editorial report to consider what to revise.",
       "sections": [
         {
           "heading": "Start with the draft's purpose",
@@ -172,7 +188,7 @@
         },
         {
           "heading": "Compare patterns in the editorial report",
-          "text": "Use Roundtable's editorial report to bring the panel's observations together. Return to the original passages before accepting a conclusion. Repeated confusion can identify a place to investigate, but several AI readers can still share the same mistaken assumption."
+          "text": "Use Readerfold's editorial report to bring the panel's observations together. Return to the original passages before accepting a conclusion. Repeated confusion can identify a place to investigate, but several AI readers can still share the same mistaken assumption."
         },
         {
           "heading": "Revise one question at a time",

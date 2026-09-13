@@ -94,7 +94,7 @@ def test_initialize_tools_auth_and_dns_rebinding(client):
     result = rpc(client, token, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
                                                "clientInfo": {"name": "test", "version": "1"}})
     assert result.status_code == 200, result.text
-    assert result.json()["result"]["serverInfo"]["name"] == "Roundtable"
+    assert result.json()["result"]["serverInfo"]["name"] == "Readerfold"
     tools = rpc(client, token, "tools/list").json()["result"]["tools"]
     assert {"create_manuscript", "start_reading", "get_editorial_report", "set_reader_focus"}.issubset({t["name"] for t in tools})
     assert all("ctx" not in t["inputSchema"].get("properties", {}) for t in tools)

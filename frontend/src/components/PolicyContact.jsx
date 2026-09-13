@@ -1,7 +1,7 @@
 import React from "react";
 
 // Public support inbox confirmed by the owner.
-export const SUPPORT_EMAIL = "roundtablesupport@gmail.com";
+export const SUPPORT_EMAIL = "readerfold@gmail.com";
 
 export default function PolicyContact() {
   return SUPPORT_EMAIL

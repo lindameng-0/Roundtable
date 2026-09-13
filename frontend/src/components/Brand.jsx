@@ -12,7 +12,7 @@ export function TableMark({ className = "" }) {
 }
 
 export default function Brand({ to = "/", compact = false }) {
-  return <Link to={to} className={`brand ${compact ? "brand-compact" : ""}`} aria-label="Roundtable home">
-    <TableMark /><span>Roundtable</span>
+  return <Link to={to} className={`brand ${compact ? "brand-compact" : ""}`} aria-label="Readerfold home">
+    <TableMark /><span>Readerfold</span>
   </Link>;
 }

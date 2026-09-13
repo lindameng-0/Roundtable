@@ -41,9 +41,9 @@ async def send_verification_email(email: str, name: str, token: str) -> None:
     safe_name, safe_url = html.escape(name or "writer"), html.escape(url, quote=True)
     await _send_auth_email(
         email,
-        "Verify your Roundtable email",
+        "Verify your Readerfold email",
         f"<p>Hello {safe_name},</p>"
-        "<p>Confirm your email address to finish creating your Roundtable account.</p>"
+        "<p>Confirm your email address to finish creating your Readerfold account.</p>"
         f'<p><a href="{safe_url}">Verify email address</a></p>'
         f'<p>If the button does not work, open:<br><a href="{safe_url}">{safe_url}</a></p>'
         "<p>This link expires soon. If you did not create this account, you can ignore this email.</p>",
@@ -56,9 +56,9 @@ async def send_password_reset_email(email: str, name: str, token: str) -> None:
     safe_name, safe_url = html.escape(name or "writer"), html.escape(url, quote=True)
     await _send_auth_email(
         email,
-        "Reset your Roundtable password",
+        "Reset your Readerfold password",
         f"<p>Hello {safe_name},</p>"
-        "<p>We received a request to reset your Roundtable password.</p>"
+        "<p>We received a request to reset your Readerfold password.</p>"
         f'<p><a href="{safe_url}">Choose a new password</a></p>'
         f'<p>If the button does not work, open:<br><a href="{safe_url}">{safe_url}</a></p>'
         "<p>This link expires soon. If you did not request it, you can ignore this email.</p>",

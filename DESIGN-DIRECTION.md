@@ -1,6 +1,14 @@
-# Roundtable: the reading room
+# Readerfold: the reading room
 
-Roundtable helps a writer understand how a story lands with different AI readers. Its identity should belong to that exchange: a manuscript at the centre, perspectives around it, and useful observations in the margins.
+Readerfold helps a writer understand how a story lands with different AI readers. Its identity should belong to that exchange: a manuscript at the centre, perspectives around it, and useful observations in the margins.
+
+## Product positioning
+
+The owner's September 12 direction centers two strengths: simulated human reading experiences and distinct reader perspectives. The core promise is **One story. Different reactions.** Explain it concretely: Readerfold's AI beta readers are designed to respond like people reading fiction, each with their own tastes, voice, and perspective. Writers can follow curiosity, connection, doubts, and changing expectations beside the text, then compare reactions to the same passage.
+
+Lead the homepage, search descriptions, and product introductions with those experiences. Show how two readers interpret the same detail differently. Treat the editorial report as the later synthesis of their reactions. Keep problem guides useful on their own, then connect the exercise to this specific product experience.
+
+Use “designed to simulate” or “simulated reader reactions” when describing human-like behavior. Do not imply real humans supplied the feedback, independent audience research, or demonstrated equivalence to human readers. Do not claim competitors are merely grammar checkers without a verified comparison. Keep illustrative examples labelled; a recorded product run with permission to publish its manuscript would provide stronger evidence of the experience.
 
 ## Visual system
 
@@ -18,11 +26,11 @@ Instrument Serif gives the masthead and headings a recognisable book-jacket char
 The public homepage pairs a left-aligned invitation with a working, explicitly labelled feedback example. A circular table with five open book shapes is the brand device. Auth uses that same light surface and identity. Application pages put consistent navigation above a spacious, focused work area.
 
 ```text
-Public:    [Roundtable]                  [How it works] [Plans] [Sign in]
+Public:    [Readerfold]                  [How it works] [Plans] [Sign in]
            [An invitation to writers]   [Manuscript + reader response]
            [Three steps from draft to revision]
 
-Workspace: [Roundtable] [Manuscripts] [New manuscript]     [Credits] [Account]
+Workspace: [Readerfold] [Manuscripts] [New manuscript]     [Credits] [Account]
            [Page title and one clear primary action]
            [Manuscripts / setup / reading / report]
 

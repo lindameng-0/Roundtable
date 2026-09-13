@@ -105,7 +105,7 @@ export default function LoginPage({ initialMode = "signin" }) {
             <>
               <div className="mb-8">
                 <p className="mb-3 text-xs font-semibold uppercase tracking-[0.22em] text-[#493449]">{mode === "signup" ? "Join the table" : "Welcome back"}</p>
-                <h1 className="font-serif text-4xl tracking-tight">{mode === "signup" ? "Create your account" : "Sign in to Roundtable"}</h1>
+                <h1 className="font-serif text-4xl tracking-tight">{mode === "signup" ? "Create your account" : "Sign in to Readerfold"}</h1>
                 <p className="mt-3 text-sm leading-6 text-ink-500">{mode === "signup" ? "Your first reading starts with a free allowance. No card needed." : "Return to your manuscripts and reader reports."}</p>
               </div>
 
@@ -136,7 +136,7 @@ export default function LoginPage({ initialMode = "signin" }) {
 
               <div className="my-6 flex items-center gap-4 text-xs uppercase tracking-[0.18em] text-ink-300"><span className="h-px flex-1 bg-black/10" />or<span className="h-px flex-1 bg-black/10" /></div>
               <a href={GOOGLE_LOGIN_URL} className="flex w-full items-center justify-center gap-3 border border-black/15 bg-[#fffdfa] px-4 py-3.5 text-sm font-semibold hover:border-black/30 hover:bg-white" data-testid="google-signin-btn"><GoogleMark />Continue with Google</a>
-              <p className="mt-7 text-center text-xs text-ink-400">{mode === "signup" ? <>Already have an account? <Link to="/login" className="font-semibold text-[#493449] hover:underline">Sign in</Link></> : <>New to Roundtable? <Link to="/signup" className="font-semibold text-[#493449] hover:underline">Create an account</Link></>}</p>
+              <p className="mt-7 text-center text-xs text-ink-400">{mode === "signup" ? <>Already have an account? <Link to="/login" className="font-semibold text-[#493449] hover:underline">Sign in</Link></> : <>New to Readerfold? <Link to="/signup" className="font-semibold text-[#493449] hover:underline">Create an account</Link></>}</p>
             </>
           )}
     </AuthLayout>

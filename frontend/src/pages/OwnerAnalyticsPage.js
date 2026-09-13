@@ -31,7 +31,7 @@ export default function OwnerAnalyticsPage() {
   const peak = Math.max(1, ...(data?.daily.map(row => row.views) || []));
   const aiViews = data ? ["chatgpt", "perplexity", "claude", "gemini", "copilot"].reduce((sum, key) => sum + (data.sources[key] || 0), 0) : 0;
   return <><SiteHeader /><main id="main-content" className="page-width owner-analytics" tabIndex={-1}>
-    <div className="analytics-heading"><div><p className="small-note">Owner's notebook</p><h1>How Roundtable is growing</h1><p>A view of discovery, interest, and the work being read.</p></div><div className="analytics-controls"><label htmlFor="analytics-period">Period</label><select id="analytics-period" value={days} onChange={e => setDays(Number(e.target.value))}><option value={7}>Last 7 days</option><option value={30}>Last 30 days</option><option value={90}>Last 90 days</option></select><button className="button button-quiet" disabled={loading} onClick={() => setRevision(v => v + 1)}>Refresh</button></div></div>
+    <div className="analytics-heading"><div><p className="small-note">Owner's notebook</p><h1>How Readerfold is growing</h1><p>A view of discovery, interest, and the work being read.</p></div><div className="analytics-controls"><label htmlFor="analytics-period">Period</label><select id="analytics-period" value={days} onChange={e => setDays(Number(e.target.value))}><option value={7}>Last 7 days</option><option value={30}>Last 30 days</option><option value={90}>Last 90 days</option></select><button className="button button-quiet" disabled={loading} onClick={() => setRevision(v => v + 1)}>Refresh</button></div></div>
     {loading && <p role="status">Loading your analytics…</p>}
     {error && <p role="alert">{error}</p>}
     {data && <>

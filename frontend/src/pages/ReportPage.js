@@ -273,7 +273,7 @@ export default function ReportPage() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `${(manuscript?.title || "roundtable").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "roundtable"}-workspace.json`;
+      link.download = `${(manuscript?.title || "readerfold").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "readerfold"}-workspace.json`;
       link.click();
       URL.revokeObjectURL(url);
       toast.success("Workspace exported");
@@ -311,7 +311,7 @@ export default function ReportPage() {
           animate={{ opacity: 1, y: 0 }}
           className="mb-12 report-title"
         >
-          <p className="text-xs text-ink-400 uppercase tracking-widest mb-3">Roundtable Editorial Review</p>
+          <p className="text-xs text-ink-400 uppercase tracking-widest mb-3">Readerfold Editorial Review</p>
           <h1
             className="font-serif text-5xl text-ink-900 mb-4"
             style={{ fontFamily: "var(--display)" }}

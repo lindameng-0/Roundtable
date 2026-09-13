@@ -1,7 +1,7 @@
 import { referralSource, trackPublicEvent } from "./siteAnalytics";
 import { searchSchema } from "./searchSchema";
 import content from "./searchContent.json";
-import { publicPageUrl } from "./publicPageUrl";
+import { publicPageUrl, siteOrigin } from "./publicPageUrl";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import SearchExperience from "./components/SearchExperience";
@@ -61,8 +61,8 @@ test("homepage describes the real service without incomplete review markup", () 
   const graph = searchSchema("/")["@graph"];
   const service = graph.find(node => node["@type"] === "Service");
   expect(service).toMatchObject({
-    name: "Roundtable AI beta reader feedback",
-    provider: { "@id": "https://roundtable.works/#organization" },
+    name: "Readerfold AI beta reader feedback",
+    provider: { "@id": `${siteOrigin}/#organization` },
     offers: { price: 0, priceCurrency: "USD" },
   });
   expect(graph.some(node => node["@type"] === "SoftwareApplication")).toBe(false);
@@ -72,19 +72,19 @@ test("worked examples have their full visible breadcrumb hierarchy", () => {
   const graph = searchSchema("/use-cases/pacing-feedback")["@graph"];
   const crumbs = graph.find(node => node["@type"] === "BreadcrumbList");
   expect(crumbs.itemListElement.map(item => item.item)).toEqual([
-    "https://roundtable.works/",
-    "https://roundtable.works/use-cases/",
-    "https://roundtable.works/use-cases/pacing-feedback/",
+    `${siteOrigin}/`,
+    `${siteOrigin}/use-cases/`,
+    `${siteOrigin}/use-cases/pacing-feedback/`,
   ]);
 });
 
 test("canonical URLs match Pages directory responses and exclude tracking parameters", () => {
-  expect(publicPageUrl("/")).toBe("https://roundtable.works/");
-  expect(publicPageUrl("/beta-readers")).toBe("https://roundtable.works/beta-readers/");
-  expect(publicPageUrl("/beta-readers/?utm_source=example#questions")).toBe("https://roundtable.works/beta-readers/");
+  expect(publicPageUrl("/")).toBe(`${siteOrigin}/`);
+  expect(publicPageUrl("/beta-readers")).toBe(`${siteOrigin}/beta-readers/`);
+  expect(publicPageUrl("/beta-readers/?utm_source=example#questions")).toBe(`${siteOrigin}/beta-readers/`);
   const page = searchSchema("/beta-readers")["@graph"].find(node => node["@type"] === "WebPage");
-  expect(page.url).toBe("https://roundtable.works/beta-readers/");
-  expect(page["@id"]).toBe("https://roundtable.works/beta-readers/#webpage");
+  expect(page.url).toBe(`${siteOrigin}/beta-readers/`);
+  expect(page["@id"]).toBe(`${siteOrigin}/beta-readers/#webpage`);
 });
 
 test("client route changes keep public metadata canonical and remove it in the workspace", () => {
@@ -97,7 +97,7 @@ test("client route changes keep public metadata canonical and remove it in the w
       mockPathname = pathname;
       act(() => root.render(<SearchExperience />));
       const canonical = document.head.querySelector('link[rel="canonical"]');
-      expect(canonical.href).toBe(`https://roundtable.works${pathname}`);
+      expect(canonical.href).toBe(`${siteOrigin}${pathname}`);
       expect(document.head.querySelector('meta[property="og:url"]').content).toBe(canonical.href);
       const schema = JSON.parse(document.getElementById("search-structured-data").textContent);
       expect(schema["@graph"].find(node => node["@type"] === "WebPage").url).toBe(canonical.href);

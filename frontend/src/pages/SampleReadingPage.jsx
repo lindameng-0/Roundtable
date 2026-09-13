@@ -19,12 +19,12 @@ const passages = [
 
 export default function SampleReadingPage() {
   return <><SiteHeader /><main id="main-content" className="sample-page page-width" tabIndex={-1}>
-    <nav className="sample-breadcrumb" aria-label="Breadcrumb"><Link to="/">Roundtable</Link><span aria-hidden="true"> / </span>Sample manuscript feedback</nav>
+    <nav className="sample-breadcrumb" aria-label="Breadcrumb"><Link to="/">Readerfold</Link><span aria-hidden="true"> / </span>Sample manuscript feedback</nav>
     <header className="sample-intro">
       <p className="small-note">A passage, several readings, one author’s choice</p>
       <h1>What do your readers <br />see in the second cup?</h1>
-      <p className="sample-lead">Follow a short fiction opening from passage-level reactions to a revision decision. The useful part isn’t getting every reader to agree. It’s understanding what their disagreement asks of the draft.</p>
-      <p className="sample-disclosure"><strong>An editorial demonstration.</strong> This original fictional excerpt and the example feedback were created for this page with AI assistance. These are curated illustrations of the workflow, not a recorded Roundtable run or a customer’s manuscript.</p>
+      <p className="sample-lead">One reader feels an absence. Another follows the mystery. A third questions what the scene has actually established. Explore how distinct AI reader perspectives can interpret the same words, then follow those reactions into a revision decision.</p>
+      <p className="sample-disclosure"><strong>An editorial demonstration.</strong> This original fictional excerpt and the example feedback were created for this page with AI assistance. These are curated illustrations of the workflow, not a recorded Readerfold run or a customer’s manuscript.</p>
       <nav className="sample-contents" aria-label="On this page"><a href="#annotated-draft">Read the draft</a><a href="#editorial-assessment">Compare the reactions</a><a href="#revision">Consider a revision</a></nav>
     </header>
     <section id="annotated-draft" className="sample-draft" aria-labelledby="draft-heading">

@@ -884,7 +884,7 @@ class _MemoryDb:
                     if row.get("status") == "queued"
                     and (
                         not row.get("available_at")
-                        or datetime.fromisoformat(str(row["available_at"]).replace("Z", "+00:00")).replace(tzinfo=None) <= now
+                        or datetime.fromisoformat(str(row["available_at"]).replace("Z", "+00:00")).astimezone().replace(tzinfo=None) <= now
                     )
                 ],
                 key=lambda row: row.get("created_at") or "",
@@ -922,7 +922,7 @@ class _MemoryDb:
                 lease = row.get("lease_expires_at")
                 if row.get("status") != "running" or not lease:
                     continue
-                expires = datetime.fromisoformat(str(lease).replace("Z", "+00:00")).replace(tzinfo=None)
+                expires = datetime.fromisoformat(str(lease).replace("Z", "+00:00")).astimezone().replace(tzinfo=None)
                 if expires > now:
                     continue
                 terminal = int(row.get("attempts") or 0) >= int(row.get("max_attempts") or 3)
@@ -976,7 +976,7 @@ class _MemoryDb:
         cutoff = datetime.now().timestamp() - 30
         return sum(
             1 for row in self._data["ai_worker_heartbeats"]
-            if datetime.fromisoformat(str(row["last_seen"]).replace("Z", "+00:00")).replace(tzinfo=None).timestamp() > cutoff
+            if datetime.fromisoformat(str(row["last_seen"]).replace("Z", "+00:00")).timestamp() > cutoff
         )
 
 

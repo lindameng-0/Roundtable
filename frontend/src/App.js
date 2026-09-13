@@ -73,7 +73,7 @@ function RouteExperience() {
     const path = pathname.replace(/\/$/, "") || "/";
     const title = { "/connections": "Assistant connections", "/owner/analytics": "Owner analytics", "/": "A reading room for your manuscript", "/login": "Sign in", "/signup": "Create an account", "/dashboard": "Your manuscripts", "/setup": "New manuscript", "/pricing": "Plans & credits", "/billing": "Credits & billing", "/forgot-password": "Reset your password", "/reset-password": "Choose a new password", "/verify-email": "Verify your email" }[path] || (path.startsWith("/report/") ? "Editorial report" : "Reading room");
     const policyTitle = { "/terms": "Terms of service", "/privacy": "Privacy policy", "/refunds": "Refund policy" }[path];
-    document.title = `${policyTitle || title} | Roundtable`;
+    document.title = `${policyTitle || title} | Readerfold`;
     window.scrollTo(0, 0);
     if (window.location.hash) window.requestAnimationFrame(() => document.getElementById(window.location.hash.slice(1))?.scrollIntoView());
   }, [pathname]);
@@ -85,7 +85,7 @@ function App() {
     <div className="App">
       <MotionConfig reducedMotion="user"><AuthProvider>
         <BrowserRouter><ConfirmationProvider><RouteExperience /><SearchExperience />
-          <Suspense fallback={<div className="page-width py-20" role="status">Loading Roundtable?</div>}><Routes>
+          <Suspense fallback={<div className="page-width py-20" role="status">Loading Readerfold...</div>}><Routes>
             {/* Public routes */}
             <Route path="/use-cases" element={<UseCasePage />} />
             {Object.keys(useCases).map(path => <Route key={path} path={path} element={<UseCasePage />} />)}

@@ -147,3 +147,8 @@ output/playwright/
 
 # Workspace-only development dependencies
 .tmp/
+
+# Generated local reports, snapshots, and frontend build
+/output/
+/frontend/build/
+.pytest_cache/

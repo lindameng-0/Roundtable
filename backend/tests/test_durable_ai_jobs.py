@@ -121,3 +121,25 @@ def test_reading_finishes_after_originating_browser_closes():
         assert legacy.status_code == 200
         assert '\"type\": \"reader_complete\"' in legacy.text
         assert '\"type\": \"all_complete\"' in legacy.text
+
+
+def test_queue_compares_offset_timestamps_as_instants():
+    async def scenario():
+        db.clear()
+        now = datetime.now(timezone.utc)
+        due = await _job("user-offset", "manuscript-offset", "due-offset")
+        future = await _job("user-future", "manuscript-future", "future-offset")
+        await db.ai_jobs.update_one({"id": due["id"]}, {"$set": {
+            "available_at": (now - timedelta(hours=1)).astimezone(timezone(timedelta(hours=14))).isoformat(),
+        }})
+        await db.ai_jobs.update_one({"id": future["id"]}, {"$set": {
+            "available_at": (now + timedelta(hours=1)).astimezone(timezone(timedelta(hours=-12))).isoformat(),
+        }})
+        claimed = await db.claim_ai_job("offset-worker", 2, 1, 60)
+        assert claimed["id"] == due["id"]
+        assert await db.claim_ai_job("other-worker", 2, 1, 60) is None
+        await db.ai_jobs.update_one({"id": due["id"]}, {"$set": {
+            "lease_expires_at": (now - timedelta(hours=1)).astimezone(timezone(timedelta(hours=14))).isoformat(),
+        }})
+        assert await db.requeue_stale_ai_jobs() == 1
+    asyncio.run(scenario())

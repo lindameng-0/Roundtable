@@ -127,7 +127,7 @@ if SESSION_COOKIE_SAMESITE not in {'lax', 'strict', 'none'}:
 # Transactional email for email/password account verification. Resend is used
 # through its HTTPS API so no additional runtime dependency is required.
 RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '').strip()
-AUTH_EMAIL_FROM = os.environ.get('AUTH_EMAIL_FROM', 'Roundtable <accounts@roundtable.works>').strip()
+AUTH_EMAIL_FROM = os.environ.get('AUTH_EMAIL_FROM', 'Readerfold <accounts@roundtable.works>').strip()
 EMAIL_VERIFICATION_TTL_MINUTES = max(
     15,
     int(os.environ.get('EMAIL_VERIFICATION_TTL_MINUTES', '60')),

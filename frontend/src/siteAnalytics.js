@@ -1,11 +1,12 @@
 import content from "./searchContent.json";
 import { getApi } from "./apiConfig";
+import { siteOrigin } from "./publicPageUrl";
 
 export function referralSource(referrer) {
   let host;
   try { host = new URL(referrer).hostname.toLowerCase(); } catch { return "direct"; }
   const matches = domain => host === domain || host.endsWith(`.${domain}`);
-  if (matches("roundtable.works")) return "direct";
+  if (matches(new URL(siteOrigin).hostname) || matches("roundtable.works")) return "direct";
   for (const [source, domains] of Object.entries({
     chatgpt: ["chatgpt.com", "chat.openai.com"], perplexity: ["perplexity.ai"],
     claude: ["claude.ai"], gemini: ["gemini.google.com"], copilot: ["copilot.microsoft.com"],

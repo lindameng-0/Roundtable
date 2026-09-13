@@ -273,7 +273,7 @@ async def signup(body: SignupRequest, request: Request):
     except RuntimeError as exc:
         logger.exception("Unable to send verification email")
         raise HTTPException(503, str(exc))
-    return {"message": "Check your email to verify your Roundtable account."}
+    return {"message": "Check your email to verify your Readerfold account."}
 
 
 @auth_router.post("/verify-email")
