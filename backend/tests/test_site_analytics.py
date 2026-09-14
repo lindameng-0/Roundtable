@@ -69,7 +69,7 @@ def test_collection_and_exact_summary():
         assert result["sources"] == {"chatgpt": 3}
         assert len(result["daily"]) == 7
         assert sum(day["views"] for day in result["daily"]) == 3
-        assert result["totals"]["verified_accounts"] == 1
+        assert result["totals"]["verified_accounts"] == 0
         assert len(config.db._data["site_analytics"]) == 2
         assert set(config.db._data["site_analytics"][0]) == {"day", "path", "source", "event", "count"}
         assert client.get("/api/analytics/summary?days=999").status_code == 422
@@ -124,3 +124,44 @@ def test_non_owner_and_expired_sessions_still_count(email, verified, expired):
         assert response.status_code == 204
         assert config.db._data["site_analytics"][0]["count"] == 1
         assert set(config.db._data["site_analytics"][0]) == {"day", "path", "source", "event", "count"}
+
+
+def test_internal_accounts_and_their_manuscripts_are_excluded_from_totals():
+    with TestClient(app) as client:
+        session(client)
+        config.db._data['users'].extend([
+            {'user_id': 'internal-gmail', 'email': 'lndmeng@gmail.com', 'email_verified': True},
+            {'user_id': 'internal-ucla', 'email': 'lndmeng@g.ucla.edu', 'email_verified': False},
+            {'user_id': 'visitor', 'email': 'visitor@example.com', 'email_verified': True},
+            {'user_id': 'unverified', 'email': 'new@example.com', 'email_verified': False},
+            {'user_id': 'similar', 'email': 'lndmeng+reader@gmail.com', 'email_verified': True},
+        ])
+        config.db._data['manuscripts'][:] = [
+            {'id': 'owner-draft', 'user_id': 'owner-test'},
+            {'id': 'gmail-draft', 'user_id': 'internal-gmail'},
+            {'id': 'gmail-draft-2', 'user_id': 'internal-gmail'},
+            {'id': 'ucla-draft', 'user_id': 'internal-ucla'},
+            {'id': 'visitor-draft', 'user_id': 'visitor'},
+            {'id': 'guest-draft', 'user_id': None},
+            {'id': 'similar-draft', 'user_id': 'similar'},
+        ]
+        config.db._data['editor_reports'][:] = [{'id': 'report', 'manuscript_id': 'owner-draft'}]
+        for period in (7, 30, 90):
+            result = client.get(f'/api/analytics/summary?days={period}')
+            assert result.status_code == 200
+            assert result.json()['totals'] == {'verified_accounts': 2, 'manuscripts': 3, 'reports': 1}
+        # Dashboard filtering must not delete or modify any account or manuscript.
+        assert len(config.db._data['users']) == 6
+        assert len(config.db._data['manuscripts']) == 7
+        config.db._data['manuscripts'].append({'id': 'later-internal', 'user_id': 'internal-ucla'})
+        assert client.get('/api/analytics/summary').json()['totals']['manuscripts'] == 3
+
+
+def test_totals_count_visitors_when_excluded_accounts_do_not_exist(monkeypatch):
+    monkeypatch.setenv('OWNER_EMAIL', 'real-owner@example.com')
+    with TestClient(app) as client:
+        session(client, email='real-owner@example.com')
+        config.db._data['manuscripts'][:] = [{'id': 'draft', 'user_id': 'owner-test'}]
+        assert client.get('/api/analytics/summary').json()['totals'] == {
+            'verified_accounts': 1, 'manuscripts': 1, 'reports': 0,
+        }

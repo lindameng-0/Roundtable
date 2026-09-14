@@ -16,6 +16,28 @@ from services.rate_limit import enforce_rate_limit
 
 analytics_router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
+# Account emails are normalized by both password and Google sign-in.
+# These exclusions affect dashboard totals only, never account access or data.
+EXCLUDED_ACCOUNT_EMAILS = (
+    "itsyuko0o1@gmail.com",
+    "lndmeng@gmail.com",
+    "lndmeng@g.ucla.edu",
+)
+
+
+async def excluded_account_totals():
+    users = await asyncio.gather(*(
+        db.users.find_one({"email": email}) for email in EXCLUDED_ACCOUNT_EMAILS
+    ))
+    excluded_users = {user["user_id"]: user for user in users if user and user.get("user_id")}
+    manuscript_counts = await asyncio.gather(*(
+        db.manuscripts.count_documents({"user_id": user_id}) for user_id in excluded_users
+    ))
+    return (
+        sum(user.get("email_verified") is True for user in excluded_users.values()),
+        sum(manuscript_counts),
+    )
+
 
 class Event(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -59,11 +81,12 @@ async def summary(request: Request, response: Response, days: int = Query(30, ge
         raise HTTPException(403, "Owner access required")
     today = datetime.now(timezone.utc).date()
     since = today - timedelta(days=days - 1)
-    rows, accounts, manuscripts, reports = await asyncio.gather(
+    rows, accounts, manuscripts, reports, excluded = await asyncio.gather(
         db.read_site_analytics(since.isoformat()),
         db.users.count_documents({"email_verified": True}),
         db.manuscripts.count_documents({}),
         db.editor_reports.count_documents({}),
+        excluded_account_totals(),
     )
     sources, pages, daily = Counter(), Counter(), Counter()
     clicks = 0
@@ -78,6 +101,7 @@ async def summary(request: Request, response: Response, days: int = Query(30, ge
         "days": days, "pageviews": sum(pages.values()), "signup_clicks": clicks,
         "sources": dict(sources.most_common()), "pages": dict(pages.most_common()),
         "daily": [{"day": (since + timedelta(days=i)).isoformat(), "views": daily[(since + timedelta(days=i)).isoformat()]} for i in range(days)],
-        "totals": {"verified_accounts": accounts, "manuscripts": manuscripts, "reports": reports},
+        "totals": {"verified_accounts": max(0, accounts - excluded[0]),
+                   "manuscripts": max(0, manuscripts - excluded[1]), "reports": reports},
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }

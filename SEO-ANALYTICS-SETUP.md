@@ -96,3 +96,5 @@ checks, frontend search tests, and rendered-HTML/sitemap checks.
 ## Exclude owner traffic
 
 The browser waits for sign-in status before recording public views and signup-link clicks. A verified owner sign-in saves `readerfold.excludeOwnTraffic=1` in local storage, keeping that browser excluded after sign-out. Sign in once on each browser to enable this; clearing site storage removes the preference. If storage is blocked, the signed-in owner is still excluded. The API also checks the existing session cookie and skips owner events. Counters remain anonymous and existing historical counts cannot be attributed or selectively removed.
+
+The dashboard's all-time verified-account and saved-manuscript totals exclude the three internal accounts configured in `EXCLUDED_ACCOUNT_EMAILS` in `backend/routers/analytics.py`. Manuscripts are matched using each account's user ID, including manuscripts belonging to an unverified internal account. This applies to existing and future records; no records are deleted. Other dashboard metrics and owner access rules are unchanged.
