@@ -1,0 +1,182 @@
+{
+  "slug": "fantasy-magic-cost",
+  "title": "The last borrowed hour",
+  "genre": "Fantasy",
+  "question": "Is the cost of the magic clear when it changes the outcome?",
+  "paragraphs": [
+    "The bridge had been gone for three days. Across the river, the mill bell counted down to the gates closing. Lio stood on the broken stone with his father’s watch in his hand. The watch had stopped the winter his father died. Until this morning, he had kept it wound anyway.",
+    "His sister held out her wrist. “Take one of mine.” A pale ring already circled her skin where the healer had borrowed an hour to set her leg. She still called their old dog by the name of the one that died before it. Lio had not told her.",
+    "“An hour only gets us halfway,” he said. The mill had the medicine. If the gates closed, they would burn the infected stores and the medicine with them. He opened the watch. Inside the lid was the dent his father had made trying to repair it with a kitchen knife.",
+    "Lio pressed his thumb into the dent and offered the summer afternoon his father taught him to swim. The river held still. Then the water rose into a narrow path, dark and trembling, all the way to the mill. His sister ran. Lio followed, trying to keep his thumb on the sharp metal.",
+    "On the other bank she took the watch from him. “He would have done the same,” she said. Lio knew who she meant. He knew his father had existed, had loved him, had once carried him home from this river. But when he tried to remember the weight of those arms, he found only the cold medicine bottle his sister had put into his hand."
+  ],
+  "recorded_at": "2026-09-14T20:48:51.851219+00:00",
+  "pipeline": "reader_v2",
+  "context": "Single-section original excerpt, manually configured reader profiles, isolated local run of the Readerfold reader pipeline. No editorial report generated.",
+  "readers": [
+    {
+      "id": "public-emotion",
+      "name": "Emotional perspective",
+      "avatar_index": 3,
+      "primary_focus": "emotional_authenticity",
+      "reading_habits": "Reads for relationships and emotional consequences."
+    },
+    {
+      "id": "public-continuity",
+      "name": "Continuity perspective",
+      "avatar_index": 4,
+      "primary_focus": "plot_logic",
+      "reading_habits": "Enjoys following cause and effect and details that pay off."
+    }
+  ],
+  "outputs": [
+    {
+      "reader_id": "public-emotion",
+      "reader_name": "Emotional perspective",
+      "avatar_index": 3,
+      "personality": "",
+      "section_number": 1,
+      "checking_in": null,
+      "reading_journal": "This section was short but packed a lot in. I immediately picked up on the urgency with the mill bell and the broken bridge, and the father's watch felt like a very personal, important object. The reveal of Lio's magic and its cost, tied to the memory of his father, felt beautifully intertwined with the emotional stakes. The ending left me with a strong, bittersweet feeling about the nature of memory and sacrifice.",
+      "what_i_think_the_writer_is_doing": "I think the writer is exploring the emotional cost of magic, specifically how sacrificing personal memories for a greater good might leave a character feeling hollowed out in an unexpected way.",
+      "moments": [
+        {
+          "paragraph": 2,
+          "paragraph_id": "p-000002",
+          "type": "reaction",
+          "comment": "The detail about the 'pale ring' where the healer 'borrowed an hour' immediately made me sit up and pay attention. It subtly hints at the magic system and its unique costs, making me curious without needing a huge explanation."
+        },
+        {
+          "paragraph": 4,
+          "paragraph_id": "p-000004",
+          "type": "reaction",
+          "comment": "The magic reveal here felt incredibly earned and recognizable, given the setup of the watch and the talk of borrowed hours. Trading a memory of his father for a path across the river, especially a specific, loving memory, makes the magic feel deeply personal and poignant right away."
+        },
+        {
+          "paragraph": 5,
+          "paragraph_id": "p-000005",
+          "type": "reaction",
+          "comment": "The final sentence really landed for me. The idea that Lio could remember his father, but not *feel* the weight of his arms, only the cold medicine bottle, perfectly encapsulates the cost of his magic. It felt like a truly earned emotional consequence of his action, leaving him with a sense of loss even in success."
+        }
+      ],
+      "questions_for_writer": [],
+      "question_events": [],
+      "question_updates": [],
+      "inline_comments": [
+        {
+          "line": 2,
+          "paragraph_id": "p-000002",
+          "type": "reaction",
+          "comment": "The detail about the 'pale ring' where the healer 'borrowed an hour' immediately made me sit up and pay attention. It subtly hints at the magic system and its unique costs, making me curious without needing a huge explanation."
+        },
+        {
+          "line": 4,
+          "paragraph_id": "p-000004",
+          "type": "reaction",
+          "comment": "The magic reveal here felt incredibly earned and recognizable, given the setup of the watch and the talk of borrowed hours. Trading a memory of his father for a path across the river, especially a specific, loving memory, makes the magic feel deeply personal and poignant right away."
+        },
+        {
+          "line": 5,
+          "paragraph_id": "p-000005",
+          "type": "reaction",
+          "comment": "The final sentence really landed for me. The idea that Lio could remember his father, but not *feel* the weight of his arms, only the cold medicine bottle, perfectly encapsulates the cost of his magic. It felt like a truly earned emotional consequence of his action, leaving him with a sense of loss even in success."
+        }
+      ],
+      "section_reflection": "This section was short but packed a lot in. I immediately picked up on the urgency with the mill bell and the broken bridge, and the father's watch felt like a very personal, important object. The reveal of Lio's magic and its cost, tied to the memory of his father, felt beautifully intertwined with the emotional stakes. The ending left me with a strong, bittersweet feeling about the nature of memory and sacrifice.",
+      "reaction_id": "389c3770-8bb5-447e-908a-2bcf4ca20982",
+      "model": {
+        "provider": "gemini",
+        "model": "gemini-2.5-flash"
+      },
+      "usage": {
+        "provider": "gemini",
+        "model": "gemini-2.5-flash",
+        "role": "reader",
+        "input_tokens": 1230,
+        "output_tokens": 1515,
+        "estimated_cost_usd": 0.004156
+      },
+      "_parse_warning": false
+    },
+    {
+      "reader_id": "public-continuity",
+      "reader_name": "Continuity perspective",
+      "avatar_index": 4,
+      "personality": "",
+      "section_number": 1,
+      "checking_in": null,
+      "reading_journal": "This was a really intriguing opener. I immediately latched onto the 'bridge gone' and 'mill bell' setting up a clear ticking clock, which was well paid off by Lio's dilemma. The concept of 'borrowing an hour' from the sister, and then Lio offering a memory, established the magic system quickly and concisely. I particularly noted the implied cost of Lio's action when he tried to remember his father and found only the medicine bottle.",
+      "what_i_think_the_writer_is_doing": "The writer seems to be establishing a magical ability rooted in memory and sacrifice, setting up a character with a difficult choice and immediate consequences.",
+      "moments": [
+        {
+          "paragraph": 1,
+          "paragraph_id": "p-000001",
+          "type": "callback",
+          "comment": "The detail that Lio had kept the watch wound 'until this morning' caught my eye. It makes me wonder if something specific happened this morning, or if stopping winding it was a symbolic act before making a big decision, anticipating the need for it."
+        },
+        {
+          "paragraph": 2,
+          "paragraph_id": "p-000002",
+          "type": "craft",
+          "comment": "The mention of the pale ring where the healer borrowed an hour for the sister's leg is a very efficient way to introduce the world's magic and its physical effects without a direct explanation. It makes the system feel grounded."
+        },
+        {
+          "paragraph": 4,
+          "paragraph_id": "p-000004",
+          "type": "reaction",
+          "comment": "The description of Lio 'offering the summer afternoon' and the river responding was a really vivid and compelling piece of magic. It felt like a significant act, not just a casual spell."
+        },
+        {
+          "paragraph": 5,
+          "paragraph_id": "p-000005",
+          "type": "reaction",
+          "comment": "The final sentence about Lio finding 'only the cold medicine bottle' instead of the memory he tried to recall felt like a powerful and immediate consequence of his sacrifice. It connected the cause (offering the memory) directly to a personal cost, which I appreciated."
+        }
+      ],
+      "questions_for_writer": [],
+      "question_events": [],
+      "question_updates": [],
+      "inline_comments": [
+        {
+          "line": 1,
+          "paragraph_id": "p-000001",
+          "type": "callback",
+          "comment": "The detail that Lio had kept the watch wound 'until this morning' caught my eye. It makes me wonder if something specific happened this morning, or if stopping winding it was a symbolic act before making a big decision, anticipating the need for it."
+        },
+        {
+          "line": 2,
+          "paragraph_id": "p-000002",
+          "type": "craft",
+          "comment": "The mention of the pale ring where the healer borrowed an hour for the sister's leg is a very efficient way to introduce the world's magic and its physical effects without a direct explanation. It makes the system feel grounded."
+        },
+        {
+          "line": 4,
+          "paragraph_id": "p-000004",
+          "type": "reaction",
+          "comment": "The description of Lio 'offering the summer afternoon' and the river responding was a really vivid and compelling piece of magic. It felt like a significant act, not just a casual spell."
+        },
+        {
+          "line": 5,
+          "paragraph_id": "p-000005",
+          "type": "reaction",
+          "comment": "The final sentence about Lio finding 'only the cold medicine bottle' instead of the memory he tried to recall felt like a powerful and immediate consequence of his sacrifice. It connected the cause (offering the memory) directly to a personal cost, which I appreciated."
+        }
+      ],
+      "section_reflection": "This was a really intriguing opener. I immediately latched onto the 'bridge gone' and 'mill bell' setting up a clear ticking clock, which was well paid off by Lio's dilemma. The concept of 'borrowing an hour' from the sister, and then Lio offering a memory, established the magic system quickly and concisely. I particularly noted the implied cost of Lio's action when he tried to remember his father and found only the medicine bottle.",
+      "reaction_id": "4871d6e7-10cd-4e47-baf2-8ad4f147ab94",
+      "model": {
+        "provider": "gemini",
+        "model": "gemini-2.5-flash"
+      },
+      "usage": {
+        "provider": "gemini",
+        "model": "gemini-2.5-flash",
+        "role": "reader",
+        "input_tokens": 1240,
+        "output_tokens": 1744,
+        "estimated_cost_usd": 0.004732
+      },
+      "_parse_warning": false
+    }
+  ]
+}

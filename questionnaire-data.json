@@ -1,0 +1,42 @@
+{
+  "common": [
+    {"id":"attention","question":"Where did you first want to keep reading? Which detail created that interest?","why":"Locates the moment the story earns attention."},
+    {"id":"friction","question":"Where did you skim or lose the thread? Name the passage and what you were waiting to learn.","why":"Separates a loss of interest from missing context."},
+    {"id":"preserve","question":"Which detail would you most want preserved in a revision, and what would be lost without it?","why":"Identifies strengths a revision might accidentally remove."}
+  ],
+  "stages": {
+    "excerpt":{"label":"A chapter or excerpt","question":"At the end of this excerpt, what did you expect to happen next, and why?","why":"Tests the promise of the excerpt without asking for a whole-book judgment."},
+    "draft":{"label":"A complete working draft","question":"Which question felt resolved by the ending, and which still felt unfinished?","why":"Checks the payoff against the promises the reader noticed."},
+    "revised":{"label":"A revised complete draft","question":"Where did the draft repeat information you already understood? Point to both passages if possible.","why":"Finds leftover explanations after a structural revision."}
+  },
+  "features": {
+    "multiple-pov":{"label":"Multiple viewpoints","question":"When the viewpoint changed, how quickly did you know whose perspective you were in? Point to a change that helped or disrupted you.","why":"Checks orientation at viewpoint transitions."},
+    "romance-subplot":{"label":"Romance subplot","question":"Which relationship moment affected how you understood the main story? Where did the two feel disconnected?","why":"Checks whether the subplot changes the experience of the main plot."},
+    "series":{"label":"Series opener","question":"Which question belongs to this book, and which would you be happy to carry into another?","why":"Distinguishes an unfinished local story from a welcome series promise.","completeOnly":true},
+    "unreliable":{"label":"Unreliable narrator","question":"When did you first doubt the narrator, and what made you doubt them?","why":"Locates the difference between deliberate distrust and accidental confusion."}
+  },
+  "genres": {
+    "general":{"label":"General fiction","focus":"What draws you in, where do you lose the thread, and which passages shape those reactions?","questions":[{"id":"choice","question":"Which character choice was hardest to understand, and what did you expect instead?","why":"Locates a gap in the reader's understanding of motivation."}]},
+    "fantasy":{"label":"Fantasy","focus":"Track the limits and cost of magic. Where do new world details help you follow a choice, and where do they interrupt the story?","questions":[
+      {"id":"magic","question":"Before magic changed an outcome, what did you understand about its limits and cost? Which earlier detail established that?","why":"Checks whether a solution relies on a rule introduced too late."},
+      {"id":"terms","question":"Which unfamiliar term could you understand from context, and which stopped you following the action?","why":"Separates immersive vocabulary from missing orientation."},
+      {"id":"world","question":"Which detail of the world changed what a character could choose? Which felt detached from the scene?","why":"Tests whether worldbuilding affects the story rather than only decorating it."}
+    ]},
+    "romance":{"label":"Romance","focus":"Follow attraction, trust, and boundaries. Which actions make changes in the relationship feel earned?","questions":[
+      {"id":"trust","question":"When did attraction begin to feel like trust? What did one character actually do to earn that change?","why":"Distinguishes an asserted bond from one built through actions."},
+      {"id":"obstacle","question":"What seemed to keep the couple apart, and when did that obstacle become convincing or stop convincing you?","why":"Checks whether the relationship conflict holds beyond a convenient misunderstanding."},
+      {"id":"agency","question":"Where did each person make a meaningful choice about the relationship? Where did one person's wishes become unclear?","why":"Examines agency and boundaries from the reader's perspective."}
+    ]},
+    "mystery":{"label":"Mystery","focus":"Track suspicions and the clues behind them. Which explanations fit the evidence available to you at each point?","questions":[
+      {"id":"suspect","question":"Who did you suspect before the reveal, and which specific clues led you there?","why":"Reconstructs the reader's theory from the evidence on the page."},
+      {"id":"fairness","question":"After the reveal, which earlier clue changed meaning? Which part of the explanation needed information you had not received?","why":"Checks the fairness of the solution.","completeOnly":true},
+      {"id":"investigation","question":"Which investigative step followed naturally from the evidence, and which felt like a lucky leap?","why":"Tests the chain between observation, deduction, and action."},
+      {"id":"suspicions","question":"Which unanswered question were you most interested in solving at this point?","why":"Checks whether the investigation has given the reader a concrete mystery."}
+    ]},
+    "thriller":{"label":"Thriller","focus":"Track the threat, deadline, and choices under pressure. Where do the stakes feel immediate, and where does urgency fade?","questions":[
+      {"id":"threat","question":"What did you think would happen if the protagonist failed, and when did that consequence become clear?","why":"Checks the reader's understanding of the stakes."},
+      {"id":"deadline","question":"When did you feel time running out? Which action or detail made the deadline tangible?","why":"Separates a stated deadline from experienced urgency."},
+      {"id":"escape","question":"Which escape or reversal was hardest to believe, and what established rule or detail shaped your doubt?","why":"Locates credibility problems without requiring every twist to be predictable."}
+    ]}
+  }
+}

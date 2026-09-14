@@ -1,0 +1,218 @@
+{
+  "slug": "romance-earned-trust",
+  "title": "The spare key",
+  "genre": "Romance",
+  "question": "Which action makes the shift from attraction to trust believable?",
+  "paragraphs": [
+    "Mina found the spare key in her bakery door at six. Tom was inside, putting the last tray into the oven. Three weeks ago she had given him that key for emergencies. Yesterday she had told him she wanted it back. He had heard the first sentence and somehow missed the second.",
+    "“Your supplier called me,” he said. “You weren’t answering. I thought you’d need help.” On the counter he had arranged everything exactly as she used to do it, before her mother’s illness, before he began finishing her sentences and calling it kindness. The sight made her want to sit down. It also made her angry.",
+    "She took off her coat. “I need you to ask.” Tom reached toward her, then put his hands in his pockets. The oven timer went. Neither moved. At last he took out the key and laid it on the counter. “Do you want me to leave?”",
+    "Mina looked at the trays. She had slept two hours. In twenty minutes the first customers would arrive, expecting the woman who could always manage. “I want you to wash the mixing bowls,” she said. “And leave the orders to me.” He nodded once and turned toward the sink.",
+    "An hour later she found the key still on the counter. Tom was waiting at the door, his sleeves damp. He asked whether she wanted company for breakfast. Mina put the key in her apron pocket. “Breakfast,” she said. “Not a rescue.” He smiled. This time he waited for her to lock up."
+  ],
+  "recorded_at": "2026-09-14T20:49:15.776284+00:00",
+  "pipeline": "reader_v2",
+  "context": "Single-section original excerpt, manually configured reader profiles, isolated local run of the Readerfold reader pipeline. No editorial report generated.",
+  "readers": [
+    {
+      "id": "public-emotion",
+      "name": "Emotional perspective",
+      "avatar_index": 3,
+      "primary_focus": "emotional_authenticity",
+      "reading_habits": "Reads for relationships and emotional consequences."
+    },
+    {
+      "id": "public-continuity",
+      "name": "Continuity perspective",
+      "avatar_index": 4,
+      "primary_focus": "plot_logic",
+      "reading_habits": "Enjoys following cause and effect and details that pay off."
+    }
+  ],
+  "outputs": [
+    {
+      "reader_id": "public-emotion",
+      "reader_name": "Emotional perspective",
+      "avatar_index": 3,
+      "personality": "",
+      "section_number": 1,
+      "checking_in": "Anticipating how the emotional tension around boundaries and helpfulness will resolve in this final section.",
+      "reading_journal": "This section did a great job of showing a dynamic shift rather than just telling it. I felt Mina's frustration and exhaustion keenly, which made her anger feel very earned. Tom's slow dawning of understanding, from laying the key on the counter to asking about breakfast, felt very natural. The ending suggests a hopeful path forward for them, one where boundaries are respected, which is a satisfying emotional turn.",
+      "what_i_think_the_writer_is_doing": "The writer seems to be resolving the central conflict by having the characters establish healthier boundaries, especially for Mina, allowing for a more equitable relationship to emerge.",
+      "moments": [
+        {
+          "paragraph": 2,
+          "paragraph_id": "p-000002",
+          "type": "reaction",
+          "comment": "The detail about him arranging everything 'exactly as she used to do it, before her mother’s illness, before he began finishing her sentences and calling it kindness' really highlighted the specific invasion of her space and autonomy, making her simultaneous exhaustion and anger feel deeply earned and recognizable."
+        },
+        {
+          "paragraph": 3,
+          "paragraph_id": "p-000003",
+          "type": "reaction",
+          "comment": "Mina's quiet 'I need you to ask' is such a strong boundary-setting moment. Tom's 'Do you want me to leave?' right after putting the key down felt like a genuine, if belated, emotional turn where he finally acknowledged her need for control."
+        },
+        {
+          "paragraph": 4,
+          "paragraph_id": "p-000004",
+          "type": "reaction",
+          "comment": "Her decision to keep him for the practical help but define the terms ('And leave the orders to me') felt very real. She's exhausted and needs help, but she's not letting him take over completely. It's a hard-won small victory in a stressful moment."
+        },
+        {
+          "paragraph": 5,
+          "paragraph_id": "p-000005",
+          "type": "reaction",
+          "comment": "Her putting the key in her apron pocket instead of giving it back to him or leaving it on the counter felt like a tangible symbol of her taking charge of her space and her relationship. It's a quiet but significant emotional resolution."
+        },
+        {
+          "paragraph": 5,
+          "paragraph_id": "p-000005",
+          "type": "reaction",
+          "comment": "The distinction between 'Breakfast' and 'Not a rescue' clearly delineates their new terms. Tom's smile and waiting for her to lock up show he's finally hearing and respecting her, which is a lovely, earned emotional beat."
+        }
+      ],
+      "questions_for_writer": [],
+      "question_events": [],
+      "question_updates": [],
+      "inline_comments": [
+        {
+          "line": 2,
+          "paragraph_id": "p-000002",
+          "type": "reaction",
+          "comment": "The detail about him arranging everything 'exactly as she used to do it, before her mother’s illness, before he began finishing her sentences and calling it kindness' really highlighted the specific invasion of her space and autonomy, making her simultaneous exhaustion and anger feel deeply earned and recognizable."
+        },
+        {
+          "line": 3,
+          "paragraph_id": "p-000003",
+          "type": "reaction",
+          "comment": "Mina's quiet 'I need you to ask' is such a strong boundary-setting moment. Tom's 'Do you want me to leave?' right after putting the key down felt like a genuine, if belated, emotional turn where he finally acknowledged her need for control."
+        },
+        {
+          "line": 4,
+          "paragraph_id": "p-000004",
+          "type": "reaction",
+          "comment": "Her decision to keep him for the practical help but define the terms ('And leave the orders to me') felt very real. She's exhausted and needs help, but she's not letting him take over completely. It's a hard-won small victory in a stressful moment."
+        },
+        {
+          "line": 5,
+          "paragraph_id": "p-000005",
+          "type": "reaction",
+          "comment": "Her putting the key in her apron pocket instead of giving it back to him or leaving it on the counter felt like a tangible symbol of her taking charge of her space and her relationship. It's a quiet but significant emotional resolution."
+        },
+        {
+          "line": 5,
+          "paragraph_id": "p-000005",
+          "type": "reaction",
+          "comment": "The distinction between 'Breakfast' and 'Not a rescue' clearly delineates their new terms. Tom's smile and waiting for her to lock up show he's finally hearing and respecting her, which is a lovely, earned emotional beat."
+        }
+      ],
+      "section_reflection": "This section did a great job of showing a dynamic shift rather than just telling it. I felt Mina's frustration and exhaustion keenly, which made her anger feel very earned. Tom's slow dawning of understanding, from laying the key on the counter to asking about breakfast, felt very natural. The ending suggests a hopeful path forward for them, one where boundaries are respected, which is a satisfying emotional turn.",
+      "reaction_id": "95d48334-137f-4e5f-991e-a5629fcdcfdc",
+      "model": {
+        "provider": "gemini",
+        "model": "gemini-2.5-flash"
+      },
+      "usage": {
+        "provider": "gemini",
+        "model": "gemini-2.5-flash",
+        "role": "reader",
+        "input_tokens": 1226,
+        "output_tokens": 1586,
+        "estimated_cost_usd": 0.004333
+      },
+      "_parse_warning": false
+    },
+    {
+      "reader_id": "public-continuity",
+      "reader_name": "Continuity perspective",
+      "avatar_index": 4,
+      "personality": "",
+      "section_number": 1,
+      "checking_in": "I'm looking forward to seeing how Mina and Tom resolve the tension around his 'helpfulness' and her need for independence, especially with this being the final section.",
+      "reading_journal": "This section did a great job of immediately throwing me into the existing conflict between Mina and Tom. I felt Mina's frustration acutely, especially with the detail about him having arranged everything 'exactly as she used to do it' and him finishing her sentences. The dialogue felt very real, showing Mina trying to assert boundaries while also being exhausted and needing help. I liked the resolution of the key and the breakfast invitation; it felt earned.",
+      "what_i_think_the_writer_is_doing": "I think the writer is showing a moment of reconciliation and boundary-setting where Mina and Tom redefine the terms of their relationship, moving from his overbearing 'help' to a more respectful partnership.",
+      "moments": [
+        {
+          "paragraph": 1,
+          "paragraph_id": "p-000001",
+          "type": "reaction",
+          "comment": "The detail about him hearing the first sentence ('she had given him that key') and missing the second ('she wanted it back') immediately sets up the core conflict. It's a great example of miscommunication leading directly to the present situation."
+        },
+        {
+          "paragraph": 2,
+          "paragraph_id": "p-000002",
+          "type": "reaction",
+          "comment": "His explanation, coupled with the description of his arranging things 'exactly as she used to do it,' really clicked for me. It perfectly illustrated why Mina would be simultaneously grateful for help and furious at the overstep; it connects his 'kindness' to a past pattern she resents."
+        },
+        {
+          "paragraph": 3,
+          "paragraph_id": "p-000003",
+          "type": "reaction",
+          "comment": "Mina's direct statement, 'I need you to ask,' felt like a consequence of all the built-up resentment from the previous paragraph. It's a clear boundary being drawn."
+        },
+        {
+          "paragraph": 4,
+          "paragraph_id": "p-000004",
+          "type": "reaction",
+          "comment": "Her decision to ask him to wash bowls but leave orders to her felt very grounded in her current exhaustion and need for both help and control. It's not convenient; it's a realistic compromise driven by her circumstances."
+        },
+        {
+          "paragraph": 5,
+          "paragraph_id": "p-000005",
+          "type": "reaction",
+          "comment": "The resolution with the key and her statement, 'Breakfast. Not a rescue,' felt like a really satisfying payoff. It showed Tom respecting her boundaries by asking and waiting, and Mina accepting his presence on her own terms. It resolves the immediate conflict in a way that feels earned from their earlier interactions."
+        }
+      ],
+      "questions_for_writer": [],
+      "question_events": [],
+      "question_updates": [],
+      "inline_comments": [
+        {
+          "line": 1,
+          "paragraph_id": "p-000001",
+          "type": "reaction",
+          "comment": "The detail about him hearing the first sentence ('she had given him that key') and missing the second ('she wanted it back') immediately sets up the core conflict. It's a great example of miscommunication leading directly to the present situation."
+        },
+        {
+          "line": 2,
+          "paragraph_id": "p-000002",
+          "type": "reaction",
+          "comment": "His explanation, coupled with the description of his arranging things 'exactly as she used to do it,' really clicked for me. It perfectly illustrated why Mina would be simultaneously grateful for help and furious at the overstep; it connects his 'kindness' to a past pattern she resents."
+        },
+        {
+          "line": 3,
+          "paragraph_id": "p-000003",
+          "type": "reaction",
+          "comment": "Mina's direct statement, 'I need you to ask,' felt like a consequence of all the built-up resentment from the previous paragraph. It's a clear boundary being drawn."
+        },
+        {
+          "line": 4,
+          "paragraph_id": "p-000004",
+          "type": "reaction",
+          "comment": "Her decision to ask him to wash bowls but leave orders to her felt very grounded in her current exhaustion and need for both help and control. It's not convenient; it's a realistic compromise driven by her circumstances."
+        },
+        {
+          "line": 5,
+          "paragraph_id": "p-000005",
+          "type": "reaction",
+          "comment": "The resolution with the key and her statement, 'Breakfast. Not a rescue,' felt like a really satisfying payoff. It showed Tom respecting her boundaries by asking and waiting, and Mina accepting his presence on her own terms. It resolves the immediate conflict in a way that feels earned from their earlier interactions."
+        }
+      ],
+      "section_reflection": "This section did a great job of immediately throwing me into the existing conflict between Mina and Tom. I felt Mina's frustration acutely, especially with the detail about him having arranged everything 'exactly as she used to do it' and him finishing her sentences. The dialogue felt very real, showing Mina trying to assert boundaries while also being exhausted and needing help. I liked the resolution of the key and the breakfast invitation; it felt earned.",
+      "reaction_id": "84212f18-e624-46a2-bc07-b42abff25b6d",
+      "model": {
+        "provider": "gemini",
+        "model": "gemini-2.5-flash"
+      },
+      "usage": {
+        "provider": "gemini",
+        "model": "gemini-2.5-flash",
+        "role": "reader",
+        "input_tokens": 1236,
+        "output_tokens": 1632,
+        "estimated_cost_usd": 0.004451
+      },
+      "_parse_warning": false
+    }
+  ]
+}
