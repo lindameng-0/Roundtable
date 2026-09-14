@@ -1,6 +1,6 @@
-﻿# Mobile Google sign-in: same-site API setup
+# Mobile Google sign-in: same-site API setup
 
-The public site currently calls the API on an unrelated Railway hostname. Browsers that block third-party cookies can complete Google authorization but omit the session cookie on the frontend's `/api/auth/me` request. `SameSite=None; Secure` does not override that browser policy.
+The previous public build called the API on an unrelated Railway hostname. Browsers that block third-party cookies can complete Google authorization but omit the session cookie on the frontend's `/api/auth/me` request. `SameSite=None; Secure` does not override that browser policy.
 
 ## Production cutover
 
@@ -14,3 +14,7 @@ The public site currently calls the API on an unrelated Railway hostname. Browse
 Do not put session tokens in URLs or local storage or ask users to disable browser privacy protections. The frontend fixes in this change prevent stale session checks from undoing login and show an explicit retry screen when the callback cannot confirm a session. Those fixes alone do not eliminate the cross-site-cookie dependency.
 
 References: https://webkit.org/blog/10218/full-third-party-cookie-blocking-and-more/ and https://docs.railway.com/networking/domains/working-with-domains
+
+## September 14 cutover verification
+
+DNS CNAME and Railway verification TXT records for `api.readerfold.com` resolve, HTTPS is valid, and `/api/health` reports ready. The live web service now sends `https://api.readerfold.com/api/auth/google/callback` as its Google redirect URI. A signed-out Google authorization probe with `prompt=none` returned `interaction_required` to that exact callback, confirming Google recognizes the registered URI. The frontend meta configuration and production build now use `https://api.readerfold.com`. A real mobile Google login and reload remain the final user verification.
