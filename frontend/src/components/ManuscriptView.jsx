@@ -31,7 +31,7 @@ export function ManuscriptView({ manuscript, commentsByLine, personas, openPopov
       <div className="book-title"><p className="book-genre">{manuscript.genre || "Manuscript"}</p><h1>{manuscript.title}</h1><p className="book-details">{sections.length} {sections.length === 1 ? "section" : "sections"}<span aria-hidden="true"> / </span>{totalCommentCount} passage {totalCommentCount === 1 ? "note" : "notes"}</p></div>
       {!focusMode && <aside className="book-margin-intro">
         <button className="book-reader-roster" onClick={onOpenReaders} aria-label={`Open notebook for ${personas.length} readers`}><span className="book-reader-portraits">{personas.map(persona => <span key={persona.id}><ReaderAvatar name={persona.name} index={persona.avatar_index} /></span>)}</span><span>{personas.length} {personas.length === 1 ? "reader" : "readers"} at the table</span></button>
-        <p>{totalCommentCount > 0 ? "The marks in the margin lead to your readers' notes. Open one to read alongside the passage." : readingDone ? "Your readers left no passage notes. Open their notebook for reflections." : "As your readers make notes, they will appear in the margin."}</p>
+        <p>{totalCommentCount > 0 ? "Your readers' latest notes appear beside each passage. Open a note to see the full conversation." : readingDone ? "Your readers left no passage notes. Open their notebook for reflections." : "As your readers make notes, they will appear in the margin."}</p>
         {annotated.length > 0 && <button className="book-text-link" onClick={() => jump(annotated[0])}>Start with the first note <ChevronRight size={13} /></button>}
       </aside>}
     </div>
@@ -44,10 +44,17 @@ export function ManuscriptView({ manuscript, commentsByLine, personas, openPopov
           const readerIds = [...new Set(comments.map(comment => comment.readerId))];
           const isOpen = !focusMode && openPopoverLine === line;
           const position = annotationPositions.get(line);
-          return <div key={paragraphId || line} id={paragraphId || `p-${String(line).padStart(6,"0")}`} tabIndex={-1} className={`prose-paragraph ${isOpen ? "prose-paragraph-selected" : ""}`}>
+          const latest = comments[comments.length - 1];
+          const latestPersona = latest && personas.find(reader => reader.id === latest.readerId);
+          return <div key={paragraphId || line} id={paragraphId || `p-${String(line).padStart(6,"0")}`} tabIndex={-1} className={`prose-paragraph ${!focusMode && latest ? "has-note-preview" : ""} ${isOpen ? "prose-paragraph-selected" : ""}`}>
             <p className="book-prose" data-line={line} data-paragraph-id={paragraphId}>{text}</p>
             {!focusMode && comments.length > 0 && <button id={`note-mark-${line}`} className="passage-mark" aria-label={`Read ${comments.length} ${comments.length === 1 ? "note" : "notes"} on paragraph ${line}`} aria-expanded={isOpen} aria-controls={isOpen ? `notes-${line}` : undefined} onClick={() => onOpenPopover(line)} data-testid={`margin-dot-line-${line}`}>
               <span className="passage-mark-dots">{readerIds.map(readerId => <i key={readerId} style={readerColorStyle(personas.find(reader => reader.id === readerId)?.avatar_index)} />)}</span><span className="passage-mark-count">{comments.length}</span>
+            </button>}
+            {!focusMode && latest && !isOpen && <button className="passage-preview" onClick={() => onOpenPopover(line)} aria-label={`Read ${comments.length} notes on paragraph ${line}`} style={readerColorStyle(latestPersona?.avatar_index)}>
+              <span className="passage-preview-author"><span className="passage-note-avatar"><ReaderAvatar name={latest.readerName || latestPersona?.name} index={latestPersona?.avatar_index} /></span>{latest.readerName || latestPersona?.name || "Reader"}</span>
+              <span className="passage-preview-text" key={`${latest.readerId}-${latest.comment?.comment}`}>{latest.comment?.comment}</span>
+              <span className="passage-preview-link">{comments.length > 1 ? `Read all ${comments.length} notes` : "Read note"}<ChevronRight size={13} /></span>
             </button>}
             {isOpen && <PassageNotes line={line} comments={comments} personas={personas} close={() => close(line)} previous={position > 0 ? () => jump(annotated[position - 1]) : null} next={position < annotated.length - 1 ? () => jump(annotated[position + 1]) : null} position={position} count={annotated.length} />}
           </div>;

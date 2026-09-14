@@ -15,10 +15,10 @@
 .reading-workbar .workbar-report { border-color:#d7ccd7; color:var(--theme); margin-left:9px; }
 .workbar-status { font-size:11px; color:#79716d; margin-left:auto; }
 .workbar-count { font-size:10px; color:#7d727c; padding-left:3px; }
-.workbar-progress { position:absolute; bottom:-1px; left:0; width:100%; height:2px; background:var(--line); }
+.workbar-progress { width:100%; height:7px; background:#ded5df; border-radius:8px; overflow:hidden; position:relative; }
 .workbar-progress>span { display:block; height:100%; background:var(--theme); transition:width .4s ease; }
 .reading-canvas { overflow:auto; flex:1; min-height:0; scrollbar-gutter:stable; scroll-behavior:smooth; }
-.reading-document { --prose-width:620px; --margin-width:266px; --margin-gap:68px; width:calc(var(--prose-width) + var(--margin-width) + var(--margin-gap)); max-width:calc(100% - 100px); padding:52px 0 90px; margin:0 auto; }
+.reading-document { --prose-width:620px; --margin-width:286px; --margin-gap:64px; width:calc(var(--prose-width) + var(--margin-width) + var(--margin-gap)); max-width:calc(100% - 100px); padding:52px 0 90px; margin:0 auto; }
 .book-opening { position:relative; width:var(--prose-width); margin-bottom:40px; scroll-margin-top:38px; }
 .book-title h1 { font-family:var(--display); font-size:39px; font-weight:400; letter-spacing:-.6px; line-height:1.2; color:#454039; margin:11px 0 16px; }
 .book-genre,.book-details { font-size:11px; color:#80776e; line-height:1.7; }
@@ -37,11 +37,11 @@
 .prose-paragraph { position:relative; margin-bottom:23px; scroll-margin-block:65px; }
 .book-prose { font-family:var(--reading-font); font-weight:400; font-size:19px; line-height:1.8; letter-spacing:0; color:var(--reading-ink); transition:background .15s; }
 .prose-paragraph-selected>.book-prose { background:#eee8ee80; outline:7px solid #eee8ee80; }
-.passage-mark { position:absolute; top:0; right:-47px; display:flex; align-items:center; justify-content:center; gap:5px; min-width:34px; min-height:34px; border-radius:3px; }
+.passage-mark { position:absolute; top:0; right:-47px; display:flex; align-items:center; justify-content:center; gap:5px; min-width:36px; min-height:38px; border-radius:3px; }
 .passage-mark:hover,.passage-mark[aria-expanded=true] { background:var(--theme-wash); }
 .passage-mark-dots { display:flex; flex-wrap:wrap; gap:3px; max-width:16px; }
-.passage-mark-dots>i { width:5px; height:5px; border-radius:50%; background:var(--reader-color); }
-.passage-mark-count { font-size:10px; color:#756b72; }
+.passage-mark-dots>i { width:6px; height:6px; border-radius:50%; background:var(--reader-color); }
+.passage-mark-count { font-size:12px; color:#756b72; }
 .passage-notes { position:absolute; top:0; left:calc(100% + var(--margin-gap)); width:var(--margin-width); background:var(--reading-paper); border-top:1px solid #cdbecd; z-index:10; }
 .passage-notes-heading { display:flex; justify-content:space-between; align-items:center; min-height:39px; font-size:11px; color:#80727e; }
 .passage-notes button { display:grid; place-items:center; width:30px; min-height:30px; color:var(--theme); border-radius:3px; }
@@ -49,11 +49,11 @@
 .passage-notes button:disabled { opacity:.3; cursor:not-allowed; }
 .passage-notes-body { max-height:min(52vh,460px); overflow:auto; overscroll-behavior:contain; padding-right:5px; }
 .passage-note { padding:13px 0 17px; border-bottom:1px solid var(--line); }
-.passage-note-author,.notebook-passage-author { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--reader-ink); }
+.passage-note-author,.notebook-passage-author { display:flex; align-items:center; gap:8px; font-size:14px; color:var(--reader-ink); }
 .passage-note-avatar { display:inline-block; width:25px; height:29px; flex-shrink:0; }
 .passage-note-avatar .reader-avatar { border-radius:2px; }
-.passage-note-author small { margin-left:auto; font-size:10px; color:#847b73; text-transform:capitalize; }
-.passage-note>p { font-family:var(--reading-font); font-size:17px; line-height:1.65; color:#655d56; margin-top:11px; }
+.passage-note-author small { margin-left:auto; font-size:11px; color:#847b73; text-transform:capitalize; }
+.passage-note>p { font-family:var(--reading-font); font-size:18px; line-height:1.65; color:#655d56; margin-top:11px; }
 .passage-note-navigation { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:9px; font-size:10px; color:#756b72; }
 .passage-note-navigation>div { display:flex; gap:5px; }
 .book-colophon { border-top:1px solid var(--line); padding-top:27px; margin-top:45px; }
@@ -142,7 +142,7 @@
   .reading-document-focused { max-width:calc(100% - 46px); }
   .passage-mark { right:-34px; }
   .passage-notes { padding-inline:13px; }
-  .passage-note-author small { font-size:9px; }
+  .passage-note-author small { font-size:11px; }
   .reading-drawer-heading { padding:24px 20px 20px; }
   .notebook-content { padding-inline:20px; }
   .notebook-views { gap:17px; }
@@ -153,3 +153,37 @@
 @media print { .reading-workbar,.reading-drawer,.reading-drawer-scrim,.passage-mark,.passage-notes,.book-margin-intro,.book-colophon button { display:none!important; } .reading-workspace { height:auto; } .reading-canvas { overflow:visible; } .reading-document,.book-text { width:100%; max-width:none; padding:0; } .book-opening { display:block; } }
 
 .book-contents>button,.notebook-passage-text { overflow-wrap:anywhere; }
+
+/* Reading activity stays visible while the manuscript scrolls. */
+.reading-progress-strip { display:flex; align-items:center; justify-content:space-between; gap:28px; padding:18px 30px; background:#f0eaf0; border-bottom:1px solid #dcd1dc; flex-shrink:0; }
+.reading-progress-copy { min-width:0; }
+.reading-progress-copy strong { display:flex; align-items:center; gap:9px; color:var(--theme); font-size:14px; font-weight:600; line-height:1.5; }
+.reading-progress-copy>span { display:block; font-size:12px; line-height:1.6; color:#706370; margin-top:4px; }
+.reading-activity-spinner { flex-shrink:0; animation:reading-spin 2s linear infinite; }
+.reading-progress-meter { width:240px; flex-shrink:0; }
+.reading-progress-label { display:block; color:var(--theme); font-size:13px; font-variant-numeric:tabular-nums; margin-bottom:8px; }
+.workbar-progress.is-starting::after { content:""; position:absolute; inset:0 auto 0 0; width:25%; background:#9a859b; border-radius:8px; animation:reading-wait 2s ease-in-out infinite alternate; }
+.has-note-preview { min-height:166px; }
+.passage-preview { position:absolute; top:0; left:calc(100% + var(--margin-gap)); width:var(--margin-width); text-align:left; border-top:1px solid #d9cdd8; padding:12px 0; }
+.passage-preview-author { display:flex; align-items:center; gap:9px; font-size:14px; color:var(--reader-ink); }
+.passage-preview-text { display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; font-family:var(--reading-font); font-size:18px; line-height:1.55; color:#655d56; margin-top:9px; animation:note-arrive .4s ease-out; }
+.passage-preview-link { display:flex; align-items:center; gap:4px; margin-top:8px; font-size:12px; color:var(--theme); }
+.passage-preview:hover .passage-preview-link { text-decoration:underline; text-underline-offset:3px; }
+.passage-preview:focus-visible { outline:2px solid var(--theme); outline-offset:5px; }
+@keyframes reading-spin { to { transform:rotate(360deg); } }
+@keyframes reading-wait { to { transform:translateX(300%); } }
+@keyframes note-arrive { from { opacity:0; } to { opacity:1; } }
+@media(max-width:900px) {
+  .has-note-preview { min-height:0; }
+  .passage-preview { position:static; width:100%; margin:18px 0 28px; padding:14px 17px; background:#f5f1f4; }
+  .reading-progress-strip { padding:15px 20px; gap:20px; }
+  .reading-progress-meter { width:160px; }
+}
+@media(max-width:620px) {
+  .reading-progress-strip { flex-direction:column; align-items:stretch; gap:10px; padding:13px 23px 16px; }
+  .reading-progress-copy strong { font-size:13px; }
+  .reading-progress-meter { width:100%; display:flex; align-items:center; gap:12px; }
+  .reading-progress-label { margin:0; white-space:nowrap; font-size:12px; }
+}
+@media(prefers-reduced-motion:reduce) { .reading-activity-spinner,.workbar-progress.is-starting::after,.passage-preview-text { animation:none; } }
+@media print { .reading-progress-strip,.passage-preview { display:none!important; } .has-note-preview { min-height:0; } }

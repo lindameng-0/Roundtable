@@ -155,8 +155,35 @@ async def execute_reading_job(job: Dict[str, Any]) -> Dict[str, Any]:
             async with semaphore:
                 await reader_pipeline(reader, section_payload, manuscript.get("genre", "Fiction"), manuscript_id, queue)
 
+        current = await workflow_status(manuscript, readers)
+        await _save_progress(job, {
+            "stage": "reading", "section": section_number,
+            "completed": current["completed_tasks"],
+            "total": current["total_tasks"], "failed": current["failed_tasks"],
+        })
         tasks = [asyncio.create_task(run_reader(index, reader)) for index, reader in enumerate(missing)]
-        await asyncio.gather(*tasks, return_exceptions=True)
+        # Publish each reader's saved notes without waiting for the slowest reader.
+        async def publish_reader_progress():
+            for finished in asyncio.as_completed(tasks):
+                try:
+                    await finished
+                except Exception:
+                    # The pipeline records failures; the final ledger drives retries.
+                    pass
+                current = await workflow_status(manuscript, readers)
+                await _save_progress(job, {
+                    "stage": "reading", "section": section_number,
+                    "completed": current["completed_tasks"], "total": current["total_tasks"],
+                    "failed": current["failed_tasks"],
+                })
+
+        try:
+            await publish_reader_progress()
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
         # reader_pipeline persists both success and failure before emitting.
         while not queue.empty():
             queue.get_nowait()

@@ -201,7 +201,7 @@ export default function ReadingPage() {
 
   return (
     <div className="reading-workspace">
-      <ReadingToolbar drawer={drawer} openDrawer={openDrawer} focusMode={focusMode} setFocusMode={value => { setFocusMode(value); if (value) setOpenPopoverLine(null); }} readingDone={readingDone} processingSection={processingSection} totalSections={totalSections} progress={progress} totalCommentCount={totalCommentCount} loadingReport={loadingReport} generateReport={openOrGenerateReport} />
+      <ReadingToolbar isStalled={isStalled} drawer={drawer} openDrawer={openDrawer} focusMode={focusMode} setFocusMode={value => { setFocusMode(value); if (value) setOpenPopoverLine(null); }} readingDone={readingDone} processingSection={processingSection} totalSections={totalSections} progress={progress} totalCommentCount={totalCommentCount} loadingReport={loadingReport} generateReport={openOrGenerateReport} />
       <main id="main-content" tabIndex={-1} className="reading-canvas">
         {isStalled && !readingDone && <div className="reading-stall"><StallBanner onRetry={() => handleRetry(manuscript, personas)} onViewPartial={handleViewPartial} /></div>}
         <ManuscriptView manuscript={manuscript} commentsByLine={commentsByLine} personas={personas} openPopoverLine={openPopoverLine} onOpenPopover={handleOpenPopover} readingDone={readingDone} totalCommentCount={totalCommentCount} focusMode={focusMode} onOpenReaders={() => openDrawer("readers")} onNavigate={navigateToManuscript} />

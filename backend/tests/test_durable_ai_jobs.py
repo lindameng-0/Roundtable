@@ -143,3 +143,51 @@ def test_queue_compares_offset_timestamps_as_instants():
         }})
         assert await db.requeue_stale_ai_jobs() == 1
     asyncio.run(scenario())
+
+
+def test_progress_published_before_slowest_reader_finishes(monkeypatch):
+    from services import ai_jobs
+
+    async def scenario():
+        db.clear()
+        await db.manuscripts.insert_one({"id": "live", "user_id": "user", "sections": [
+            {"section_number": 1, "paragraph_lines": [{"line": 1, "text": "A scene."}]}
+        ]})
+        for reader_id in ("fast", "slow"):
+            await db.reader_personas.insert_one({"id": reader_id, "manuscript_id": "live"})
+        published = asyncio.Event()
+        completed = set()
+        updates = []
+
+        async def no_op(*args, **kwargs):
+            return {}
+
+        async def ledger(*args):
+            return {"completed_tasks": len(completed), "total_tasks": 2, "failed_tasks": 0,
+                    "complete": len(completed) == 2, "tasks": []}
+
+        async def pipeline(reader, *args):
+            if reader["id"] == "slow":
+                await asyncio.wait_for(published.wait(), timeout=2)
+            completed.add(reader["id"])
+
+        async def save(job, progress):
+            updates.append(progress)
+            if progress.get("completed") == 1:
+                assert "slow" not in completed
+                published.set()
+
+        monkeypatch.setattr(ai_jobs, "ensure_task_ledger", no_op)
+        monkeypatch.setattr(ai_jobs, "preflight_estimate", no_op)
+        monkeypatch.setattr(ai_jobs, "_require_affordable", lambda _: None)
+        monkeypatch.setattr(ai_jobs, "workflow_status", ledger)
+        monkeypatch.setattr(ai_jobs, "reader_pipeline", pipeline)
+        monkeypatch.setattr(ai_jobs, "_save_progress", save)
+        monkeypatch.setattr(ai_jobs._cfg, "READER_START_STAGGER_SECONDS", 0)
+        monkeypatch.setattr(ai_jobs._cfg, "READER_MAX_CONCURRENCY", 2)
+        result = await ai_jobs.execute_reading_job({"manuscript_id": "live", "user_id": "user"})
+        assert result["workflow"]["completed_tasks"] == 2
+        assert any(row.get("section") == 1 and row["completed"] == 0 for row in updates)
+        assert published.is_set()
+
+    asyncio.run(scenario())
