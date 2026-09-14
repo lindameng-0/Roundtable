@@ -16,6 +16,7 @@ import secrets
 import urllib.parse
 import uuid
 from datetime import datetime, timezone, timedelta
+from typing import Literal
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request, Response
@@ -47,6 +48,7 @@ from services.auth_security import (
     verify_password,
 )
 from services.rate_limit import enforce_rate_limit
+from services.site_analytics import record_site_event
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +64,7 @@ class SignupRequest(BaseModel):
     name: str
     email: str
     password: str
+    analytics_source: Literal["direct", "google", "bing", "other-search", "chatgpt", "perplexity", "claude", "gemini", "copilot", "social", "other"] = "direct"
 
     @field_validator("name")
     @classmethod
@@ -192,6 +195,14 @@ def _email_rate_identity(email: str) -> str:
     return f"email:{hash_opaque_token(email)}"
 
 
+async def _track_auth(request: Request, event: str, source: str = "direct") -> None:
+    """Analytics must never make authentication fail."""
+    try:
+        await record_site_event(request, "/signup", source, event)
+    except Exception:
+        logger.exception("Unable to record auth funnel event %s", event)
+
+
 # ─── Shared session helper ────────────────────────────────────────────────────
 
 async def _get_session_user(request: Request) -> dict:
@@ -242,6 +253,7 @@ async def signup(body: SignupRequest, request: Request):
     existing = await db.users.find_one({"email": body.email}, {"_id": 0})
     if existing and existing.get("email_verified"):
         # Deliberately avoid revealing whether an address already has an account.
+        await _track_auth(request, "signup_existing", body.analytics_source)
         return {"message": "If this address can be registered, a verification email has been sent."}
 
     password_digest = hash_password(body.password)
@@ -266,13 +278,16 @@ async def signup(body: SignupRequest, request: Request):
             await db.users.insert_one(user)
         except Exception:
             logger.info("Concurrent or duplicate signup for %s", body.email)
+            await _track_auth(request, "signup_duplicate", body.analytics_source)
             return {"message": "If this address can be registered, a verification email has been sent."}
 
     try:
         await _issue_verification(user)
     except RuntimeError as exc:
         logger.exception("Unable to send verification email")
+        await _track_auth(request, "signup_email_failed", body.analytics_source)
         raise HTTPException(503, str(exc))
+    await _track_auth(request, "signup_accepted", body.analytics_source)
     return {"message": "Check your email to verify your Readerfold account."}
 
 
@@ -297,6 +312,7 @@ async def verify_email(body: VerificationRequest, request: Request):
         {"id": record["id"]},
         {"$set": {"used_at": datetime.now(timezone.utc).isoformat()}},
     )
+    await _track_auth(request, "email_verified")
     return {"message": "Email verified. You can now sign in."}
 
 
@@ -397,6 +413,7 @@ async def google_login(request: Request):
     if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
         raise HTTPException(500, "Google OAuth credentials are not configured on the server.")
     await enforce_rate_limit(request, "auth_google", AUTH_TOKEN_RATE_PER_HOUR, 3600)
+    await _track_auth(request, "google_auth_started")
 
     # Persist only a hash so OAuth survives restarts and multiple workers without
     # exposing a usable state value through the database.
@@ -521,6 +538,7 @@ async def google_callback(
 
         # ── Step 3: Upsert user in DB ──────────────────────────────────────
         existing = await db.users.find_one({"email": email}, {"_id": 0})
+        is_new_account = not existing
         if existing:
             user_id = existing["user_id"]
             if not existing.get("email_verified"):
@@ -558,6 +576,7 @@ async def google_callback(
         redirect = RedirectResponse(url=frontend_callback_url, status_code=302)
         redirect.delete_cookie("oauth_state", path="/api/auth/google", secure=SESSION_COOKIE_SECURE, samesite="lax")
         await _create_session(user_id, redirect)
+        await _track_auth(request, "google_signup_completed" if is_new_account else "google_login_completed")
         return redirect
 
     except Exception as exc:

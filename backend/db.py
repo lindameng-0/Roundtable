@@ -151,9 +151,9 @@ class _SupabaseDb:
     def __init__(self, url: str, key: str):
         self._client: Client = create_client(url, key)
 
-    async def increment_site_analytics(self, path, source, event):
-        await asyncio.to_thread(lambda: self._client.rpc("increment_site_analytics", {
-            "p_path": path, "p_source": source, "p_event": event,
+    async def increment_site_analytics(self, path, source, event, visitor_hash=None):
+        await asyncio.to_thread(lambda: self._client.rpc("record_site_analytics", {
+            "p_path": path, "p_source": source, "p_event": event, "p_visitor_hash": visitor_hash,
         }).execute())
 
     async def read_site_analytics(self, since):
@@ -161,6 +161,17 @@ class _SupabaseDb:
             rows, offset = [], 0
             while True:
                 page = self._client.table("site_analytics").select("*").gte("day", since).order("day").order("path").order("source").order("event").range(offset, offset + 999).execute().data or []
+                rows.extend(page)
+                if len(page) < 1000:
+                    return rows
+                offset += 1000
+        return await asyncio.to_thread(run)
+
+    async def read_site_analytics_visitors(self, since):
+        def run():
+            rows, offset = [], 0
+            while True:
+                page = self._client.table("site_analytics_visitors").select("day,path,source,event,visitor_hash").gte("day", since).range(offset, offset + 999).execute().data or []
                 rows.extend(page)
                 if len(page) < 1000:
                     return rows
@@ -372,12 +383,20 @@ class _PostgresDb:
         return await self._pool.fetchval("SELECT apply_credit_change($1,$2,$3::jsonb,$4,$5::jsonb)",
                                         user_id, version, json.dumps(data), key, json.dumps(entry))
 
-    async def increment_site_analytics(self, path, source, event):
-        await self._pool.execute("SELECT increment_site_analytics($1,$2,$3)", path, source, event)
+    async def increment_site_analytics(self, path, source, event, visitor_hash=None):
+        await self._pool.execute("SELECT record_site_analytics($1,$2,$3,$4)", path, source, event, visitor_hash)
 
     async def read_site_analytics(self, since):
         from datetime import date
         rows = await self._pool.fetch("SELECT * FROM site_analytics WHERE day >= $1 ORDER BY day", date.fromisoformat(since))
+        return [dict(row) for row in rows]
+
+    async def read_site_analytics_visitors(self, since):
+        from datetime import date
+        rows = await self._pool.fetch(
+            "SELECT day,path,source,event,visitor_hash FROM site_analytics_visitors WHERE day >= $1",
+            date.fromisoformat(since),
+        )
         return [dict(row) for row in rows]
 
     def __getattr__(self, name: str) -> _PostgresTable:
@@ -793,7 +812,7 @@ class _MemoryDb:
         self._cost_lock = asyncio.Lock()
         self._job_lock = asyncio.Lock()
 
-    async def increment_site_analytics(self, path, source, event):
+    async def increment_site_analytics(self, path, source, event, visitor_hash=None):
         from datetime import timezone, timedelta
         day = datetime.now(timezone.utc).date()
         cutoff = (day - timedelta(days=400)).isoformat()
@@ -802,11 +821,22 @@ class _MemoryDb:
         for row in rows:
             if (row["day"], row["path"], row["source"], row["event"]) == (day.isoformat(), path, source, event):
                 row["count"] += 1
-                return
-        rows.append(dict(day=day.isoformat(), path=path, source=source, event=event, count=1))
+                break
+        else:
+            rows.append(dict(day=day.isoformat(), path=path, source=source, event=event, count=1))
+        visitors = self._data.setdefault("site_analytics_visitors", [])
+        visitors[:] = [row for row in visitors if row["day"] >= (day - timedelta(days=90)).isoformat()]
+        if visitor_hash and not any(
+            (row["day"], row["path"], row["source"], row["event"], row["visitor_hash"])
+            == (day.isoformat(), path, source, event, visitor_hash) for row in visitors
+        ):
+            visitors.append(dict(day=day.isoformat(), path=path, source=source, event=event, visitor_hash=visitor_hash))
 
     async def read_site_analytics(self, since):
         return [dict(row) for row in self._data.get("site_analytics", []) if row["day"] >= since]
+
+    async def read_site_analytics_visitors(self, since):
+        return [dict(row) for row in self._data.get("site_analytics_visitors", []) if row["day"] >= since]
 
     def __getattr__(self, name: str) -> _MemoryTable:
         if name in self._tables:

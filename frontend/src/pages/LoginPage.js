@@ -4,6 +4,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import { getApi, getApiBase } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
+import { referralSource, trackPublicEvent } from "../siteAnalytics";
 
 import AuthLayout from "../components/AuthLayout";
 
@@ -62,7 +63,8 @@ export default function LoginPage({ initialMode = "signin" }) {
     setError("");
     try {
       if (mode === "signup") {
-        await axios.post(`${API}/auth/signup`, { name, email, password });
+        trackPublicEvent("/signup", "signup_submit");
+        await axios.post(`${API}/auth/signup`, { name, email, password, analytics_source: referralSource(document.referrer) });
         setVerificationSent(true);
       } else {
         const response = await axios.post(`${API}/auth/login`, { email, password }, { withCredentials: true });
@@ -135,7 +137,7 @@ export default function LoginPage({ initialMode = "signin" }) {
               </form>
 
               <div className="my-6 flex items-center gap-4 text-xs uppercase tracking-[0.18em] text-ink-300"><span className="h-px flex-1 bg-black/10" />or<span className="h-px flex-1 bg-black/10" /></div>
-              <a href={GOOGLE_LOGIN_URL} className="flex w-full items-center justify-center gap-3 border border-black/15 bg-[#fffdfa] px-4 py-3.5 text-sm font-semibold hover:border-black/30 hover:bg-white" data-testid="google-signin-btn"><GoogleMark />Continue with Google</a>
+              <a href={GOOGLE_LOGIN_URL} onClick={() => trackPublicEvent(mode === "signup" ? "/signup" : "/login", "google_continue_click")} className="flex w-full items-center justify-center gap-3 border border-black/15 bg-[#fffdfa] px-4 py-3.5 text-sm font-semibold hover:border-black/30 hover:bg-white" data-testid="google-signin-btn"><GoogleMark />Continue with Google</a>
               <p className="mt-7 text-center text-xs text-ink-400">{mode === "signup" ? <>Already have an account? <Link to="/login" className="font-semibold text-[#493449] hover:underline">Sign in</Link></> : <>New to Readerfold? <Link to="/signup" className="font-semibold text-[#493449] hover:underline">Create an account</Link></>}</p>
             </>
           )}

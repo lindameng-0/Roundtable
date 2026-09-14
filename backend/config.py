@@ -137,6 +137,9 @@ AUTH_SIGNUP_RATE_PER_HOUR = max(1, int(os.environ.get('AUTH_SIGNUP_RATE_PER_HOUR
 AUTH_LOGIN_RATE_PER_15_MINUTES = max(1, int(os.environ.get('AUTH_LOGIN_RATE_PER_15_MINUTES', '10')))
 AUTH_EMAIL_RATE_PER_HOUR = max(1, int(os.environ.get('AUTH_EMAIL_RATE_PER_HOUR', '5')))
 AUTH_TOKEN_RATE_PER_HOUR = max(1, int(os.environ.get('AUTH_TOKEN_RATE_PER_HOUR', '20')))
+ANALYTICS_HASH_SECRET = os.environ.get('ANALYTICS_HASH_SECRET', '').strip()
+if ANALYTICS_HASH_SECRET and len(ANALYTICS_HASH_SECRET) < 32:
+    raise RuntimeError('ANALYTICS_HASH_SECRET must contain at least 32 characters')
 MANUSCRIPT_CREATE_RATE_PER_HOUR = max(1, int(os.environ.get('MANUSCRIPT_CREATE_RATE_PER_HOUR', '10')))
 MANUSCRIPT_CREATE_IP_RATE_PER_HOUR = max(1, int(os.environ.get('MANUSCRIPT_CREATE_IP_RATE_PER_HOUR', '30')))
 AI_ACCOUNT_RATE_PER_HOUR = max(1, int(os.environ.get('AI_ACCOUNT_RATE_PER_HOUR', '30')))

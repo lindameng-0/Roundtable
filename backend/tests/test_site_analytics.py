@@ -16,6 +16,7 @@ def clean(monkeypatch):
     monkeypatch.setenv("OWNER_EMAIL", "itsyuko0o1@gmail.com")
     monkeypatch.delenv("OWNER_USER_ID", raising=False)
     monkeypatch.setenv("CORS_ORIGINS", "https://roundtable.works")
+    monkeypatch.setattr(config, "ANALYTICS_HASH_SECRET", "test-analytics-secret")
     yield
     config.db.clear()
     limiter.clear()
@@ -66,6 +67,9 @@ def test_collection_and_exact_summary():
         result = client.get("/api/analytics/summary?days=7").json()
         assert result["pageviews"] == 3
         assert result["signup_clicks"] == 1
+        assert result["unique_signup_click_visitors"] == 1
+        assert result["funnel"]["signup_pageviews"] == 0
+        assert result["funnel"]["signup_clicks"] == 1
         assert result["sources"] == {"chatgpt": 3}
         assert len(result["daily"]) == 7
         assert sum(day["views"] for day in result["daily"]) == 3
@@ -73,6 +77,24 @@ def test_collection_and_exact_summary():
         assert len(config.db._data["site_analytics"]) == 2
         assert set(config.db._data["site_analytics"][0]) == {"day", "path", "source", "event", "count"}
         assert client.get("/api/analytics/summary?days=999").status_code == 422
+
+
+def test_funnel_counts_events_and_deduplicates_network_sources(monkeypatch):
+    identities = iter(["198.51.100.10", "198.51.100.10", "203.0.113.20"])
+    monkeypatch.setattr("services.site_analytics.client_ip", lambda _request: next(identities))
+    headers = {"origin": "https://roundtable.works"}
+    with TestClient(app) as client:
+        for event in ["signup_click", "signup_click", "signup_click"]:
+            assert client.post("/api/analytics/events", headers=headers, json={"path": "/", "event": event}).status_code == 204
+        session(client)
+        result = client.get("/api/analytics/summary").json()
+        assert result["signup_clicks"] == 3
+        assert result["unique_signup_click_visitors"] == 2
+        assert result["unique_signup_clicks_by_path"] == {"/": 2}
+        assert all("visitor_hash" not in str(value) for value in result.values())
+        stored = {row["visitor_hash"] for row in config.db._data["site_analytics_visitors"]}
+        assert "198.51.100.10" not in stored and "203.0.113.20" not in stored
+        assert all(len(value) == 64 for value in stored)
 
 
 def test_private_urls_extra_data_origins_and_privacy_signals():

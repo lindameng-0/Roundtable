@@ -13,6 +13,7 @@ from config import db
 from routers.auth import _get_session_user
 from services.owner import is_owner
 from services.rate_limit import enforce_rate_limit
+from services.site_analytics import record_site_event
 
 analytics_router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
@@ -43,7 +44,7 @@ class Event(BaseModel):
     model_config = ConfigDict(extra="forbid")
     path: Literal["/", "/pricing", "/beta-readers", "/ai-beta-reader", "/manuscript-feedback", "/use-cases", "/use-cases/opening-chapter-feedback", "/use-cases/pacing-feedback", "/use-cases/character-motivation", "/sample-reading", "/connect-assistant", "/terms", "/privacy", "/refunds", "/signup", "/login"]
     source: Literal["direct", "google", "bing", "other-search", "chatgpt", "perplexity", "claude", "gemini", "copilot", "social", "other"] = "direct"
-    event: Literal["pageview", "signup_click"] = "pageview"
+    event: Literal["pageview", "signup_click", "signup_submit", "google_continue_click"] = "pageview"
 
 
 @analytics_router.post("/events", status_code=204)
@@ -52,8 +53,6 @@ async def record_event(body: Event, request: Request):
     origins = {v.strip() for v in os.environ.get("CORS_ORIGINS", defaults).split(",")}
     if request.headers.get("origin") not in origins:
         raise HTTPException(403, "Origin not allowed")
-    if request.headers.get("dnt") == "1" or request.headers.get("sec-gpc") == "1":
-        return Response(status_code=204)
     await enforce_rate_limit(request, "site_analytics", 60, 60)
     if request.cookies.get("session_token"):
         try:
@@ -65,7 +64,7 @@ async def record_event(body: Event, request: Request):
             if is_owner(user):
                 return Response(status_code=204)
     try:
-        await db.increment_site_analytics(body.path, body.source, body.event)
+        await record_site_event(request, body.path, body.source, body.event)
     except Exception:
         logging.getLogger(__name__).exception("Analytics counter unavailable")
         raise HTTPException(503, "Analytics temporarily unavailable")
@@ -81,24 +80,46 @@ async def summary(request: Request, response: Response, days: int = Query(30, ge
         raise HTTPException(403, "Owner access required")
     today = datetime.now(timezone.utc).date()
     since = today - timedelta(days=days - 1)
-    rows, accounts, manuscripts, reports, excluded = await asyncio.gather(
+    rows, visitors, accounts, manuscripts, reports, excluded = await asyncio.gather(
         db.read_site_analytics(since.isoformat()),
+        db.read_site_analytics_visitors(since.isoformat()),
         db.users.count_documents({"email_verified": True}),
         db.manuscripts.count_documents({}),
         db.editor_reports.count_documents({}),
         excluded_account_totals(),
     )
-    sources, pages, daily = Counter(), Counter(), Counter()
-    clicks = 0
+    sources, pages, daily, events = Counter(), Counter(), Counter(), Counter()
     for row in rows:
         if row["event"] == "pageview":
             sources[row["source"]] += row["count"]
             pages[row["path"]] += row["count"]
             daily[str(row["day"])[:10]] += row["count"]
-        elif row["event"] == "signup_click":
-            clicks += row["count"]
+        else:
+            events[row["event"]] += row["count"]
+    unique_by_event = {
+        event: len({row["visitor_hash"] for row in visitors if row["event"] == event})
+        for event in {row["event"] for row in visitors}
+    }
+    unique_clicks_by_path = {
+        path: len({row["visitor_hash"] for row in visitors if row["event"] == "signup_click" and row["path"] == path})
+        for path in {row["path"] for row in visitors if row["event"] == "signup_click"}
+    }
+    funnel = {
+        "signup_pageviews": pages["/signup"],
+        "signup_clicks": events["signup_click"],
+        "unique_signup_click_visitors": unique_by_event.get("signup_click", 0),
+        "signup_submissions": events["signup_submit"],
+        "unique_signup_submit_visitors": unique_by_event.get("signup_submit", 0),
+        "signup_accepted": events["signup_accepted"],
+        "signup_email_failed": events["signup_email_failed"],
+        "email_verified": events["email_verified"],
+        "google_auth_started": events["google_auth_started"],
+        "google_signup_completed": events["google_signup_completed"],
+    }
     return {
-        "days": days, "pageviews": sum(pages.values()), "signup_clicks": clicks,
+        "days": days, "pageviews": sum(pages.values()), "signup_clicks": events["signup_click"],
+        "unique_signup_click_visitors": unique_by_event.get("signup_click", 0),
+        "unique_signup_clicks_by_path": unique_clicks_by_path, "funnel": funnel,
         "sources": dict(sources.most_common()), "pages": dict(pages.most_common()),
         "daily": [{"day": (since + timedelta(days=i)).isoformat(), "views": daily[(since + timedelta(days=i)).isoformat()]} for i in range(days)],
         "totals": {"verified_accounts": max(0, accounts - excluded[0]),
