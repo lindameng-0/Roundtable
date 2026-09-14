@@ -46,5 +46,21 @@ blockquote { margin: 20px 0; padding-left: 20px; border-left: 2px solid var(--ac
 .site-footer p { font-size: 14px; }
 .skip-link { position: absolute; left: 16px; top: -100px; padding: 12px; background: white; z-index: 1; }
 .skip-link:focus { top: 12px; }
+.blog-hub main { max-width: 1080px; }
+.blog-hub h1 { max-width: 17ch; font-size: clamp(2.8rem, 6vw, 4.6rem); }
+.blog-hub .lede { max-width: 56ch; }
+.blog-feature { padding: 28px 36px 34px; margin: 42px 0; background: #e9e1ec; border-left: 4px solid var(--accent); }
+.blog-feature h2 { font-size: clamp(2rem, 4vw, 2.8rem); max-width: 24ch; margin-top: 12px; }
+.blog-feature h2 a,.blog-grid h2 a { text-decoration: none; }
+.blog-feature h2 a:hover,.blog-grid h2 a:hover { text-decoration: underline; }
+.blog-feature p { max-width: 64ch; }
+.blog-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 42px; }
+.blog-grid article { border-top: 1px solid var(--line); padding: 14px 0 28px; }
+.blog-grid h2 { margin-top: 16px; }
+.blog-invitation { margin-top: 48px; padding: 8px 28px 12px; border: 1px solid var(--line); background: #fffefa; }
+.blog-invitation h2 { margin-top: 24px; }
+.blog-invitation .caption { margin-top: 14px; }
+.blog-article .lede { margin-bottom: 32px; }
+@media(max-width:620px) { .blog-grid { grid-template-columns: 1fr; gap: 10px; } .blog-feature { padding: 18px 22px 24px; } .blog-invitation { padding-inline: 20px; } }
 @media (max-width: 620px) { .site-header { align-items: flex-start; flex-direction: column; padding: 20px 24px; gap: 16px; } .site-header nav { gap: 8px 18px; } main { padding: 28px 24px 40px; } h2 { font-size: 1.65rem; } .download, .example { padding-left: 18px; padding-right: 18px; } }
 @media print { @page { margin: 18mm; } body { background: white; color: black; font-size: 11pt; } .site-header, .site-footer, .skip-link, .contents, .download, .next-step { display: none; } main { max-width: none; padding: 0; } h1 { font-size: 26pt; } h2 { font-size: 18pt; } h3 { font-size: 14pt; } h1, h2, h3 { break-after: avoid; } blockquote, .example { break-inside: avoid; } a { color: black; } }
