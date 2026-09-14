@@ -27,4 +27,7 @@
 .analytics-next li { margin: 12px 0; line-height: 1.7; }
 .analytics-method { max-width: 85ch; font-size: .85rem; line-height: 1.7; color: #625963; margin: 32px 0 16px; }
 .analytics-empty { background: #eee7ef; border-radius: 8px; padding: 20px; margin-top: 24px; }
+.analytics-exclusion { border-left: 3px solid #67546c; background: #f2edf3; padding: 16px 20px; margin-top: 28px; max-width: 80ch; }
+.analytics-exclusion strong { color: #493449; font-size: .95rem; }
+.analytics-exclusion p { font-size: .85rem; line-height: 1.65; margin: 6px 0 0; color: #625963; }
 @media (max-width: 700px) { .analytics-heading { display: block; } .analytics-controls { margin-top: 24px; } .analytics-columns { grid-template-columns: 1fr; gap: 12px; } .analytics-stats { gap: 14px; } .analytics-stats dd { font-size: 2rem; } .analytics-stats dt { font-size: .8rem; } }

@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getApi } from "../apiConfig";
 import SiteHeader, { SiteFooter } from "../components/SiteHeader";
+import { isBrowserExcluded } from "../siteAnalytics";
 
 const number = value => Number(value).toLocaleString();
 function Breakdown({ title, values, label }) {
@@ -32,6 +33,7 @@ export default function OwnerAnalyticsPage() {
   const aiViews = data ? ["chatgpt", "perplexity", "claude", "gemini", "copilot"].reduce((sum, key) => sum + (data.sources[key] || 0), 0) : 0;
   return <><SiteHeader /><main id="main-content" className="page-width owner-analytics" tabIndex={-1}>
     <div className="analytics-heading"><div><p className="small-note">Owner's notebook</p><h1>How Readerfold is growing</h1><p>A view of discovery, interest, and the work being read.</p></div><div className="analytics-controls"><label htmlFor="analytics-period">Period</label><select id="analytics-period" value={days} onChange={e => setDays(Number(e.target.value))}><option value={7}>Last 7 days</option><option value={30}>Last 30 days</option><option value={90}>Last 90 days</option></select><button className="button button-quiet" disabled={loading} onClick={() => setRevision(v => v + 1)}>Refresh</button></div></div>
+    <aside className="analytics-exclusion" aria-label="Your traffic exclusion"><strong>Your views and clicks are excluded</strong><p>{isBrowserExcluded() ? "This browser is excluded even after you sign out. Sign in to your owner account once in each other browser you use to exclude it too." : "Your signed-in owner account is excluded. Allow browser storage to keep excluding this browser after you sign out."}</p><p>Applies to new traffic. Earlier anonymous counts cannot be separated.</p></aside>
     {loading && <p role="status">Loading your analytics…</p>}
     {error && <p role="alert">{error}</p>}
     {data && <>

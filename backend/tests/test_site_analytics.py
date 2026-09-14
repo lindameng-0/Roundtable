@@ -97,3 +97,30 @@ def test_window_filter_and_rate_limit():
             assert client.post("/api/analytics/events", headers={"origin": "https://roundtable.works"}, json={"path": "/"}).status_code == 204
         assert client.post("/api/analytics/events", headers={"origin": "https://roundtable.works"}, json={"path": "/"}).status_code == 429
         assert len(config.db._data["site_analytics"]) == 1
+
+
+@pytest.mark.parametrize("event", ["pageview", "signup_click"])
+def test_owner_traffic_is_excluded_even_if_client_sends_it(event):
+    with TestClient(app) as client:
+        session(client)
+        response = client.post("/api/analytics/events", headers={"origin": "https://roundtable.works"},
+                               json={"path": "/pricing", "event": event})
+        assert response.status_code == 204
+        summary = client.get("/api/analytics/summary").json()
+        assert summary["pageviews"] == summary["signup_clicks"] == 0
+        assert not config.db._data.get("site_analytics")
+
+
+@pytest.mark.parametrize("email,verified,expired", [
+    ("visitor@example.com", True, False),
+    ("itsyuko0o1@gmail.com", False, False),
+    ("itsyuko0o1@gmail.com", True, True),
+])
+def test_non_owner_and_expired_sessions_still_count(email, verified, expired):
+    with TestClient(app) as client:
+        session(client, email, verified, expired)
+        response = client.post("/api/analytics/events", headers={"origin": "https://roundtable.works"},
+                               json={"path": "/", "event": "signup_click"})
+        assert response.status_code == 204
+        assert config.db._data["site_analytics"][0]["count"] == 1
+        assert set(config.db._data["site_analytics"][0]) == {"day", "path", "source", "event", "count"}

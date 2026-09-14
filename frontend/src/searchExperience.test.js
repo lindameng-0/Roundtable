@@ -1,4 +1,4 @@
-import { referralSource, trackPublicEvent } from "./siteAnalytics";
+import { referralSource, trackPublicEvent, excludeOwnerBrowser, isBrowserExcluded } from "./siteAnalytics";
 import { searchSchema } from "./searchSchema";
 import content from "./searchContent.json";
 import { publicPageUrl, siteOrigin } from "./publicPageUrl";
@@ -7,6 +7,12 @@ import { createRoot } from "react-dom/client";
 import SearchExperience from "./components/SearchExperience";
 
 let mockPathname = "/";
+let mockAuth = { user: null, loading: false };
+jest.mock("./context/AuthContext", () => ({ useAuth: () => mockAuth }));
+beforeEach(() => {
+  localStorage.clear();
+  mockAuth = { user: null, loading: false };
+});
 // CRA's Jest resolver predates this package's export map; only the location
 // hook is needed here to exercise real React effects during route changes.
 jest.mock("react-router-dom", () => ({ useLocation: () => ({ pathname: mockPathname }) }), { virtual: true });
@@ -29,7 +35,7 @@ test("private paths and privacy signals prevent analytics requests", () => {
   Object.defineProperty(navigator, "globalPrivacyControl", { configurable: true, value: false });
   trackPublicEvent("/");
   const options = fetch.mock.calls[0][1];
-  expect(options.credentials).toBe("omit");
+  expect(options.credentials).toBe("include");
   expect(Object.keys(JSON.parse(options.body)).sort()).toEqual(["event", "path", "source"]);
 });
 
@@ -110,6 +116,55 @@ test("client route changes keep public metadata canonical and remove it in the w
     expect(document.head.querySelector('meta[name="robots"]').content).toBe("noindex, nofollow");
   } finally {
     act(() => root.unmount());
+    jest.useRealTimers();
+    delete global.IS_REACT_ACT_ENVIRONMENT;
+  }
+});
+
+test("owner exclusion persists after sign-out without identifying ordinary visitors", () => {
+  global.fetch = jest.fn(() => Promise.resolve());
+  excludeOwnerBrowser({ is_owner: false });
+  expect(isBrowserExcluded()).toBe(false);
+  excludeOwnerBrowser({ is_owner: true });
+  excludeOwnerBrowser(null);
+  expect(isBrowserExcluded()).toBe(true);
+  trackPublicEvent("/");
+  trackPublicEvent("/pricing", "signup_click");
+  expect(fetch).not.toHaveBeenCalled();
+  expect(localStorage.getItem("readerfold.excludeOwnTraffic")).toBe("1");
+});
+
+test("measurement waits for auth and skips owner views and clicks", () => {
+  global.IS_REACT_ACT_ENVIRONMENT = true;
+  global.fetch = jest.fn(() => Promise.resolve());
+  jest.useFakeTimers();
+  const container = document.createElement("div");
+  const root = createRoot(container);
+  const signup = document.createElement("a");
+  signup.setAttribute("href", "/signup");
+  document.body.appendChild(signup);
+  const click = () => signup.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  try {
+    mockPathname = "/";
+    mockAuth = { user: null, loading: true };
+    act(() => root.render(<SearchExperience />));
+    act(() => jest.runOnlyPendingTimers());
+    click();
+    expect(fetch).not.toHaveBeenCalled();
+    mockAuth = { user: { is_owner: true }, loading: false };
+    act(() => root.render(<SearchExperience />));
+    act(() => jest.runOnlyPendingTimers());
+    click();
+    expect(fetch).not.toHaveBeenCalled();
+    // Ordinary visitors still record exactly one view and their signup click.
+    mockAuth = { user: null, loading: false };
+    act(() => root.render(<SearchExperience />));
+    act(() => jest.runOnlyPendingTimers());
+    click();
+    expect(fetch.mock.calls.map(([, options]) => JSON.parse(options.body).event)).toEqual(["pageview", "signup_click"]);
+  } finally {
+    act(() => root.unmount());
+    signup.remove();
     jest.useRealTimers();
     delete global.IS_REACT_ACT_ENVIRONMENT;
   }

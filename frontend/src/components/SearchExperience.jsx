@@ -5,9 +5,11 @@ import content from "../searchContent.json";
 import siteConfig from "../siteConfig.json";
 import { trackPublicEvent } from "../siteAnalytics";
 import { publicPageUrl } from "../publicPageUrl";
+import { useAuth } from "../context/AuthContext";
 
 export default function SearchExperience() {
   const { pathname } = useLocation();
+  const { user, loading } = useAuth();
   useEffect(() => {
     const path = pathname.replace(/\/$/, "") || "/";
     const page = content.pages[path];
@@ -41,6 +43,12 @@ export default function SearchExperience() {
       script.textContent = JSON.stringify(searchSchema(path));
       document.head.appendChild(script);
     }
+  }, [pathname]);
+
+  useEffect(() => {
+    // Wait for identity before measuring the initial page, including on reload.
+    if (loading || user?.is_owner) return;
+    const path = pathname.replace(/\/$/, "") || "/";
     // Defer so StrictMode's discarded effect does not double-count a route.
     const timer = setTimeout(() => trackPublicEvent(path), 0);
     const click = event => {
@@ -49,6 +57,6 @@ export default function SearchExperience() {
     };
     document.addEventListener("click", click);
     return () => { clearTimeout(timer); document.removeEventListener("click", click); };
-  }, [pathname]);
+  }, [pathname, loading, user?.is_owner]);
   return null;
 }

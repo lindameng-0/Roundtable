@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import { getApi } from "../apiConfig";
+import { excludeOwnerBrowser } from "../siteAnalytics";
 
 const API = getApi();
 
@@ -13,6 +14,7 @@ export function AuthProvider({ children }) {
   const checkAuth = useCallback(async () => {
     try {
       const res = await axios.get(`${API}/auth/me`, { withCredentials: true, timeout: 10000 });
+      excludeOwnerBrowser(res.data);
       setUser(res.data);
     } catch {
       setUser(null);
@@ -26,6 +28,7 @@ export function AuthProvider({ children }) {
   }, [checkAuth]);
 
   const login = useCallback((userData) => {
+    excludeOwnerBrowser(userData);
     setUser(userData);
   }, []);
 

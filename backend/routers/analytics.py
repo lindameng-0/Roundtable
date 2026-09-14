@@ -1,4 +1,4 @@
-"""Bounded, cookieless public counters and an authenticated owner dashboard."""
+"""Bounded anonymous counters, excluding authenticated owner traffic."""
 import asyncio
 import logging
 import os
@@ -33,6 +33,15 @@ async def record_event(body: Event, request: Request):
     if request.headers.get("dnt") == "1" or request.headers.get("sec-gpc") == "1":
         return Response(status_code=204)
     await enforce_rate_limit(request, "site_analytics", 60, 60)
+    if request.cookies.get("session_token"):
+        try:
+            user = await _get_session_user(request)
+        except HTTPException as error:
+            if error.status_code != 401:
+                raise
+        else:
+            if is_owner(user):
+                return Response(status_code=204)
     try:
         await db.increment_site_analytics(body.path, body.source, body.event)
     except Exception:

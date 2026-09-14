@@ -23,7 +23,7 @@ The owner confirmed `readerfold@gmail.com` as the public support inbox. It is co
 
 - Daily public-page views, broad incoming referrer categories (including major AI assistants), and clicks on links to signup. Period choices are 7/30/90 days; boundaries use UTC and the current day is partial.
 - Current all-time totals of verified accounts, saved manuscripts, and editorial reports, counted from the database. Deletions reduce these current totals; report revisions are not counted as new reports.
-- No analytics cookies, browser storage, visitor/session IDs, raw IPs, raw referrers, query strings, manuscript IDs/text, or emails are stored in the counters. The existing request rate limiter still processes network identity for abuse prevention. Do Not Track and Global Privacy Control skip browser measurement.
+- No analytics cookies, visitor/session IDs, raw IPs, raw referrers, query strings, manuscript IDs/text, or emails are stored in the counters. The existing request rate limiter still processes network identity for abuse prevention. Do Not Track and Global Privacy Control skip browser measurement.
 - Counts are atomic across PostgreSQL workers. Storage dimensions are allowlisted, endpoints reject arbitrary URLs/fields, and collection is origin-checked and rate-limited. Aggregates older than the retention window are pruned on new traffic. With no new traffic, old aggregates remain until the next event; schedule equivalent database cleanup if strict time-based deletion is required.
 - Counts start at deployment. Repeat visits, browser refreshes, owner public-page visits, bots, missing referrers, privacy signals, and blockers affect totals. Public event submissions are not independently verified transactions. These are **not unique visitors, paid conversions, or an attributed funnel**. AI referral clicks are not AI citations, and Google AI clicks cannot be distinguished from Google Search by referrer.
 - The dashboard does not claim revenue, retention, search rankings, or Core Web Vitals. Use Paddle for reconciled revenue and the search consoles for search impressions, queries, indexing, and available AI citation measurements.
@@ -92,3 +92,7 @@ See `MCP-SETUP.md` for authentication, supported clients, tools, and deployment.
 Validation includes the HTTP MCP protocol and an independent official SDK client,
 a three-section mock reading/report through the worker, mobile/desktop browser
 checks, frontend search tests, and rendered-HTML/sitemap checks.
+
+## Exclude owner traffic
+
+The browser waits for sign-in status before recording public views and signup-link clicks. A verified owner sign-in saves `readerfold.excludeOwnTraffic=1` in local storage, keeping that browser excluded after sign-out. Sign in once on each browser to enable this; clearing site storage removes the preference. If storage is blocked, the signed-in owner is still excluded. The API also checks the existing session cookie and skips owner events. Counters remain anonymous and existing historical counts cannot be attributed or selectively removed.

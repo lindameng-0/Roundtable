@@ -2,6 +2,17 @@ import content from "./searchContent.json";
 import { getApi } from "./apiConfig";
 import { siteOrigin } from "./publicPageUrl";
 
+const OWNER_EXCLUSION_KEY = "readerfold.excludeOwnTraffic";
+
+export function excludeOwnerBrowser(user) {
+  if (!user?.is_owner) return;
+  try { window.localStorage.setItem(OWNER_EXCLUSION_KEY, "1"); } catch { /* Signed-in exclusion still works without storage. */ }
+}
+
+export function isBrowserExcluded() {
+  try { return window.localStorage.getItem(OWNER_EXCLUSION_KEY) === "1"; } catch { return false; }
+}
+
 export function referralSource(referrer) {
   let host;
   try { host = new URL(referrer).hostname.toLowerCase(); } catch { return "direct"; }
@@ -18,10 +29,11 @@ export function referralSource(referrer) {
 }
 
 export function trackPublicEvent(path, event = "pageview") {
+  if (isBrowserExcluded()) return;
   if (navigator.doNotTrack === "1" || window.doNotTrack === "1" || navigator.globalPrivacyControl) return;
   if (!content.pages[path] && !["/signup", "/login"].includes(path)) return;
   fetch(`${getApi()}/analytics/events`, {
-    method: "POST", credentials: "omit", keepalive: true,
+    method: "POST", credentials: "include", keepalive: true,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ path, event, source: referralSource(document.referrer) }),
   }).catch(() => {});
