@@ -1,0 +1,79 @@
+.roundtable-redirect-notice {
+  width: min(520px, calc(100% - 32px));
+  margin: auto;
+  padding: 0;
+  overflow: visible;
+  color: #45433e;
+  background: #fffefa;
+  border: 1px solid #d8d0c5;
+  border-radius: 9px;
+  box-shadow: 8px 10px 0 #eae5da, 0 24px 80px rgba(48, 36, 52, .22);
+}
+
+.roundtable-redirect-notice::backdrop {
+  background: rgba(48, 36, 52, .42);
+  backdrop-filter: blur(3px);
+}
+
+.roundtable-redirect-notice__body {
+  position: relative;
+  padding: 36px 38px 34px 43px;
+  border-left: 5px solid #493449;
+  border-radius: 8px;
+  text-align: left;
+}
+
+.roundtable-redirect-notice__context {
+  margin: 0 0 15px;
+  color: #716d62;
+  font: 500 12px/1.5 'IBM Plex Sans', system-ui, sans-serif;
+}
+
+.roundtable-redirect-notice h2 {
+  margin: 0;
+  max-width: 12ch;
+  color: #493449;
+  font: 400 38px/1.08 'EB Garamond', Garamond, Georgia, serif;
+  letter-spacing: -.4px;
+}
+
+.roundtable-redirect-notice__copy {
+  margin: 18px 0 27px;
+  max-width: 43ch;
+  color: #716d62;
+  font: 400 14px/1.8 'IBM Plex Sans', system-ui, sans-serif;
+}
+
+.roundtable-redirect-notice__button {
+  min-height: 46px;
+  padding: 12px 23px;
+  cursor: pointer;
+  color: white;
+  background: #493449;
+  border: 1px solid #493449;
+  border-radius: 5px;
+  font: 500 13px/1.5 'IBM Plex Sans', system-ui, sans-serif;
+}
+
+.roundtable-redirect-notice__button:hover { background: #624861; }
+.roundtable-redirect-notice__button:focus-visible {
+  outline: 2px solid #493449;
+  outline-offset: 4px;
+}
+
+@media (max-width: 480px) {
+  .roundtable-redirect-notice__body { padding: 29px 25px 27px 28px; }
+  .roundtable-redirect-notice h2 { font-size: 33px; }
+  .roundtable-redirect-notice__button { width: 100%; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .roundtable-redirect-notice[open] { animation: roundtable-notice-in 180ms ease-out; }
+  .roundtable-redirect-notice[open]::backdrop { animation: roundtable-backdrop-in 180ms ease-out; }
+  @keyframes roundtable-notice-in {
+    from { opacity: 0; transform: translateY(8px) scale(.985); }
+  }
+  @keyframes roundtable-backdrop-in { from { opacity: 0; } }
+}
+
+@media print { .roundtable-redirect-notice { display: none; } }
