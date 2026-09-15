@@ -1,0 +1,27 @@
+.connections-page { max-width:1040px; padding-top:48px; padding-bottom:72px; }
+.connections-page h1 { font-family:var(--display); font-size:clamp(38px,5vw,60px); line-height:1.08; margin:14px 0 22px; }
+.connections-page h2 { font-family:var(--display); font-size:29px; line-height:1.2; margin-bottom:20px; }
+.connections-intro { font-size:17px; line-height:1.8; max-width:70ch; }
+.connection-help { font-size:13px; line-height:1.8; max-width:85ch; margin:18px 0 30px; }
+.connection-help a { text-decoration:underline; }
+.connection-setup { display:grid; grid-template-columns:1fr 1fr; gap:60px; padding:32px 0; border-top:1px solid var(--line); }
+.connection-setup form { display:flex; flex-direction:column; align-items:start; }
+.connection-setup label { font-size:13px; font-weight:500; margin:16px 0 8px; }
+.connection-setup input,.connection-setup select,.connection-secret input { width:100%; padding:12px; border:1px solid #b9b1a6; border-radius:5px; background:#fffefa; font:inherit; font-size:14px; }
+.connection-field-note { font-size:12px; line-height:1.8; color:var(--muted-ink); margin:12px 0; max-width:80ch; }
+.connection-setup form>.button { margin-top:22px; }
+.connection-instructions ol,.connection-steps { list-style:decimal; padding-left:22px; }
+.connection-instructions li,.connection-steps li { padding-left:5px; margin:14px 0; font-size:14px; line-height:1.8; }
+.connection-instructions>p { margin-top:24px; font-size:12px; line-height:1.85; color:var(--muted-ink); }
+.connection-code { display:block; padding:14px; margin:10px 0; background:#eee9de; font-size:12px; overflow-wrap:anywhere; }
+.connection-secret { padding:26px; border:1px solid #b4a1b5; background:#eee8ee; border-radius:6px; margin:24px 0; }
+.connection-secret p { font-size:13px; line-height:1.8; margin-bottom:16px; }
+.connection-actions { display:flex; gap:12px; flex-wrap:wrap; margin-top:16px; }
+.connection-list { border-top:1px solid var(--line); padding-top:30px; margin-top:20px; }
+.connection-list li { display:flex; justify-content:space-between; align-items:center; gap:20px; padding:22px 0; border-bottom:1px solid var(--line); }
+.connection-list h3 { font-size:16px; font-weight:500; }
+.connection-list li p { font-size:12px; line-height:1.9; color:var(--muted-ink); }
+.connection-list li>div { min-width:0; overflow-wrap:anywhere; }
+.connection-message { padding:16px; background:#eee9de; font-size:14px; line-height:1.8; margin-bottom:20px; }
+.connection-error { background:#f3e6e1; color:#7c302a; }
+@media(max-width:760px) { .connection-setup { grid-template-columns:1fr; gap:36px; } .connection-secret { padding:20px; } }

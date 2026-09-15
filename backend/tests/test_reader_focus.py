@@ -4,7 +4,11 @@ from fastapi.testclient import TestClient
 
 import config
 from server import app
+from services.auth_security import hash_opaque_token
 from services.reader_focus import FOCUS_LABELS, focus_prompt
+
+
+RAW_SESSION = "reader-focus-session"
 
 
 def _reader():
@@ -25,7 +29,17 @@ def _seed(locked=False):
         config.db.clear()
         await config.db.manuscripts.insert_one({
             "id": "manuscript-focus-1", "title": "Test", "raw_text": "Text",
-            "sections": [], "reader_config_locked": locked, "created_at": "2026-01-01T00:00:00+00:00",
+            "sections": [], "reader_config_locked": locked, "user_id": "reader-focus-user",
+            "created_at": "2026-01-01T00:00:00+00:00",
+        })
+        await config.db.users.insert_one({
+            "user_id": "reader-focus-user", "email": "reader@example.com",
+            "name": "Reader", "created_at": "2026-01-01T00:00:00+00:00",
+        })
+        await config.db.user_sessions.insert_one({
+            "user_id": "reader-focus-user", "token_hash": hash_opaque_token(RAW_SESSION),
+            "expires_at": "2099-01-01T00:00:00+00:00",
+            "created_at": "2026-01-01T00:00:00+00:00",
         })
         await config.db.reader_personas.insert_one(_reader())
     asyncio.run(scenario())
@@ -53,7 +67,7 @@ def test_prompt_keeps_tastes_and_assignment_soft():
 
 def test_writer_can_assign_focus_and_dismiss_generated_taste():
     _seed()
-    with TestClient(app) as client:
+    with TestClient(app, cookies={"session_token": RAW_SESSION}) as client:
         response = client.patch(
             "/api/manuscripts/manuscript-focus-1/personas/reader-focus-1/focus",
             json={
@@ -71,7 +85,7 @@ def test_writer_can_assign_focus_and_dismiss_generated_taste():
 
 def test_focus_cannot_change_after_run_is_locked():
     _seed(locked=True)
-    with TestClient(app) as client:
+    with TestClient(app, cookies={"session_token": RAW_SESSION}) as client:
         response = client.patch(
             "/api/manuscripts/manuscript-focus-1/personas/reader-focus-1/focus",
             json={

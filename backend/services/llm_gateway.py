@@ -40,6 +40,7 @@ async def structured_completion(
     max_tokens: int = 2500,
     manuscript_id: str | None = None,
     operation_key: str | None = None,
+    billing_user_id: str | None = None,
 ) -> StructuredCompletion:
     if _cfg.MOCK_LLM:
         raise RuntimeError("Mock structured completions must be supplied by the calling workflow")
@@ -72,13 +73,19 @@ async def structured_completion(
     last_raw = ""
     last_error = None
     reservation_id = None
-    if manuscript_id:
+    if manuscript_id or (_cfg.CREDITS_ENABLED and billing_user_id):
         prompt_tokens = count_tokens(system_prompt + user_prompt)
         retry_tokens = min(max(max_tokens * 2, 1200), 16000)
         reserved_cost = estimate_cost(route, prompt_tokens * 2 + 80, max_tokens + retry_tokens)
         if reserved_cost is None:
             raise RuntimeError(f"No cost-control price is configured for {route.key}; refusing an unbudgeted model call")
-        reservation_id = await reserve(manuscript_id, role, operation_key or role, reserved_cost)
+        if manuscript_id:
+            reservation_id = await reserve(manuscript_id, role, operation_key or role, reserved_cost)
+        else:
+            from services import credits
+            reservation_id = await credits.reserve(billing_user_id, credits.units(reserved_cost), role)
+    elif _cfg.CREDITS_ENABLED:
+        raise RuntimeError("Refusing a model call without a credit account")
     try:
         for attempt in range(2):
             call_kwargs = dict(kwargs)
@@ -118,8 +125,10 @@ async def structured_completion(
             f"{route.key} returned malformed JSON after one repair retry: {last_error}; "
             f"raw preview={last_raw[:160]!r}"
         ) from last_error
-    except Exception:
-        if total_input or total_output:
+    except BaseException:
+        if _cfg.CREDITS_ENABLED:
+            await release(reservation_id)
+        elif total_input or total_output:
             await settle(reservation_id, usage_record(route, role, total_input, total_output).estimated_cost_usd)
         else:
             await release(reservation_id)

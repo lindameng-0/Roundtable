@@ -1,0 +1,59 @@
+.sample-page { padding-top:36px; padding-bottom:80px; }
+.sample-breadcrumb { font-size:12px; color:var(--muted-ink); }
+.sample-page a:not(.button) { text-decoration:underline; text-underline-offset:4px; }
+.sample-intro { max-width:790px; padding:48px 0; }
+.sample-intro h1 { font-family:var(--display); font-size:clamp(42px,5.5vw,72px); line-height:1.04; letter-spacing:-1px; margin:18px 0 24px; }
+.sample-lead { font-size:18px; line-height:1.8; max-width:65ch; }
+.sample-disclosure { font-size:12px; line-height:1.8; color:var(--muted-ink); margin-top:24px; max-width:78ch; }
+.sample-contents { display:flex; flex-wrap:wrap; gap:12px 26px; margin-top:28px; font-size:13px; color:var(--plum); }
+.sample-page section[id] { scroll-margin-top:28px; }
+.sample-draft { background:#fffefa; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+.sample-draft-heading { padding:34px 38px; display:flex; justify-content:space-between; align-items:center; gap:20px; border-bottom:1px solid var(--line); }
+.sample-draft-heading h2 { font-family:var(--display); font-size:40px; margin-top:5px; }
+.sample-draft-heading>p { font-size:12px; line-height:1.8; color:var(--muted-ink); }
+.sample-passage { display:grid; grid-template-columns:1.15fr 1fr; }
+.sample-passage + .sample-passage { border-top:1px solid var(--line); }
+.sample-prose { padding:32px 38px; }
+.sample-passage-number { display:block; font-size:11px; color:var(--muted-ink); margin-bottom:16px; }
+.sample-prose p { font-family:var(--display); font-size:24px; line-height:1.65; max-width:42ch; }
+.sample-notes { padding:32px; background:#f3f0e9; border-left:1px solid var(--line); }
+.sample-notes article + article { margin-top:24px; }
+.sample-notes h3 { color:var(--plum); font-size:12px; font-weight:600; margin-bottom:8px; }
+.sample-notes p { font-size:14px; line-height:1.85; }
+.sample-assessment { display:grid; grid-template-columns:1fr 1fr; gap:70px; padding:64px 0; }
+.sample-assessment h2,.sample-revision h2,.sample-takeaway h2 { font-family:var(--display); font-size:clamp(32px,3.4vw,44px); line-height:1.12; margin:12px 0 22px; }
+.sample-assessment p,.sample-revision p,.sample-takeaway p { font-size:15px; line-height:1.85; max-width:70ch; }
+.sample-findings article + article { margin-top:26px; }
+.sample-findings h3,.sample-revision-note h3 { font-size:15px; font-weight:600; margin-bottom:8px; }
+.sample-revision { padding:42px 0 52px; border-top:1px solid var(--line); }
+.sample-comparison { display:grid; grid-template-columns:1fr 1fr; gap:32px; margin:30px 0; }
+.sample-comparison article { padding:26px 30px; background:#eee9de; border-radius:5px; }
+.sample-comparison article:last-child { background:#eee8ee; }
+.sample-comparison h3 { font-size:12px; font-weight:600; margin-bottom:16px; }
+.sample-comparison blockquote { font-family:var(--display); font-size:25px; line-height:1.5; }
+.sample-revision-note { max-width:760px; }
+.sample-revision-note p + p { margin-top:14px; }
+.sample-takeaway { padding:40px 0 0; border-top:1px solid var(--line); }
+.sample-related { display:flex; flex-wrap:wrap; gap:16px 28px; margin-top:28px; font-size:13px; }
+.use-case-home { padding-top:40px; padding-bottom:40px; }
+.use-case-home h2 { font-family:var(--display); font-size:clamp(32px,3.4vw,44px); line-height:1.15; margin-bottom:18px; }
+.use-case-home > p { line-height:1.8; }
+.use-case-links { margin:30px 0 48px; }
+.use-case-links article { display:grid; grid-template-columns:1fr 2fr; gap:32px; padding:26px 0; border-top:1px solid var(--line); }
+.use-case-links h3 { font-family:var(--display); font-size:28px; line-height:1.25; }
+.use-case-links a { text-decoration:underline; text-underline-offset:4px; color:var(--plum); }
+.use-case-links p { max-width:70ch; line-height:1.85; font-size:15px; }
+.sample-revision-note p + h3 { margin-top:24px; }
+@media(max-width:760px) {
+  .use-case-links article { grid-template-columns:1fr; gap:14px; }
+  .sample-intro { padding:32px 0; }
+  .sample-lead { font-size:16px; }
+  .sample-passage,.sample-assessment,.sample-comparison { grid-template-columns:1fr; }
+  .sample-draft-heading { padding:24px; align-items:start; flex-direction:column; gap:10px; }
+  .sample-draft-heading>p br { display:none; }
+  .sample-prose { padding:26px 24px; }
+  .sample-prose p { font-size:23px; }
+  .sample-notes { padding:24px; border-left:0; border-top:1px solid var(--line); }
+  .sample-assessment { gap:30px; padding:40px 0; }
+  .sample-comparison { gap:14px; }
+}

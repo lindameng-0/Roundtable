@@ -1,0 +1,28 @@
+{
+  "/guides": {
+    "title": "Fiction Revision Guides & Worksheets | Readerfold",
+    "description": "Get clearer beta reader feedback and decide what to revise. Free questions, worksheets, and worked fiction examples, with no signup required.",
+    "lastModified": "2026-09-12",
+    "heading": "A clearer question. A more useful revision.",
+    "label": "Writing guides",
+    "file": "index.html"
+  },
+  "/guides/beta-reader-questionnaire": {
+    "title": "Beta Reader Questionnaire: 12 Questions | Readerfold",
+    "description": "Ask beta readers 12 specific questions about pacing, characters, clarity, and endings. Use the free questionnaire and an example of actionable feedback.",
+    "lastModified": "2026-09-12",
+    "heading": "What questions should you ask beta readers?",
+    "label": "Beta reader questionnaire",
+    "file": "beta-reader-questionnaire.html",
+    "download": "beta-reader-questionnaire.txt"
+  },
+  "/guides/conflicting-beta-reader-feedback": {
+    "title": "Conflicting Beta Reader Feedback: What Now? | Readerfold",
+    "description": "When beta readers disagree, separate reactions from proposed fixes. Work through an example and use a free worksheet to choose your next revision.",
+    "lastModified": "2026-09-12",
+    "heading": "What should you do when beta readers disagree?",
+    "label": "Conflicting beta reader feedback",
+    "file": "conflicting-beta-reader-feedback.html",
+    "download": "feedback-decision-worksheet.txt"
+  }
+}
