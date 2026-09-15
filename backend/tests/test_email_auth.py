@@ -46,8 +46,8 @@ def test_email_signup_requires_verification_before_login(monkeypatch):
         verified = client.post("/api/auth/verify-email", json={"token": sent["token"]})
         assert verified.status_code == 200
         funnel_events = {row["event"]: row["count"] for row in config.db._data["site_analytics"]}
-        assert funnel_events["signup_accepted"] == 1
-        assert funnel_events["email_verified"] == 1
+        assert funnel_events["interest_v2:signup_accepted"] == 1
+        assert funnel_events["interest_v2:email_verified"] == 1
         assert client.post("/api/auth/verify-email", json={"token": sent["token"]}).status_code == 400
 
         login = client.post(

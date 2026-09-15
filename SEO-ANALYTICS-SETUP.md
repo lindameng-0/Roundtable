@@ -1,5 +1,25 @@
 # Search visibility and owner analytics
 
+## Interest dashboard refresh
+
+The interest dashboard uses the `interest_v2:` event namespace. Deploy the backend
+and frontend together to start the new series. No database migration is needed;
+existing traffic remains stored under its original event names and is excluded
+from the new summary. The new UI hides legacy backend summaries until the backend
+is upgraded. Redeploys do not reset the series.
+
+Headlines use distinct network hashes across the selected period, rather than raw
+page views. Interest includes signup clicks, form submits, and Google-continue
+clicks. The interest-rate numerator intersects those networks with measured page
+visitors, so click-only records cannot inflate the rate. This is a period-level
+overlap, not a session conversion funnel. Page/source rows and daily counts are
+independently deduplicated and should not be summed for the period total.
+
+`ANALYTICS_HASH_SECRET` must be configured for distinct measurement; the UI shows
+unavailable rather than presenting missing measurement as zero visitors. Owner
+exclusion and privacy signals still apply. All-time workspace totals are omitted
+from the UI; signup completion events reflect the selected period only.
+
 Published September 8, 2026. Source commit `a8dad62` deployed successfully to the Railway web and worker services, and the production build was published to GitHub Pages. Live checks confirmed public HTML, sitemap, robots.txt, the support address, healthy PostgreSQL/worker status, a successful analytics write, and HTTP 401 for unsigned dashboard API access. Owner sign-in must use the verified owner account.
 
 ## Publish

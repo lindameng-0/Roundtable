@@ -13,7 +13,7 @@ from config import db
 from routers.auth import _get_session_user
 from services.owner import is_owner
 from services.rate_limit import enforce_rate_limit
-from services.site_analytics import record_site_event
+from services.site_analytics import MEASUREMENT_PREFIX, record_site_event
 
 analytics_router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
@@ -42,7 +42,7 @@ async def excluded_account_totals():
 
 class Event(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    path: Literal["/", "/pricing", "/beta-readers", "/ai-beta-reader", "/manuscript-feedback", "/use-cases", "/use-cases/opening-chapter-feedback", "/use-cases/pacing-feedback", "/use-cases/character-motivation", "/sample-reading", "/connect-assistant", "/terms", "/privacy", "/refunds", "/signup", "/login"]
+    path: Literal["/", "/pricing", "/beta-readers", "/ai-beta-reader", "/manuscript-feedback", "/use-cases", "/use-cases/opening-chapter-feedback", "/use-cases/pacing-feedback", "/use-cases/character-motivation", "/sample-reading", "/connect-assistant", "/terms", "/privacy", "/refunds", "/signup", "/login", "/guides", "/guides/llm-manuscript-feedback", "/guides/beta-reader-questionnaire", "/guides/conflicting-beta-reader-feedback", "/guides/beta-reader-questionnaire/fantasy", "/guides/beta-reader-questionnaire/romance", "/guides/beta-reader-questionnaire/mystery", "/guides/beta-reader-questionnaire/thriller", "/blog", "/blog/finished-first-draft", "/blog/earned-plot-twist", "/blog/ai-feedback-your-voice", "/sample-reading/fantasy-magic-cost", "/sample-reading/romance-earned-trust"]
     source: Literal["direct", "google", "bing", "other-search", "chatgpt", "perplexity", "claude", "gemini", "copilot", "social", "other"] = "direct"
     event: Literal["pageview", "signup_click", "signup_submit", "google_continue_click"] = "pageview"
 
@@ -88,6 +88,9 @@ async def summary(request: Request, response: Response, days: int = Query(30, ge
         db.editor_reports.count_documents({}),
         excluded_account_totals(),
     )
+    # A new measurement series hides legacy traffic without deleting records.
+    rows = [{**row, "event": row["event"][len(MEASUREMENT_PREFIX):]} for row in rows if row["event"].startswith(MEASUREMENT_PREFIX)]
+    visitors = [{**row, "event": row["event"][len(MEASUREMENT_PREFIX):]} for row in visitors if row["event"].startswith(MEASUREMENT_PREFIX)]
     sources, pages, daily, events = Counter(), Counter(), Counter(), Counter()
     for row in rows:
         if row["event"] == "pageview":
@@ -116,7 +119,22 @@ async def summary(request: Request, response: Response, days: int = Query(30, ge
         "google_auth_started": events["google_auth_started"],
         "google_signup_completed": events["google_signup_completed"],
     }
+    viewed = {row["visitor_hash"] for row in visitors if row["event"] == "pageview"}
+    interested = {row["visitor_hash"] for row in visitors if row["event"] in {"signup_click", "signup_submit"} or (row["event"] == "google_continue_click" and row["path"] == "/signup")}
+    def breakdown(field):
+        return sorted([
+            {"name": name,
+             "visitors": len({row["visitor_hash"] for row in visitors if row[field] == name and row["event"] == "pageview"}),
+             "signup_click_visitors": len({row["visitor_hash"] for row in visitors if row[field] == name and row["event"] == "signup_click"})}
+            for name in {row[field] for row in visitors if row["event"] in {"pageview", "signup_click"}}
+        ], key=lambda row: (-row["signup_click_visitors"], -row["visitors"], row["name"]))
+    from config import ANALYTICS_HASH_SECRET
     return {
+        "measurement_series": "interest_v2", "distinct_available": bool(ANALYTICS_HASH_SECRET),
+        "unique_visitors": len(viewed), "interested_visitors": len(interested),
+        "interest_rate": round(100 * len(viewed & interested) / len(viewed), 1) if viewed else None,
+        "visitor_pages": breakdown("path"), "visitor_sources": breakdown("source"),
+        "daily_visitors": [{"day": (since + timedelta(days=i)).isoformat(), "visitors": len({row["visitor_hash"] for row in visitors if row["event"] == "pageview" and str(row["day"])[:10] == (since + timedelta(days=i)).isoformat()})} for i in range(days)],
         "days": days, "pageviews": sum(pages.values()), "signup_clicks": events["signup_click"],
         "unique_signup_click_visitors": unique_by_event.get("signup_click", 0),
         "unique_signup_clicks_by_path": unique_clicks_by_path, "funnel": funnel,

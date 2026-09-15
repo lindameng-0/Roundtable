@@ -79,6 +79,49 @@ def test_collection_and_exact_summary():
         assert client.get("/api/analytics/summary?days=999").status_code == 422
 
 
+def test_fresh_series_deduplicates_visitors_and_matches_interest(monkeypatch):
+    today = datetime.now(timezone.utc).date().isoformat()
+    config.db._data["site_analytics"] = [{"day": today, "path": "/", "source": "direct", "event": "pageview", "count": 45}]
+    config.db._data["site_analytics_visitors"] = [{"day": today, "path": "/", "source": "direct", "event": "pageview", "visitor_hash": "legacy"}]
+    identities = iter(["a", "a", "b", "a", "a", "c"])
+    monkeypatch.setattr("services.site_analytics.client_ip", lambda _: next(identities))
+    with TestClient(app) as client:
+        for event in ["pageview", "pageview", "pageview", "signup_click", "signup_submit", "signup_click"]:
+            assert client.post("/api/analytics/events", headers={"origin": "https://roundtable.works"}, json={"path": "/", "event": event}).status_code == 204
+        session(client)
+        result = client.get("/api/analytics/summary").json()
+        assert result["pageviews"] == 3
+        assert result["unique_visitors"] == 2
+        assert result["interested_visitors"] == 2
+        assert result["interest_rate"] == 50.0  # Click-only network is not a measured page visitor.
+        assert result["visitor_pages"] == [{"name": "/", "visitors": 2, "signup_click_visitors": 2}]
+        assert sum(row["visitors"] for row in result["daily_visitors"]) == 2
+        assert config.db._data["site_analytics"][0]["count"] == 45
+
+
+def test_missing_hash_secret_does_not_claim_zero_distinct_visitors(monkeypatch):
+    monkeypatch.setattr(config, "ANALYTICS_HASH_SECRET", "")
+    with TestClient(app) as client:
+        client.post("/api/analytics/events", headers={"origin": "https://roundtable.works"}, json={"path": "/"})
+        session(client)
+        result = client.get("/api/analytics/summary").json()
+        assert result["distinct_available"] is False
+        assert result["interest_rate"] is None
+        assert result["pageviews"] == 1
+
+
+def test_google_login_is_not_signup_interest():
+    with TestClient(app) as client:
+        headers = {"origin": "https://roundtable.works"}
+        client.post("/api/analytics/events", headers=headers, json={"path": "/login"})
+        client.post("/api/analytics/events", headers=headers, json={"path": "/login", "event": "google_continue_click"})
+        session(client)
+        result = client.get("/api/analytics/summary").json()
+        assert result["unique_visitors"] == 1
+        assert result["interested_visitors"] == 0
+        assert result["interest_rate"] == 0
+
+
 def test_funnel_counts_events_and_deduplicates_network_sources(monkeypatch):
     identities = iter(["198.51.100.10", "198.51.100.10", "203.0.113.20"])
     monkeypatch.setattr("services.site_analytics.client_ip", lambda _request: next(identities))

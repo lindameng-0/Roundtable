@@ -8,6 +8,18 @@
 .search-faq details { border-bottom: 1px solid #d8d0c5; padding: 19px 0; }
 .search-faq summary { cursor: pointer; font-weight: 500; }
 .owner-analytics { padding-top: 48px; padding-bottom: 72px; }
+.analytics-readout { margin-top: 36px; max-width: 75ch; }
+.analytics-stats p, .analytics-journey p { font-size: .85rem; line-height: 1.65; color: #625963; }
+.analytics-journey { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; margin: 24px 0 40px; }
+.analytics-journey > div { border-top: 4px solid #E9E1EC; padding-top: 16px; }
+.analytics-journey > div:last-child { border-color: #526653; }
+.analytics-journey h3 { font-size: 1rem; min-height: 3em; }
+.analytics-journey strong { font-size: 2rem; font-weight: 500; font-variant-numeric: tabular-nums; }
+.analytics-alert { padding: 18px; border-left: 4px solid #8a421f; background: #faf0e4; }
+.analytics-details { margin-top: 32px; max-width: 80ch; line-height: 1.7; }
+.owner-analytics summary { cursor: pointer; padding: 12px 0; }
+.owner-analytics :focus-visible { outline: 2px solid #493449; outline-offset: 4px; }
+@media (max-width: 700px) { .analytics-journey { grid-template-columns: repeat(2, minmax(0, 1fr)); } .owner-analytics .analytics-stats { grid-template-columns: 1fr; } }
 .analytics-heading { display: flex; justify-content: space-between; gap: 28px; align-items: end; }
 .owner-analytics h1 { font-size: clamp(2.1rem, 4vw, 3.4rem); line-height: 1.1; margin: 12px 0; }
 .analytics-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
@@ -23,6 +35,7 @@
 .owner-analytics table { width: 100%; border-collapse: collapse; font-size: .95rem; }
 .owner-analytics th, .owner-analytics td { padding: 12px 4px; text-align: left; border-bottom: 1px solid #ded7cc; overflow-wrap: anywhere; }
 .owner-analytics th:last-child, .owner-analytics td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.owner-analytics th:not(:first-child), .owner-analytics td:not(:first-child) { white-space: nowrap; padding-left: 12px; }
 .analytics-next { max-width: 75ch; }
 .analytics-next li { margin: 12px 0; line-height: 1.7; }
 .analytics-method { max-width: 85ch; font-size: .85rem; line-height: 1.7; color: #625963; margin: 32px 0 16px; }

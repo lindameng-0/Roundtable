@@ -11,6 +11,7 @@ from services.rate_limit import client_ip
 
 
 logger = logging.getLogger(__name__)
+MEASUREMENT_PREFIX = "interest_v2:"
 
 
 def measurement_disabled(request: Request) -> bool:
@@ -36,4 +37,4 @@ async def record_site_event(request: Request, path: str, source: str, event: str
         return
     from config import db
 
-    await db.increment_site_analytics(path, source, event, visitor_hash(request))
+    await db.increment_site_analytics(path, source, MEASUREMENT_PREFIX + event, visitor_hash(request))
